@@ -1,0 +1,216 @@
+@import "tailwindcss";
+
+/*
+ * Design tokens (Tailwind v4 @theme). This file is the source of truth for
+ * color, type, spacing, radius, z-index, and shadow values; Tailwind
+ * generates utility classes from each variable (e.g. --color-brand becomes
+ * bg-brand / text-brand / border-brand, --spacing-page-gutter becomes
+ * px-page-gutter, --text-fs-h1 becomes text-fs-h1).
+ *
+ * Only app/ui and app/shell may reference colors as raw hex or use Tailwind
+ * arbitrary values; everywhere else must go through a token utility class.
+ * Add a token here before introducing a new value.
+ */
+@theme {
+  /* === Colors ============================================================ */
+  --color-brand:        #6F4392;
+  --color-brand-deep:   #502E6B;
+  --color-brand-light:  #A987C5;
+  --color-brand-tint:   #E7DDF4;
+  --color-brand-soft:   #F4F2FA;
+  --color-brand-softer: #F8F4FB;
+
+  --color-ink:        #1A1726;
+  --color-ink-mid:    #3F3B4F;
+  --color-ink-soft:   #6E6A7B;
+  --color-ink-softer: #9C99A6;
+
+  --color-red:   #B73B2C;
+  --color-focus: #FFCC33;
+
+  --color-surface:        #FFFFFF;
+  --color-surface-subtle: #FAFAFC;
+  --color-border-soft:    #DAD6E0;
+  --color-border-strong:  #1A1726;
+
+  --color-highlight-bg: #FFF1B8;
+
+  --color-warn-bg:     #FCF7E3;
+  --color-warn-fg:     #705800;
+  --color-warn-border: #E3C65F;
+  --color-ok-bg:       #F1F8F3;
+  --color-ok-fg:       #1F5430;
+  --color-ok-border:   #BFD9C7;
+  --color-critical-bg:     #FCE8E5;
+  --color-critical-fg:     #B73B2C;
+  --color-critical-border: #F0BBB2;
+
+  /* Ring for a selected element, distinct from the :focus-visible ring above. */
+  --color-selection:      #FFCC33;
+  --color-selection-soft: #FFFBEA;
+  --color-selection-mid:  #FFE58A;
+
+  /* Annotation status: mapped is the brand purple pair, unmapped goldenrod, no value grey. */
+  --color-brand-mid:      #7F58A4;  /* LLM-selected glyph and small text (AA on white) */
+  --color-brand-deeper:   #3A1F52;  /* darkest step of the count scale */
+  --color-brand-faint:    #F0EAF7;  /* bar segment of an unselected element */
+  --color-unmapped:       #C9A227;
+  --color-unmapped-mid:   #D9B84A;
+  --color-unmapped-light: #E7C77A;
+  --color-failed:         #E9A79E;
+  --color-grid:           #EDEBF2;
+
+  /* Trend series and the under-represented side of the residual scale. */
+  --color-series-2:     #1F5430;
+  --color-series-3:     #004098;
+  --color-series-4:     #705800;
+  --color-under:        #004098;
+  --color-under-soft:   #DFEBFB;
+
+  --color-overlay: rgba(26, 23, 38, 0.35);
+
+  /* === Font family ======================================================== */
+  --font-sans: "Public Sans", "Helvetica Neue", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  /* === Type scale (integer px only) ====================================== */
+  --text-fs-h1:      28px;
+  --text-fs-h2:      18px;
+  --text-fs-h3:      14px;
+  --text-fs-body:    14px;
+  --text-fs-body-sm: 13px;
+  --text-fs-label:   12px;
+  --text-fs-meta:    12px;
+  --text-fs-micro:   11px;
+  --text-fs-badge:   10px;
+  --text-fs-brand:   16px;
+  --text-fs-total:   24px;
+
+  /* === Tracking =========================================================== */
+  --tracking-h1:     -0.015em;
+  --tracking-h3:      0.01em;
+  --tracking-mono:    0.02em;
+  --tracking-tag:     0.04em;
+  --tracking-label:   0.06em;
+  --tracking-eyebrow: 0.1em;
+
+  /* === Leading ============================================================ */
+  --leading-tight:   1.2;
+  --leading-snug:    1.4;
+  --leading-relaxed: 1.6;
+
+  /* === Spacing ============================================================= */
+  --spacing-section-sm:    16px;
+  --spacing-section-mid:   24px;
+  --spacing-section-block: 28px;
+  --spacing-section-md:    32px;
+  --spacing-section-lg:    48px;
+  --spacing-page-gutter:   40px;
+  --spacing-content-max: 1280px;
+  --spacing-chart-max:    1100px;
+  --spacing-sidebar:      256px;
+  --spacing-workspace-gutter: 24px;
+  --spacing-header:        52px;
+  --spacing-modal:        640px;
+  --spacing-modal-wide:   760px;
+  --spacing-matrix-max:   620px;
+  --spacing-rail-col:      44px;
+  --spacing-rail-offset:   34px;
+  --spacing-rail-width:    22px;
+  --spacing-heat-cell:     72px;
+  --spacing-heat-head:     96px;
+  --spacing-composition:  150px;
+  --spacing-table-min:   1500px;
+  --spacing-projects-min: 1180px;
+  --spacing-picker-list:  420px;
+  --spacing-menu:         280px;
+
+  /* === Border widths ===================================================== */
+  --border-width-gap: 1.5px;  /* dashed frame of a gap cell */
+
+  /* === Radius ============================================================= */
+  --radius-card:   10px;
+  --radius-button:  6px;
+  --radius-tag:     4px;
+  --radius-badge:   2px;
+  --radius-pill: 9999px;
+
+  /* === Z-index ============================================================= */
+  --z-index-sticky:  10;
+  --z-index-popover: 50;
+  --z-index-modal:   50;
+  --z-index-tooltip: 60;
+
+  /* === Shadow ============================================================= */
+  --shadow-card:       0 1px 2px rgba(26, 23, 38, 0.04);
+  --shadow-card-hover: 0 4px 16px -4px rgba(80, 46, 107, 0.12);
+  --shadow-modal:      0 20px 50px -10px rgba(20, 15, 30, 0.35);
+}
+
+/* === Global a11y rules ==================================================== */
+
+/* focus rules live in @layer base so a utility class can still override them
+   (e.g. an input wrapper that represents focus itself). Un-layered rules
+   would win the cascade over utilities regardless of source order. */
+@layer base {
+  *:focus:not(:focus-visible) {
+    outline: none;
+  }
+
+  /* Non-input elements get a double ring: an inner 2px brand-deep ring for
+     WCAG 2.2 (1.4.11) contrast, plus an outer 4px brand-yellow ring. */
+  *:focus-visible {
+    outline: 2px solid var(--color-brand-deep);
+    outline-offset: 1px;
+    border-radius: 3px;
+    box-shadow: 0 0 0 4px var(--color-focus);
+  }
+
+  /* Text inputs keep their own border-radius and swap the border color
+     instead of drawing an outline around the box. */
+  input:focus-visible,
+  textarea:focus-visible,
+  select:focus-visible {
+    outline: none;
+    border-color: var(--color-brand);
+    border-radius: var(--radius-button);
+    box-shadow: 0 0 0 2px var(--color-brand-tint);
+  }
+}
+
+/* Reduce all motion for users sensitive to it (WCAG 2.3.3). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--color-ink-soft);
+  opacity: 1;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+html,
+body {
+  font-family: var(--font-sans);
+  color: var(--color-ink);
+  background: var(--color-surface-subtle);
+}

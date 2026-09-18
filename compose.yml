@@ -1,0 +1,35 @@
+services:
+  api:
+    build:
+      context: ./backend
+    volumes:
+      - ./backend:/app
+      - backend-venv:/app/.venv
+      - ${BSLLMNER_VIEWER_DATA_DIR:-./data}:/data
+    environment:
+      BSLLMNER_VIEWER_STORE: ${BSLLMNER_VIEWER_STORE:-/data/store/current.duckdb}
+      BSLLMNER_VIEWER_DATA_DIR: /data
+    ports:
+      - "${BSLLMNER_VIEWER_API_PORT:-8000}:8000"
+    command: >
+      uv run uvicorn bsllmner_viewer.api.app:create_app --factory
+      --host 0.0.0.0 --port 8000 --reload
+
+  frontend:
+    build:
+      context: ./frontend
+    volumes:
+      - ./frontend:/app
+      - frontend-node-modules:/app/node_modules
+    environment:
+      BSLLMNER_VIEWER_API_URL: http://api:8000
+      BSLLMNER_VIEWER_OPENAPI_URL: http://api:8000/api/openapi.json
+    ports:
+      - "${BSLLMNER_VIEWER_FRONTEND_PORT:-5173}:5173"
+    depends_on:
+      - api
+    command: npm run dev -- --host 0.0.0.0 --port 5173
+
+volumes:
+  backend-venv:
+  frontend-node-modules:

@@ -1,0 +1,48 @@
+// Condition DSL grammar (Lark LALR(1)). The grammar is the Lucene subset used by
+// the DDBJ Search API `/db-portal/*` endpoints; a condition string parses to an
+// AST of the same shape in both. Free text and wildcards are accepted by the
+// grammar and rejected by validation, so error positions stay comparable.
+
+start: or_expr
+
+or_expr: and_expr (OR and_expr)*
+and_expr: not_expr (AND not_expr)*
+not_expr: NOT atom   -> not_op
+        | atom       -> atom_passthrough
+?atom: field_clause
+     | free_text_atom
+     | "(" or_expr ")"
+// Field name and free-text token share the WORD terminal; the parser
+// distinguishes the two by 1-token lookahead on the following ``:``.
+field_clause: WORD ":" value
+// Space-separated bare words (e.g. ``cancer tumor``) collapse into a single
+// free-text value; the compiler AND-combines the intra-value spaces
+// (``multi_match.operator=and``).
+free_text_atom: PHRASE -> ft_phrase
+              | WORD+  -> ft_word
+
+value: PHRASE    -> v_phrase
+     | RANGE     -> v_range
+     | WILDCARD  -> v_wildcard
+     | DATE      -> v_date
+     | WORD      -> v_word
+
+// AND / OR / NOT must outrank WORD so a bare ``NOT`` is recognised as the
+// operator instead of being absorbed into ``free_text_atom: WORD``.
+AND.10: "AND"
+OR.10: "OR"
+NOT.10: "NOT"
+
+PHRASE.5: /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/
+RANGE.5: /\[[^\s\]]+\s+TO\s+[^\s\]]+\]/
+DATE.4: /\d{4}-\d{2}-\d{2}/
+// WILDCARD is intentionally a narrower character class than WORD: only
+// alphanumerics, `_`, `-`, `.` plus the wildcard markers `*` / `?`.
+// Symbol-bearing tokens like ``HIF-1*`` / ``COVID-19*`` must parse as
+// wildcards so users can prefix-search gene / disease names, but Lucene /
+// Solr metacharacters (`\`, `+`, leading `-`, `!`, `|`, `&`, `<`, `>`, `=`)
+// are kept out at the grammar level to avoid downstream escape bugs.
+WILDCARD.3: /[A-Za-z0-9_\-.]*[*?][A-Za-z0-9_\-.]*/
+WORD.1: /[^\s:()\[\]"{}^~*?\/]+/
+
+%ignore /\s+/

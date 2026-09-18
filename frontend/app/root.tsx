@@ -1,0 +1,70 @@
+import "@fontsource/public-sans/400.css"
+import "@fontsource/public-sans/500.css"
+import "@fontsource/public-sans/600.css"
+import "@fontsource/public-sans/700.css"
+import "@fontsource/ibm-plex-mono/400.css"
+import "@fontsource/ibm-plex-mono/500.css"
+import "./styles/tailwind.css"
+
+import { QueryClientProvider } from "@tanstack/react-query"
+import type { ReactNode } from "react"
+import {
+  isRouteErrorResponse,
+  Links,
+  Meta,
+  Outlet,
+  Scripts,
+  ScrollRestoration,
+  useRouteError,
+} from "react-router"
+
+import { queryClient } from "~/lib/query-client"
+import { ShellLayout } from "~/shell"
+
+export const Layout = ({ children }: { children: ReactNode }) => (
+  <html lang="en">
+    <head>
+      <meta charSet="utf-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title>bsllmner-viewer</title>
+      <Meta />
+      <Links />
+    </head>
+    <body>
+      {children}
+      <ScrollRestoration />
+      <Scripts />
+    </body>
+  </html>
+)
+
+const App = () => (
+  <QueryClientProvider client={queryClient}>
+    <ShellLayout>
+      <Outlet />
+    </ShellLayout>
+  </QueryClientProvider>
+)
+
+export default App
+
+const ErrorBoundaryContent = () => {
+  const error = useRouteError()
+  const message = isRouteErrorResponse(error)
+    ? `${error.status} ${error.statusText}`
+    : "Something went wrong."
+
+  return (
+    <section className="mx-auto max-w-content-max px-page-gutter py-section-lg">
+      <h1 className="text-fs-h1 font-semibold text-ink">{message}</h1>
+    </section>
+  )
+}
+
+export const ErrorBoundary = () => (
+  <QueryClientProvider client={queryClient}>
+    <ShellLayout>
+      <ErrorBoundaryContent />
+    </ShellLayout>
+  </QueryClientProvider>
+)

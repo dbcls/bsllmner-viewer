@@ -1,0 +1,16 @@
+.claude/
+.env
+*.duckdb
+*.duckdb.wal
+data/
+backend/.venv/
+backend/.mypy_cache/
+backend/.pytest_cache/
+backend/.ruff_cache/
+backend/.hypothesis/
+frontend/node_modules/
+frontend/build/
+frontend/.react-router/
+frontend/playwright-report/
+frontend/test-results/
+.playwright-cli/

@@ -1,0 +1,41 @@
+import type { components } from "./openapi-types"
+
+type Schemas = components["schemas"]
+
+export type Clause = Schemas["ClauseJson"]
+export type DatasetResponse = Schemas["DatasetResponse"]
+export type DatasetVersionRef = Schemas["DatasetVersionRef"]
+export type FieldDescription = Schemas["FieldDescription"]
+export type ParseResponse = Schemas["ParseResponse"]
+export type ConditionResponse = Schemas["ConditionResponse"]
+export type Element = Schemas["Element"]
+export type TermElement = Schemas["TermElement"]
+export type DistributionResponse = Schemas["DistributionResponse"]
+export type CrosstabResponse = Schemas["CrosstabResponse"]
+export type Cell = Schemas["Cell"]
+export type TrendResponse = Schemas["TrendResponse"]
+export type TrendSeries = Schemas["TrendSeries"]
+export type ProjectsResponse = Schemas["ProjectsResponse"]
+export type Project = Schemas["Project"]
+export type Composition = Schemas["Composition"]
+export type RecordsResponse = Schemas["RecordsResponse"]
+export type RecordRow = Schemas["RecordRow"]
+export type AnnotationValue = Schemas["AnnotationValue"]
+export type EntryResponse = Schemas["EntryResponse"]
+export type EntryAnnotation = Schemas["EntryAnnotation"]
+export type Evidence = Schemas["Evidence"]
+export type TermsResponse = Schemas["TermsResponse"]
+export type TermHit = Schemas["TermHit"]
+export type TermChildrenResponse = Schemas["TermChildrenResponse"]
+
+export type Unit = "biosample" | "experiment" | "bioproject"
+export type RecordUnit = "biosample" | "experiment"
+export type AccessionKind = "biosample" | "experiment" | "run" | "bioproject"
+export type ProjectSort = "biosample" | "experiment" | "accession"
+
+/** AST node as returned by the api: bool ops carry `rules`, leaves carry `field`. */
+export type AstNode =
+  | { op: "AND" | "OR" | "NOT"; rules: AstNode[] }
+  | { op: "free_text"; value: string; is_phrase?: boolean }
+  | { field: string; op: "eq" | "contains"; value: string }
+  | { field: string; op: "between"; from: string; to: string }

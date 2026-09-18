@@ -1,0 +1,27 @@
+# Deployment: api serving one store file, and nginx serving the built frontend and proxying /api.
+# Works with `docker compose` and `podman compose`.
+services:
+  api:
+    build:
+      context: ../backend
+    image: bsllmner-viewer-api
+    volumes:
+      - ${BSLLMNER_VIEWER_STORE_DIR:?set to the directory holding the store files}:/data/store:ro
+    environment:
+      BSLLMNER_VIEWER_STORE: /data/store/${BSLLMNER_VIEWER_STORE_FILE:-current.duckdb}
+      BSLLMNER_VIEWER_THREADS: ${BSLLMNER_VIEWER_THREADS:-8}
+    command: >
+      uv run uvicorn bsllmner_viewer.api.app:create_app --factory
+      --host 0.0.0.0 --port 8000 --workers ${BSLLMNER_VIEWER_API_WORKERS:-2}
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile.web
+    image: bsllmner-viewer-web
+    ports:
+      - "${BSLLMNER_VIEWER_PORT:-20081}:80"
+    depends_on:
+      - api
+    restart: unless-stopped
