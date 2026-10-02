@@ -108,6 +108,16 @@ class SelectRequest(ApiModel):
     )
 
 
+class KeywordRequest(ApiModel):
+    q: str | None = None
+    keyword: str = Field(
+        description=(
+            "Text as typed into a keyword box: words, and phrases in double quotes. An empty keyword removes the "
+            "keywords of the condition."
+        ),
+    )
+
+
 class ConditionResponse(ApiModel):
     dataset_version: DatasetVersionRef
     dsl: str | None = Field(description="The condition string")

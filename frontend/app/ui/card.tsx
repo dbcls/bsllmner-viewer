@@ -1,8 +1,8 @@
-import type { HTMLAttributes, ReactNode } from "react"
+import type { ComponentProps, ReactNode } from "react"
 
 import { cn } from "./cn"
 
-type CardProps = Omit<HTMLAttributes<HTMLDivElement>, "className"> & {
+type CardProps = Omit<ComponentProps<"div">, "className"> & {
   children: ReactNode
   /** `lg` is for a card that holds a whole part of a page; a heading in it can put its rule on the card's edge (`rule="edge"`). */
   padding?: "none" | "sm" | "md" | "lg"

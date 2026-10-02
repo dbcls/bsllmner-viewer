@@ -35,7 +35,7 @@ From an input entry, build takes the organism (`Description.Organism`), the titl
 |---|---|
 | Ontology files (OWL in RDF/XML, or OBO), listed per ontology in the manifest | Term labels, synonyms, and parent–child relations. Every file of an ontology contributes terms and relations; the label of a term comes from the first file that defines it |
 | SRA experiment JSONL (ddbj-search-converter) | `library_strategy` of experiments |
-| DBLink DuckDB file (ddbj-search-converter, table `dbxref`) | BioSample–experiment, experiment–run, and BioSample–BioProject relations |
+| DBLink DuckDB file (ddbj-search-converter, table `dbxref`) | BioSample–SRA Experiment, SRA Experiment–SRA Run, and BioSample–BioProject relations |
 | BioProject JSONL (ddbj-search-converter) | BioProject titles |
 | ChIP-Atlas experiment list | Experiments processed by ChIP-Atlas and their genome assemblies, for external links |
 
@@ -86,7 +86,7 @@ Every operation leaves its input store unchanged and writes a new store file.
 | Append | Store, manifest with additional runs appended to the run list | Ingests the runs not yet in the store, reads the reference data of the manifest, applies the BioSample selection over all runs, and re-derives query-ready data |
 | Reference refresh | Store, manifest with updated reference data or target assays | Replaces reference data and re-derives query-ready data, without re-ingesting runs |
 
-Derived data comprises everything computable from runs and reference data: the transitive closure of the term hierarchy, the population, and auxiliary data for aggregation. Every operation recomputes derived data from scratch rather than patching it.
+Derived data comprises everything computable from runs and reference data: the transitive closure of the term hierarchy, the population, the searchable text of BioSamples, and auxiliary data for aggregation. Every operation recomputes derived data from scratch rather than patching it.
 
 A full build of runs `R1..Rn` and a full build of `R1..Rk` followed by an append of `Rk+1..Rn` produce stores with identical contents.
 
@@ -96,7 +96,7 @@ Before publication, build verifies the new store:
 
 - every entry of every run result is either stored or superseded by the BioSample selection,
 - the population is not empty, and
-- the BioSample–BioProject relations and the experiment–run relations are not empty.
+- the BioSample–BioProject relations and the SRA Experiment–SRA Run relations are not empty.
 
 Publication switches the api to a verified store file (see [architecture.md](architecture.md)).
 

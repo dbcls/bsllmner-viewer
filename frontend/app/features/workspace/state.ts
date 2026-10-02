@@ -11,11 +11,15 @@ export const useWorkspaceState = (): [WorkspaceState, (patch: Patch) => void] =>
   const state = useMemo(() => readState(params), [params])
   const update = useCallback(
     (patch: Patch) => {
-      setParams((current) => {
-        const next: WorkspaceState = { ...readState(current), ...patch }
-        if ("q" in patch && !("page" in patch)) next.page = 1
-        return writeState(next)
-      })
+      // The page keeps its scroll position: a change of the condition or of a view redraws the views in place.
+      setParams(
+        (current) => {
+          const next: WorkspaceState = { ...readState(current), ...patch }
+          if ("q" in patch && !("page" in patch)) next.page = 1
+          return writeState(next)
+        },
+        { preventScrollReset: true },
+      )
     },
     [setParams],
   )

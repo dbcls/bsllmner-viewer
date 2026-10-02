@@ -63,7 +63,7 @@ const Row = ({ index, count, label, children }: RowProps) => (
   <div className="flex items-start">
     <Rail index={index} count={count} />
     <span title={label} className="flex h-7 w-condition-label shrink-0 items-center pr-2 pl-2.5 text-fs-body-sm text-ink-mid">
-      <span className="truncate">{label}</span>
+      <span className="truncate py-1 text-trim-cap">{label}</span>
     </span>
     <div className="min-w-0 flex-1">{children}</div>
   </div>
@@ -77,7 +77,15 @@ type TreeProps = {
 const Tree = ({ groups, condition }: TreeProps) => (
   <div className="flex flex-col gap-1">
     {groups.map((group, index) =>
-      group.kind === "clauses" ? (
+      group.kind === "keyword" ? (
+        <Row key="keyword" index={index} count={groups.length} label="Keyword">
+          <span className="inline-flex min-h-7 max-w-full items-center border border-transparent px-1">
+            <Chip title={group.text} onRemove={() => void condition.setKeyword("")}>
+              {group.text}
+            </Chip>
+          </span>
+        </Row>
+      ) : group.kind === "clauses" ? (
         <Row key={group.field} index={index} count={groups.length} label={groupLabel(group.field)}>
           <span
             className={cn(
@@ -119,8 +127,8 @@ const Totals = ({ totals }: { totals: Total[] | null }) => (
       <span className="text-fs-label text-ink-soft">Counting…</span>
     ) : (
       totals.map(({ count, unit }) => (
-        <span key={unit} className="whitespace-nowrap">
-          <span className="text-fs-body font-semibold text-ink tabular-nums">{formatCount(count)}</span>{" "}
+        <span key={unit} className="inline-flex items-baseline gap-1.5 whitespace-nowrap">
+          <span className="text-fs-body font-semibold text-ink tabular-nums">{formatCount(count)}</span>
           <span className="text-fs-label text-ink-soft">{unit}</span>
         </span>
       ))

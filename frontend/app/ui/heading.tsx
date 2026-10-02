@@ -40,12 +40,15 @@ export const SectionHeading = ({ children, aside, rule = "start" }: SectionHeadi
 type PaneHeadingProps = {
   children: ReactNode
   spacing?: "none" | "top"
+  /** A control at the right end of the line, such as a help button. */
+  aside?: ReactNode
 }
 
 /** The name of a group in a side pane, at the size of the pane's own text, over a line that spans the pane. */
-export const PaneHeading = ({ children, spacing = "none" }: PaneHeadingProps) => (
-  <div className={cn("mb-1.5 border-b border-border-soft pb-1", spacing === "top" && "mt-5")}>
-    <h2 className="border-l-4 border-brand pl-2 text-fs-body leading-tight font-bold text-brand">{children}</h2>
+export const PaneHeading = ({ children, spacing = "none", aside }: PaneHeadingProps) => (
+  <div className={cn("mb-1.5 flex items-center justify-between gap-2 border-b border-border-soft pb-1", spacing === "top" && "mt-5")}>
+    <h2 className="border-l-4 border-brand pl-2 text-fs-body leading-tight font-bold text-ink">{children}</h2>
+    {aside}
   </div>
 )
 

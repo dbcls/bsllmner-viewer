@@ -130,7 +130,7 @@ export type EntryItem = { identifier: string; biosample: string; title: string |
 export type EntryList = { pagination: { page: number; perPage: number; total: number }; items: EntryItem[] }
 
 /** One page of the entry list of a condition. The condition always narrows the list. */
-export const entries = (request: APIRequestContext, type: "biosample" | "sra-experiment", q: string, perPage = 25): Promise<EntryList> =>
+export const entries = (request: APIRequestContext, type: "biosample" | "sra-experiment", q: string, perPage = 20): Promise<EntryList> =>
   get(request, `/api/entries/${type}`, { q, perPage })
 
 export type Entry = {
@@ -147,5 +147,6 @@ export type ProjectList = {
   items: { identifier: string; title: string | null; biosampleCount: number; experimentCount: number; clauses: Clause[] }[]
 }
 
-export const projects = (request: APIRequestContext, q: string | null, sort: string, perPage = 25): Promise<ProjectList> =>
-  get(request, "/api/projects", { q, facetSelfExclude: true, sort, perPage, compositionFields: "disease,cell_line,tissue" })
+/** The projects as the Projects tab requests them: counted from the full condition. */
+export const projects = (request: APIRequestContext, q: string | null, sort: string, perPage = 20, page = 1): Promise<ProjectList> =>
+  get(request, "/api/projects", { q, sort, perPage, page, compositionFields: "disease,cell_line,tissue" })

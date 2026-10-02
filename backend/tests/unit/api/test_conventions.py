@@ -107,9 +107,19 @@ class TestCamelCase:
         assert set(body["labels"]) == {"9606"}
 
     def test_free_text_ast_keeps_is_phrase(self, client: TestClient) -> None:
-        response = client.post("/api/dsl/serialize", json={"ast": {"op": "free_text", "value": "x", "is_phrase": True}})
+        response = client.post(
+            "/api/dsl/serialize", json={"ast": {"op": "free_text", "value": "breast cancer", "is_phrase": True}}
+        )
+        assert response.status_code == 200
+        assert response.json()["dsl"] == '"breast cancer"'
+        assert response.json()["ast"] == {"op": "free_text", "value": "breast cancer", "is_phrase": True}
+
+    def test_free_text_ast_without_a_letter_or_digit_is_invalid_value(self, client: TestClient) -> None:
+        response = client.post(
+            "/api/dsl/serialize", json={"ast": {"op": "free_text", "value": "--", "is_phrase": False}}
+        )
         assert response.status_code == 400
-        assert response.json()["type"] == PROBLEM_PREFIX + "free-text-not-supported"
+        assert response.json()["type"] == PROBLEM_PREFIX + "invalid-value"
 
 
 class TestDatasetVersion:
@@ -547,6 +557,7 @@ class TestOpenApi:
         ("GET", "/api/dsl/parse"): "parseCondition",
         ("POST", "/api/dsl/serialize"): "serializeCondition",
         ("POST", "/api/dsl/select"): "selectElement",
+        ("POST", "/api/dsl/keyword"): "setKeyword",
         ("GET", "/api/entries/{type}"): "listEntries",
         ("GET", "/api/entries/biosample/{accession}"): "getEntry",
         ("GET", "/api/distribution"): "getDistribution",

@@ -25,11 +25,25 @@ def from_conjuncts(items: Iterable[Node]) -> Node | None:
     return BoolOp(op="AND", children=nodes)
 
 
+def replace_keywords(ast: Node | None, keywords: Iterable[FreeText]) -> Node | None:
+    """Replace the keywords among the top-level conjuncts with the given ones, which are added after the others."""
+    kept = [item for item in conjuncts(ast) if not isinstance(item, FreeText)]
+    return from_conjuncts([*kept, *keywords])
+
+
 def exclude_dimensions(ast: Node | None, dimensions: Iterable[str]) -> Node | None:
-    """Remove every top-level conjunct whose clauses are all on the given fields."""
+    """Remove every top-level conjunct whose clauses are all on the given fields. A conjunct with a keyword stays."""
     dims = set(dimensions)
-    kept = [c for c in conjuncts(ast) if not (leaves(c) and all(leaf.field in dims for leaf in leaves(c)))]
+    kept = [
+        c for c in conjuncts(ast) if not (leaves(c) and not _has_keyword(c) and all(f.field in dims for f in leaves(c)))
+    ]
     return from_conjuncts(kept)
+
+
+def _has_keyword(node: Node) -> bool:
+    if isinstance(node, FreeText):
+        return True
+    return isinstance(node, BoolOp) and any(_has_keyword(c) for c in node.children)
 
 
 def _same_clause(a: FieldClause, b: FieldClause) -> bool:

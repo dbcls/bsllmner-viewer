@@ -212,7 +212,7 @@ export const HeatmapTab = ({ state, condition, update, onOpenPicker, onAxisEleme
 
   return (
     <div>
-      <div className="mb-3.5 grid grid-cols-2 gap-3.5">
+      <div className="mb-4 grid grid-cols-2 gap-4">
         {(["row", "col"] as const).map((side) => (
           <AxisCard
             key={side}

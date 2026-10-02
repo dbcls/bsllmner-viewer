@@ -25,8 +25,7 @@ def derive(con: duckdb.DuckDBPyConnection, target_assays: list[str]) -> None:
     con.execute(
         """
         CREATE TABLE annotation AS
-        SELECT a.accession AS biosample, a.field, a.value_index, a.extracted_value,
-               lower(a.extracted_value) AS extracted_value_norm, a.status, a.term_id, a.term_label
+        SELECT a.accession AS biosample, a.field, a.value_index, a.extracted_value, a.status, a.term_id, a.term_label
         FROM entry_annotation a JOIN biosample b ON a.accession = b.accession AND a.run_id = b.run_id
         ORDER BY a.field, a.status, a.accession
         """
@@ -144,7 +143,7 @@ def derive(con: duckdb.DuckDBPyConnection, target_assays: list[str]) -> None:
         f"""
         CREATE TABLE population AS
         SELECT be.biosample, be.experiment, e.library_strategy, b.organism_id, b.date_created,
-               year(b.date_created) AS year, lower(b.title) AS title_norm
+               year(b.date_created) AS year
         FROM biosample_experiment be
         JOIN experiment e ON e.accession = be.experiment
         JOIN biosample b ON b.accession = be.biosample
@@ -153,6 +152,7 @@ def derive(con: duckdb.DuckDBPyConnection, target_assays: list[str]) -> None:
         """,
         target_assays,
     )
+    _derive_searchable_text(con)
     con.execute(
         """
         CREATE TABLE field_term_count AS
@@ -214,5 +214,60 @@ def derive(con: duckdb.DuckDBPyConnection, target_assays: list[str]) -> None:
                (SELECT count(DISTINCT bp.bioproject) FROM population pn2
                 JOIN biosample_bioproject bp ON bp.biosample = pn2.biosample) AS n_bioproject
         FROM population pn
+        """
+    )
+
+
+def _derive_searchable_text(con: duckdb.DuckDBPyConnection) -> None:
+    """The searchable text of each BioSample of the population, in the form `dsl.keyword` matches against.
+
+    The values (title, organism name, attribute values, extracted values, and term labels) are joined by " | " before
+    normalization, so a phrase never spans two values. A word that joins its parts with symbols ("MCF-7") is added
+    once more with its parts written together ("mcf7"), after the values and separated like a value of its own, so a
+    phrase never spans two of them either. A "|" inside a value is a symbol like any other, so it is replaced before the
+    values are joined.
+    """
+    con.execute(
+        r"""
+        CREATE TABLE searchable_text AS
+        WITH annotation_values AS (
+            SELECT biosample,
+                   string_agg(
+                       concat_ws(' | ', replace(extracted_value, '|', '/'), replace(term_label, '|', '/')), ' | '
+                   ) AS value
+            FROM annotation GROUP BY biosample
+        ),
+        raw AS (
+            SELECT b.accession AS biosample,
+                   lower(concat_ws(
+                       ' | ',
+                       replace(b.title, '|', '/'),
+                       replace(b.organism_name, '|', '/'),
+                       array_to_string(
+                           list_transform(
+                               from_json(b.attributes, '[{"value": "VARCHAR"}]'), x -> replace(x.value, '|', '/')
+                           ),
+                           ' | '
+                       ),
+                       a.value
+                   )) AS value
+            FROM biosample b LEFT JOIN annotation_values a ON a.biosample = b.accession
+            WHERE b.accession IN (SELECT biosample FROM population)
+        ),
+        normalized AS (
+            SELECT biosample,
+                   regexp_replace(value, '[^a-z0-9|]+', ' ', 'g') AS words,
+                   list_transform(
+                       regexp_extract_all(value, '[a-z0-9]+(?:[^a-z0-9\s|]+[a-z0-9]+)+'),
+                       w -> regexp_replace(w, '[^a-z0-9]+', '', 'g')
+                   ) AS joined
+            FROM raw
+        )
+        SELECT biosample,
+               regexp_replace(
+                   ' ' || replace(words, '|', ' | ') || ' | ' || array_to_string(joined, ' | ') || ' ', ' +', ' ', 'g'
+               ) AS text
+        FROM normalized
+        ORDER BY biosample
         """
     )

@@ -1,9 +1,24 @@
-import type { EntryType, Unit } from "./api/types"
+import type { EntryType, ProjectSort, Unit } from "./api/types"
 
-export const TABS = ["samples", "distribution", "heatmap", "trend", "projects"] as const
+export const TABS = ["samples", "projects", "distribution", "heatmap", "trend"] as const
+
+/** The rows on one page of the tables (Samples and Projects). */
+export const TABLE_PER_PAGE = 20
 export type Tab = (typeof TABS)[number]
 
 export type HeatmapColor = "count" | "residual"
+
+// A record rather than a list, so that the type checker reports a sort that the api adds and this list lacks.
+const PROJECT_SORT_SET: Record<ProjectSort, true> = {
+  "biosampleCount:desc": true,
+  "biosampleCount:asc": true,
+  "experimentCount:desc": true,
+  "experimentCount:asc": true,
+  "identifier:asc": true,
+  "identifier:desc": true,
+}
+
+export const PROJECT_SORTS = Object.keys(PROJECT_SORT_SET) as ProjectSort[]
 
 /** The whole UI state of the workspace. Every member is carried by the URL. */
 export type WorkspaceState = {
@@ -13,6 +28,7 @@ export type WorkspaceState = {
   selfExclusion: boolean
   rows: EntryType
   page: number
+  sort: ProjectSort
   row: string
   col: string
   rowTerms: string[] | null
@@ -31,6 +47,7 @@ export const DEFAULTS: WorkspaceState = {
   selfExclusion: true,
   rows: "biosample",
   page: 1,
+  sort: "biosampleCount:desc",
   row: "cell_line",
   col: "library_strategy",
   rowTerms: null,
@@ -50,6 +67,7 @@ const list = (value: string | null): string[] | null =>
 export const readState = (params: URLSearchParams): WorkspaceState => {
   const tab = params.get("tab")
   const unit = params.get("unit")
+  const sort = params.get("sort")
   const page = Number(params.get("page") ?? "1")
   return {
     q: params.get("q")?.trim() || null,
@@ -58,6 +76,7 @@ export const readState = (params: URLSearchParams): WorkspaceState => {
     selfExclusion: params.get("se") !== "0",
     rows: params.get("rows") === "sra-experiment" ? "sra-experiment" : "biosample",
     page: Number.isInteger(page) && page >= 1 ? page : 1,
+    sort: PROJECT_SORTS.includes(sort as ProjectSort) ? (sort as ProjectSort) : DEFAULTS.sort,
     row: params.get("row") ?? DEFAULTS.row,
     col: params.get("col") ?? DEFAULTS.col,
     rowTerms: list(params.get("row_terms")),
@@ -78,6 +97,7 @@ export const writeState = (state: WorkspaceState): URLSearchParams => {
   if (!state.selfExclusion) params.set("se", "0")
   if (state.rows !== DEFAULTS.rows) params.set("rows", state.rows)
   if (state.page !== 1) params.set("page", String(state.page))
+  if (state.sort !== DEFAULTS.sort) params.set("sort", state.sort)
   if (state.row !== DEFAULTS.row) params.set("row", state.row)
   if (state.col !== DEFAULTS.col) params.set("col", state.col)
   if (state.rowTerms) params.set("row_terms", state.rowTerms.join(","))

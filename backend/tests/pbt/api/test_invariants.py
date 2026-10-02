@@ -8,9 +8,9 @@ from fastapi.testclient import TestClient
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from bsllmner_viewer.dsl.ast import FieldClause, Node, Range, normalize
+from bsllmner_viewer.dsl.ast import FieldClause, FreeText, Node, Range, normalize
 from bsllmner_viewer.dsl.serializer import serialize
-from bsllmner_viewer.dsl.transform import add_clause
+from bsllmner_viewer.dsl.transform import add_clause, replace_keywords
 from tests.synthetic import ANNOTATED, TARGET_ASSAYS
 
 UNITS = ("biosample", "sra-experiment", "bioproject")
@@ -41,9 +41,14 @@ clauses = st.one_of(
     st.builds(
         lambda y: FieldClause("date_created", "range", Range(f"{y}-01-01", f"{y + 3}-12-31")), st.integers(2010, 2022)
     ),
-    st.sampled_from([_clause("title", "run1"), _clause("disease_value", "cancer")]),
 )
-conditions = st.lists(clauses, max_size=3).map(lambda cs: reduce(add_clause, cs, None))
+keywords = st.lists(
+    st.sampled_from([FreeText("run1"), FreeText("cancer"), FreeText("breast cancer", True), FreeText("liver")]),
+    max_size=2,
+)
+conditions = st.builds(
+    lambda cs, ks: replace_keywords(reduce(add_clause, cs, None), ks), st.lists(clauses, max_size=3), keywords
+)
 
 
 def _q(ast: Node | None) -> str | None:

@@ -1,4 +1,5 @@
 import type { AstNode, Clause } from "~/lib/api/types"
+import { rangeLabel } from "~/lib/date-range"
 import { fieldLabel, organismLabel, statusLabel } from "~/lib/labels"
 
 export type Leaf = Extract<AstNode, { field: string }>
@@ -6,6 +7,19 @@ export type Leaf = Extract<AstNode, { field: string }>
 export const isLeaf = (node: AstNode): node is Leaf => "field" in node
 
 export const isBool = (node: AstNode): node is Extract<AstNode, { rules: AstNode[] }> => "rules" in node
+
+export type Keyword = Extract<AstNode, { op: "free_text" }>
+
+export const isKeyword = (node: AstNode): node is Keyword => node.op === "free_text"
+
+/** A keyword as it is typed: a phrase in double quotes, words as they are. */
+export const keywordLabel = (node: Keyword): string => (node.is_phrase ? `"${node.value.replaceAll('"', '\\"')}"` : node.value)
+
+/** The keywords of a condition as text for a keyword box: its top-level keywords, words first and then phrases. */
+export const keywordText = (ast: AstNode | null): string => {
+  const keywords = conjuncts(ast).filter(isKeyword)
+  return [...keywords.filter((k) => !k.is_phrase), ...keywords.filter((k) => k.is_phrase)].map(keywordLabel).join(" ")
+}
 
 /** Top-level conjuncts of a condition. */
 export const conjuncts = (ast: AstNode | null): AstNode[] => {
@@ -44,22 +58,29 @@ export const hasClauses = (ast: AstNode | null, clauses: Clause[]): boolean => {
 export const clausesOfField = (ast: AstNode | null, field: string): Clause[] => selectedClauses(ast).filter((clause) => clause.field === field)
 
 export type ConditionGroup =
+  | { kind: "keyword"; text: string }
   | { kind: "clauses"; field: string; clauses: Clause[] }
   | { kind: "expression"; node: AstNode }
 
-/** Groups shown by the visual condition: one row per top-level conjunct. */
-export const conditionGroups = (ast: AstNode | null): ConditionGroup[] =>
-  conjuncts(ast).map((node) => {
-    if (isLeaf(node)) return { kind: "clauses", field: node.field, clauses: [leafToClause(node)] }
-    if (isBool(node) && node.op === "OR" && node.rules.every(isLeaf)) {
-      const rules = node.rules.filter(isLeaf)
-      const field = rules[0]?.field
-      if (field !== undefined && rules.every((r) => r.field === field)) {
-        return { kind: "clauses", field, clauses: rules.map(leafToClause) }
-      }
+/** Groups shown by the visual condition: the top-level keywords in one row first, then one row per other top-level conjunct. */
+export const conditionGroups = (ast: AstNode | null): ConditionGroup[] => {
+  const text = keywordText(ast)
+  const keyword: ConditionGroup[] = text ? [{ kind: "keyword", text }] : []
+  return [...keyword, ...conjuncts(ast).filter((node) => !isKeyword(node)).map(nonKeywordGroup)]
+}
+
+/** A top-level clause, a disjunction of clauses on one field, or any other expression. */
+const nonKeywordGroup = (node: AstNode): ConditionGroup => {
+  if (isLeaf(node)) return { kind: "clauses", field: node.field, clauses: [leafToClause(node)] }
+  if (isBool(node) && node.op === "OR" && node.rules.every(isLeaf)) {
+    const rules = node.rules.filter(isLeaf)
+    const field = rules[0]?.field
+    if (field !== undefined && rules.every((r) => r.field === field)) {
+      return { kind: "clauses", field, clauses: rules.map(leafToClause) }
     }
-    return { kind: "expression", node }
-  })
+  }
+  return { kind: "expression", node }
+}
 
 /** A readable rendering of a part of a condition, with field names and term labels in place of identifiers. */
 export const describeAst = (node: AstNode, labels: Record<string, string>, parentOp: string | null = null): string => {
@@ -67,7 +88,8 @@ export const describeAst = (node: AstNode, labels: Record<string, string>, paren
     const clause = leafToClause(node)
     return `${groupLabel(clause.field)}: ${clauseLabel(clause, labels)}`
   }
-  if (!isBool(node)) return `“${node.value}”`
+  if (isKeyword(node)) return `Keyword: ${keywordLabel(node)}`
+  if (!isBool(node)) return ""
   if (node.op === "NOT") {
     const child = node.rules[0]
     if (!child) return "NOT"
@@ -79,22 +101,15 @@ export const describeAst = (node: AstNode, labels: Record<string, string>, paren
 
 /** Short display label of a clause value. */
 export const clauseLabel = (clause: Clause, labels: Record<string, string>): string => {
-  if (clause.from !== undefined && clause.to !== undefined) {
-    const from = clause.from.slice(0, 4)
-    const to = clause.to.slice(0, 4)
-    return from === to ? from : `${from}–${to}`
-  }
+  if (clause.from !== undefined && clause.to !== undefined) return rangeLabel({ from: clause.from, to: clause.to })
   const value = clause.value ?? ""
   if (clause.field.endsWith("_status")) return statusLabel(value)
-  if (clause.field.endsWith("_value") || clause.field === "title") return `“${value}”`
   if (clause.field === "organism_id") return organismLabel(value, labels[value])
   return labels[value] ?? value
 }
 
 /** Row label of a clause group in the visual condition. */
 export const groupLabel = (field: string): string => {
-  if (field === "title") return "Title contains"
-  if (field === "date_created") return "Created"
-  if (field.endsWith("_value")) return `${fieldLabel(field.slice(0, -"_value".length))} contains`
+  if (field === "date_created") return "Creation date"
   return fieldLabel(field)
 }

@@ -2,13 +2,12 @@ import { useNavigate } from "react-router"
 
 import { useDataset, useEntries } from "~/lib/api/queries"
 import type { AnnotationValue, EntryItem, EntryType } from "~/lib/api/types"
-import { formatCount } from "~/lib/format"
-import { fieldLabel, STATUS_ORDER, statusInfo, unitLabel } from "~/lib/labels"
+import { fieldLabel, STATUS_ORDER, statusInfo } from "~/lib/labels"
+import { TABLE_PER_PAGE } from "~/lib/workspace-state"
 import { Card, CardFooter, CardHeader, ExternalLink, Pager, Segmented, StatusGlyph, Tag } from "~/ui"
 
 import type { WorkspaceState } from "../state"
-
-const PER_PAGE = 25
+import { useTableTop } from "../use-table-top"
 
 type SamplesTabProps = {
   state: WorkspaceState
@@ -17,17 +16,30 @@ type SamplesTabProps = {
   search: string
 }
 
-/** The entry list: one row per BioSample or per SRA experiment, always filtered by the full condition. */
+/** The entry list: one row per BioSample or per SRA experiment, filtered by the full condition. */
 export const SamplesTab = ({ state, onRows, onPage, search }: SamplesTabProps) => {
   const navigate = useNavigate()
   const dataset = useDataset()
   const fields = dataset.data?.fields.map((f) => f.name) ?? []
-  const entries = useEntries({ q: state.q, type: state.rows, page: state.page, perPage: PER_PAGE })
-  const total = entries.data?.pagination.total ?? 0
-  const pages = Math.max(1, Math.ceil(total / PER_PAGE))
+  const entries = useEntries({ q: state.q, type: state.rows, page: state.page, perPage: TABLE_PER_PAGE })
+  const total = entries.data?.pagination.total
+  const table = useTableTop(onPage)
+
   return (
-    <Card padding="none" flush>
+    <Card ref={table.ref} padding="none" flush>
       <CardHeader>
+        <div className="flex min-w-0 grow basis-80 flex-wrap items-center gap-x-3.5 gap-y-1">
+          <span className="font-semibold text-ink-mid">Status</span>
+          {STATUS_ORDER.map((status) => {
+            const info = statusInfo(status)
+            return (
+              <span key={status} className="inline-flex items-center gap-1">
+                <StatusGlyph status={status} glyph={info.glyph} label={info.label} />
+                {info.label}
+              </span>
+            )
+          })}
+        </div>
         <span className="inline-flex items-center gap-1.5">
           Rows are
           <Segmented
@@ -40,9 +52,9 @@ export const SamplesTab = ({ state, onRows, onPage, search }: SamplesTabProps) =
             onChange={onRows}
           />
         </span>
-        <span>
-          {entries.data ? `${formatCount(total)} ${unitLabel(state.rows)} match` : "Counting…"} · always filtered by the full condition
-        </span>
+        <div className="ml-auto">
+          <Pager page={state.page} perPage={TABLE_PER_PAGE} total={total} onChange={onPage} />
+        </div>
       </CardHeader>
       <div className="overflow-auto">
         <table className="w-full min-w-table-min border-collapse text-fs-body-sm">
@@ -93,19 +105,9 @@ export const SamplesTab = ({ state, onRows, onPage, search }: SamplesTabProps) =
         </table>
       </div>
       <CardFooter>
-        <div className="flex flex-wrap gap-3.5">
-          <span className="font-semibold text-ink-mid">Status</span>
-          {STATUS_ORDER.map((status) => {
-            const info = statusInfo(status)
-            return (
-              <span key={status} className="inline-flex items-center gap-1">
-                <StatusGlyph status={status} glyph={info.glyph} label={info.label} />
-                {info.label}
-              </span>
-            )
-          })}
+        <div className="ml-auto">
+          <Pager page={state.page} perPage={TABLE_PER_PAGE} total={total} onChange={table.onFootPage} />
         </div>
-        <Pager page={state.page} pages={pages} onChange={onPage} />
       </CardFooter>
     </Card>
   )

@@ -40,7 +40,7 @@ export const DistributionTab = ({ state, condition, onExpandedStatus, onExpanded
   const ontologies = new Map(fields.map((f) => [f.name, f.ontologies.map(ontologyLabel).join(" / ")]))
   return (
     <div>
-      <div className="mb-3.5">
+      <div className="mb-4">
         <Card padding="sm">
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-fs-label text-ink-soft">
             <span className="inline-flex items-center gap-1.5">
@@ -55,7 +55,7 @@ export const DistributionTab = ({ state, condition, onExpandedStatus, onExpanded
           </div>
         </Card>
       </div>
-      <div className="grid grid-cols-3 gap-3.5">
+      <div className="grid grid-cols-3 gap-4">
         {[...ordered, ...EXTRA_DIMENSIONS].map((field) => (
           <DistributionCard
             key={field}

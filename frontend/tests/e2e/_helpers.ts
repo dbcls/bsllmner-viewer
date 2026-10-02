@@ -5,6 +5,16 @@ const POLL = { timeout: 15_000 }
 /** A count as the UI writes it. */
 export const formatCount = (value: number): string => value.toLocaleString("en-US")
 
+/** The rows on one page of the tables (Samples and Projects). */
+export const TABLE_PER_PAGE = 20
+
+/** The range of a page of a table as the pager writes it, for example `1–20 / 4,100,500`. */
+export const pageRangeText = (total: number, page = 1, perPage = TABLE_PER_PAGE): string => {
+  if (total === 0) return "0 results"
+  const from = (page - 1) * perPage + 1
+  return `${formatCount(from)}–${formatCount(Math.min(page * perPage, total))} / ${formatCount(total)}`
+}
+
 export const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 
 export const paramOf = (page: Page, name: string): string | null => new URL(page.url()).searchParams.get(name)

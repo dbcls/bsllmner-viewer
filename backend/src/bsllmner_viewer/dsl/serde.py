@@ -1,7 +1,7 @@
 """AST <-> JSON tree.
 
 BoolOp:       {"op": "AND"|"OR"|"NOT", "rules": [...]}
-Leaf (value): {"field": "...", "op": "eq"|"contains", "value": "..."}
+Leaf (value): {"field": "...", "op": "eq", "value": "..."}
 Leaf (range): {"field": "...", "op": "between", "from": "...", "to": "..."}
 FreeText:     {"op": "free_text", "value": "...", "is_phrase": bool}
 """
@@ -17,7 +17,7 @@ from bsllmner_viewer.dsl.lex import WORD_RE, needs_quote
 from bsllmner_viewer.dsl.validator import resolve_operator
 
 _BOOL_OPS = frozenset({"AND", "OR", "NOT"})
-_LEAF_OPS = frozenset({"eq", "contains", "between"})
+_LEAF_OPS = frozenset({"eq", "between"})
 
 
 def ast_to_json(ast: Node, fields: FieldSet) -> dict[str, Any]:

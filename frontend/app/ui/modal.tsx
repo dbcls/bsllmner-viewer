@@ -18,7 +18,7 @@ type ModalProps = {
 
 /**
  * An overlay dialog closed by Escape, by its close button, or by clicking the backdrop. The title is a section heading
- * with its brand rule on the dialog's left edge; the content under it supplies its own `px-6` padding.
+ * with its brand rule before the text; the content under it supplies its own `px-6` padding.
  */
 export const Modal = ({ open, onClose, title, description, children, width = "md", align = "top" }: ModalProps) => {
   useEffect(() => {
@@ -51,7 +51,7 @@ export const Modal = ({ open, onClose, title, description, children, width = "md
       >
         <div className="flex items-start justify-between gap-4 px-6 pt-5 pb-3">
           <div className="min-w-0">
-            <SectionHeading rule="edge">{title}</SectionHeading>
+            <SectionHeading>{title}</SectionHeading>
             {description && <p className="mt-1.5 text-fs-body-sm text-ink-soft">{description}</p>}
           </div>
           <button

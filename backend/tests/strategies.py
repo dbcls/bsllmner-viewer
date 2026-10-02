@@ -6,8 +6,10 @@ from functools import reduce
 
 from hypothesis import strategies as st
 
-from bsllmner_viewer.dsl.ast import BoolOp, FieldClause, Node, Range
+from bsllmner_viewer.dsl.ast import BoolOp, FieldClause, FreeText, Node, Range
 from bsllmner_viewer.dsl.fields import STATUS_GROUPS, STATUSES, FieldSet
+from bsllmner_viewer.dsl.keyword import word_matches
+from bsllmner_viewer.dsl.lex import needs_quote
 from bsllmner_viewer.dsl.transform import add_clause
 
 ANNOTATION_FIELDS = ("cell_line", "disease", "tissue", "drug")
@@ -36,13 +38,6 @@ def _term_clause(field: str) -> st.SearchStrategy[FieldClause]:
     return st.builds(lambda v: FieldClause(field=field, value_kind="phrase", value=v), term_ids)
 
 
-def _value_clause(field: str) -> st.SearchStrategy[FieldClause]:
-    return st.one_of(
-        st.builds(lambda v: FieldClause(field=field + "_value", value_kind="word", value=v), words),
-        st.builds(lambda v: FieldClause(field=field + "_value", value_kind="phrase", value=v), phrases),
-    )
-
-
 def _status_clause(field: str) -> st.SearchStrategy[FieldClause]:
     values = st.sampled_from(tuple(STATUS_GROUPS) + STATUSES)
     return st.builds(lambda v: FieldClause(field=field + "_status", value_kind="word", value=v), values)
@@ -60,7 +55,6 @@ def _date_clause() -> st.SearchStrategy[FieldClause]:
 
 clauses: st.SearchStrategy[FieldClause] = st.one_of(
     *[_term_clause(f) for f in ANNOTATION_FIELDS],
-    *[_value_clause(f) for f in ANNOTATION_FIELDS],
     *[_status_clause(f) for f in ANNOTATION_FIELDS],
     _date_clause(),
     st.builds(
@@ -69,10 +63,6 @@ clauses: st.SearchStrategy[FieldClause] = st.one_of(
     ),
     st.builds(lambda v: FieldClause(field="organism_id", value_kind="word", value=str(v)), st.integers(1, 99999)),
     st.builds(lambda v: FieldClause(field="bioproject", value_kind="word", value=f"PRJNA{v}"), st.integers(1, 999999)),
-    st.builds(
-        lambda v: FieldClause(field="identifier", value_kind="word", value=f"SAMN{v:08d}"), st.integers(1, 99999999)
-    ),
-    st.builds(lambda v: FieldClause(field="title", value_kind="phrase", value=v), phrases),
 )
 
 
@@ -85,7 +75,13 @@ def _bool(children: st.SearchStrategy[Node]) -> st.SearchStrategy[Node]:
     )
 
 
-asts: st.SearchStrategy[Node] = st.recursive(clauses, _bool, max_leaves=8)
+_bare_words = words.filter(lambda w: not needs_quote(w))
+keywords: st.SearchStrategy[FreeText] = st.one_of(
+    st.lists(_bare_words, min_size=1, max_size=3).map(lambda ws: FreeText(" ".join(ws))),
+    phrases.map(lambda p: FreeText(p, is_phrase=True)),
+).filter(lambda k: bool(word_matches(k)))
+
+asts: st.SearchStrategy[Node] = st.recursive(st.one_of(clauses, keywords), _bool, max_leaves=8)
 
 # Conditions built by element selection alone: clause groups joined by AND, same-field clauses joined by OR.
 flat_asts: st.SearchStrategy[Node | None] = st.lists(clauses, max_size=6).map(lambda cs: reduce(add_clause, cs, None))

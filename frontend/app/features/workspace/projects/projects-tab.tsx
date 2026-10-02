@@ -1,19 +1,28 @@
 import type { ReactNode } from "react"
-import { useState } from "react"
 
 import { useDataset, useProjects } from "~/lib/api/queries"
 import type { Composition, Project, ProjectSort } from "~/lib/api/types"
 import { formatCount } from "~/lib/format"
 import { fieldLabel } from "~/lib/labels"
-import { Card, CardFooter, CardHeader, cn, Pager, Segmented, Tag } from "~/ui"
+import { TABLE_PER_PAGE } from "~/lib/workspace-state"
+import { Card, CardFooter, CardHeader, cn, Pager, SortChooser, type SortDirection, type SortKey, Tag } from "~/ui"
 
-import { clausesOfField, leaves } from "../ast"
+import { leaves } from "../ast"
 import type { WorkspaceState } from "../state"
 import type { Condition } from "../use-condition"
-import { compositionSegments, compositionSummary } from "./composition"
+import { useTableTop } from "../use-table-top"
+import { compositionFields, compositionSegments, compositionSummary } from "./composition"
 
-const PER_PAGE = 25
-const FALLBACK_FIELDS = ["disease", "cell_line", "tissue"]
+type ProjectSortKey = "biosampleCount" | "experimentCount" | "identifier"
+
+const SORT_KEYS: (SortKey & { value: ProjectSortKey })[] = [
+  { value: "biosampleCount", label: "BioSamples", direction: "desc" },
+  { value: "experimentCount", label: "SRA Experiments", direction: "desc" },
+  { value: "identifier", label: "Accession", direction: "asc" },
+]
+
+const projectSort = (key: string, direction: SortDirection): ProjectSort =>
+  `${SORT_KEYS.find((option) => option.value === key)?.value ?? "biosampleCount"}:${direction}`
 
 const SEGMENT_COLOR: Record<string, string> = {
   term: "bg-brand",
@@ -33,50 +42,50 @@ type ProjectsTabProps = {
   state: WorkspaceState
   condition: Condition
   onPage: (page: number) => void
+  onSort: (sort: ProjectSort) => void
 }
 
-/** BioProjects matching the condition, with a composition summary of up to 3 annotation fields per project. */
-export const ProjectsTab = ({ state, condition, onPage }: ProjectsTabProps) => {
-  const [sort, setSort] = useState<ProjectSort>("biosampleCount:desc")
+/**
+ * The BioProjects of the entries that match the full condition, with a composition summary of up to 3 annotation fields
+ * per project.
+ */
+export const ProjectsTab = ({ state, condition, onPage, onSort }: ProjectsTabProps) => {
+  const table = useTableTop(onPage)
   const dataset = useDataset()
   const annotationFields = new Set((dataset.data?.fields ?? []).map((field) => field.name))
-  const conditionFields = [
-    ...new Set(leaves(condition.ast).map((leaf) => leaf.field).filter((field) => annotationFields.has(field))),
-  ].slice(0, 3)
-  const compositionFields = (conditionFields.length ? conditionFields : FALLBACK_FIELDS).join(",")
+  const requested = compositionFields(leaves(condition.ast).map((leaf) => leaf.field), annotationFields)
   const projects = useProjects({
     q: state.q,
-    selfExclusion: state.selfExclusion,
-    sort,
+    selfExclusion: false,
+    sort: state.sort,
     page: state.page,
-    perPage: PER_PAGE,
-    compositionFields,
+    perPage: TABLE_PER_PAGE,
+    compositionFields: requested.join(","),
   })
-  const total = projects.data?.pagination.total ?? 0
-  const pages = Math.max(1, Math.ceil(total / PER_PAGE))
-  const fields = projects.data?.compositionFields ?? compositionFields.split(",")
-  const bioprojectFiltered = state.selfExclusion && clausesOfField(condition.ast, "bioproject").length > 0
+  const fields = projects.data?.compositionFields ?? requested
+  const [sortKey = "biosampleCount", sortDirection = "desc"] = state.sort.split(":") as [ProjectSortKey, SortDirection]
+  const total = projects.data?.pagination.total
 
   return (
-    <Card padding="none" flush>
+    <Card ref={table.ref} padding="none" flush>
       <CardHeader>
-        <span className="inline-flex items-center gap-1.5">
-          {projects.data ? `${formatCount(total)} BioProjects match · page ${state.page} of ${pages}` : "Counting…"}
-          {bioprojectFiltered && <Tag kind="warn">Not filtered by BioProject</Tag>}
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          Sort by
-          <Segmented
-            ariaLabel="Sort by"
-            options={[
-              { value: "biosampleCount:desc", label: "BioSamples" },
-              { value: "experimentCount:desc", label: "SRA Experiments" },
-              { value: "identifier:asc", label: "Accession" },
-            ]}
-            value={sort}
-            onChange={setSort}
-          />
-        </span>
+        <div className="flex min-w-0 grow basis-80 flex-col gap-1 text-fs-micro">
+          <span>Term composition shows how consistently the samples of a project were annotated. A thin slice may be a mapping error.</span>
+          <span>
+            Click a row to restrict the condition to that project. Composition:
+            {LEGEND.map((item, index) => (
+              <span key={item.label} className="ml-1.5 inline-flex items-center gap-1">
+                <span className={cn("inline-block h-2 w-2 rounded-badge", item.color)} />
+                {item.label}
+                {index < LEGEND.length - 1 ? " ·" : "."}
+              </span>
+            ))}
+          </span>
+        </div>
+        <SortChooser keys={SORT_KEYS} value={sortKey} direction={sortDirection} onChange={(key, direction) => onSort(projectSort(key, direction))} />
+        <div className="ml-auto">
+          <Pager page={state.page} perPage={TABLE_PER_PAGE} total={total} onChange={onPage} />
+        </div>
       </CardHeader>
       <div className="overflow-auto">
         <table className="w-full min-w-projects-min border-collapse text-fs-body-sm">
@@ -102,20 +111,9 @@ export const ProjectsTab = ({ state, condition, onPage }: ProjectsTabProps) => {
         </table>
       </div>
       <CardFooter>
-        <div className="flex flex-col gap-1 text-fs-micro">
-          <span>Term composition shows how consistently the samples of a project were annotated. A thin slice may be a mapping error.</span>
-          <span>
-            Click a row to restrict the condition to that project. Composition:
-            {LEGEND.map((item, index) => (
-              <span key={item.label} className="ml-1.5 inline-flex items-center gap-1">
-                <span className={cn("inline-block h-2 w-2 rounded-badge", item.color)} />
-                {item.label}
-                {index < LEGEND.length - 1 ? " ·" : "."}
-              </span>
-            ))}
-          </span>
+        <div className="ml-auto">
+          <Pager page={state.page} perPage={TABLE_PER_PAGE} total={total} onChange={table.onFootPage} />
         </div>
-        <Pager page={state.page} pages={pages} onChange={onPage} />
       </CardFooter>
     </Card>
   )

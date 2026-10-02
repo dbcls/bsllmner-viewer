@@ -31,11 +31,13 @@ Input formats and build operations are specified in [build.md](build.md), the me
 
 ## Invariants
 
-### Everything the UI shows is available from the API
+### The UI and the API have the same capabilities
 
 The frontend displays what the api returns and does not count matches or evaluate conditions itself. Each UI view corresponds to exactly one api query, and every query accepts the same condition DSL. Any result shown in the UI is therefore reproducible by an API client using the same condition.
 
 The frontend may sort, color, and lay out results, but every count it displays comes from the api.
+
+The reverse also holds: the api has no condition or operation that the UI does not offer. Every field of the condition DSL can be set from the condition panel or from a view. A capability is added to both sides in the same change, and a DSL field that the UI stops offering is removed from the api.
 
 ### Only the api interprets the condition DSL
 

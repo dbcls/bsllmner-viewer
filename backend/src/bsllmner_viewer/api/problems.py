@@ -122,7 +122,8 @@ def install_problem_handlers(app: FastAPI) -> None:
 
 
 def _with_column(exc: DslError) -> str:
-    if f"column {exc.column}" in exc.detail:
+    """The detail with the position in the condition string, unless it has one already or the error has no span."""
+    if exc.length == 0 or f"column {exc.column}" in exc.detail:
         return exc.detail
     return f"{exc.detail} (column {exc.column}, length {exc.length})"
 

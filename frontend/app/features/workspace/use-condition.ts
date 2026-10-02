@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query"
 import { useCallback } from "react"
 
-import { parsedConditionOptions, useParsedCondition, useSelectElement } from "~/lib/api/queries"
+import { parsedConditionOptions, useParsedCondition, useSelectElement, useSetKeyword } from "~/lib/api/queries"
 import type { AstNode, Clause } from "~/lib/api/types"
 
 import { clausesOfField, hasClauses } from "./ast"
@@ -11,6 +11,7 @@ import type { Patch } from "./state"
 export const useCondition = (q: string | null, update: (patch: Patch) => void) => {
   const parsed = useParsedCondition(q)
   const select = useSelectElement()
+  const keyword = useSetKeyword()
   const queryClient = useQueryClient()
   const ast = (parsed.data?.ast ?? null) as AstNode | null
   const labels = parsed.data?.labels ?? {}
@@ -45,13 +46,22 @@ export const useCondition = (q: string | null, update: (patch: Patch) => void) =
     [select],
   )
 
+  /** Replace the keywords of the condition with the keywords of typed text. Empty text removes them. */
+  const setKeyword = useCallback(
+    async (text: string) => {
+      const result = await keyword.mutateAsync({ q, keyword: text })
+      update({ q: result.dsl })
+    },
+    [q, keyword, update],
+  )
+
   const clear = useCallback(() => update({ q: null }), [update])
 
   const applyText = useCallback((text: string) => update({ q: text || null }), [update])
 
   const isSelected = useCallback((clauses: Clause[]) => hasClauses(ast, clauses), [ast])
 
-  return { ast, labels, parseError: parsed.error, toggle, replaceField, narrowed, clear, applyText, isSelected, pending: select.isPending }
+  return { ast, labels, parseError: parsed.error, toggle, replaceField, setKeyword, narrowed, clear, applyText, isSelected, pending: select.isPending }
 }
 
 export type Condition = ReturnType<typeof useCondition>

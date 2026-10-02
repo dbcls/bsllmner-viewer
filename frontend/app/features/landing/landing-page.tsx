@@ -18,8 +18,8 @@ export const LandingPage = () => {
   const dataset = useDataset()
   const totals = dataset.data?.totals
   return (
-    <div className="mx-auto w-full max-w-content-max flex-1 px-page-gutter py-8">
-      <div className="grid grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] items-start gap-6">
+    <div className="mx-auto w-full max-w-content-max flex-1 px-page-gutter py-4">
+      <div className="grid grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] items-start gap-4">
         <Card padding="lg">
           <PageHeading rule="edge">bsllmner-viewer: Ontology-annotated BioSamples</PageHeading>
           <p className="mt-3 mb-8 max-w-2xl text-fs-body text-ink-mid text-pretty">
@@ -36,7 +36,7 @@ export const LandingPage = () => {
           </div>
           <PresetLinks presets={QUESTION_PRESETS} detail="values" />
         </Card>
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-4">
           <Card padding="lg">
             <SectionHeading>Statistics</SectionHeading>
             <div className="mt-4 grid grid-cols-3 gap-3">

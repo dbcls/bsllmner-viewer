@@ -12,6 +12,8 @@ type SelectProps = {
   onChange: (value: string) => void
   size?: "sm" | "md"
   block?: boolean
+  /** Squares the right corners, so that a control placed after the select shares its right edge. */
+  attached?: boolean
   /** The label of an extra first option whose value is the empty string, such as "None" or "Choose…". */
   placeholder?: string
   "aria-label": string
@@ -35,7 +37,7 @@ const place = (trigger: HTMLElement, listHeight: number): ListPosition => {
  * It follows the select-only combobox pattern of WAI-ARIA: focus stays on the button, and the arrow keys, Home, End,
  * and the first letter of a label move through the list.
  */
-export const Select = ({ options, value, onChange, size = "md", block, placeholder, "aria-label": ariaLabel }: SelectProps) => {
+export const Select = ({ options, value, onChange, size = "md", block, attached, placeholder, "aria-label": ariaLabel }: SelectProps) => {
   const items: readonly SelectOption[] = placeholder === undefined ? options : [{ value: "", label: placeholder }, ...options]
   const selectedIndex = items.findIndex((item) => item.value === value)
   const selected = items[selectedIndex]
@@ -191,7 +193,8 @@ export const Select = ({ options, value, onChange, size = "md", block, placehold
         onClick={() => (open ? close() : show(selectedIndex))}
         onKeyDown={onKeyDown}
         className={cn(
-          "cursor-pointer items-center gap-1.5 rounded-button border bg-surface text-left hover:border-brand-light",
+          "cursor-pointer items-center gap-1.5 border bg-surface text-left hover:border-brand-light",
+          attached ? "rounded-l-button" : "rounded-button",
           open ? "border-brand" : "border-border-soft",
           size === "sm" ? "py-1 pr-1.5 pl-2 text-fs-label" : "py-1.5 pr-2 pl-2.5 text-fs-body",
           block ? "flex w-full" : "inline-flex shrink-0",

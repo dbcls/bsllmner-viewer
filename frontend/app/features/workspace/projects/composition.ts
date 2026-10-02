@@ -42,3 +42,13 @@ export const compositionSummary = (composition: Composition): string => {
   const otherPct = other ? Math.round((other.count / composition.total) * 100) : 0
   return otherPct >= 4 ? `${label} ${termPct}% · other ${otherPct}%` : `${label} ${termPct}%`
 }
+
+/** The fields whose composition the project table shows when the condition names no annotation field. */
+const FALLBACK_FIELDS = ["disease", "cell_line", "tissue"]
+const MAX_FIELDS = 3
+
+/** The annotation fields whose composition the project table shows: up to 3 that the condition names, in their order. */
+export const compositionFields = (conditionFields: readonly string[], annotationFields: ReadonlySet<string>): string[] => {
+  const named = [...new Set(conditionFields.filter((field) => annotationFields.has(field)))].slice(0, MAX_FIELDS)
+  return named.length ? named : FALLBACK_FIELDS
+}

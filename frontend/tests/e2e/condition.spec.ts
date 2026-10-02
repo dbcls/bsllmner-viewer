@@ -1,7 +1,7 @@
-import { expect, test } from "@playwright/test"
+import { expect, type Page, test } from "@playwright/test"
 
-import { countOf, dataset, distribution } from "./_api"
-import { addTermButton, choose, conditionPanel, conditionRegion, expectChosen, expectQ, formatCount, termPicker, workspaceUrl } from "./_helpers"
+import { countOf, dataset, distribution, entries } from "./_api"
+import { addTermButton, choose, conditionPanel, conditionRegion, expectChosen, expectQ, formatCount, pageRangeText, termPicker, workspaceUrl } from "./_helpers"
 
 /** The two most frequent disease terms and the first target assay of the dataset. */
 const startingPoints = async (request: Parameters<typeof dataset>[0]) => {
@@ -10,6 +10,19 @@ const startingPoints = async (request: Parameters<typeof dataset>[0]) => {
   if (!first || !second || !assay) throw new Error("the dataset has too few diseases or no target assay")
   return { first, second, assay }
 }
+
+/** The range of the last `years` years that the page computes, ending today in the browser's time zone. */
+const lastYears = (page: Page, years: number): Promise<{ from: string; to: string }> =>
+  page.evaluate((back) => {
+    const pad = (value: number, width: number) => String(value).padStart(width, "0")
+    const now = new Date()
+    const day = (year: number, month: number, date: number) => `${pad(year, 4)}-${pad(month + 1, 2)}-${pad(date, 2)}`
+    const last = new Date(now.getFullYear() - back, now.getMonth() + 1, 0).getDate()
+    return {
+      from: day(now.getFullYear() - back, now.getMonth(), Math.min(now.getDate(), last)),
+      to: day(now.getFullYear(), now.getMonth(), now.getDate()),
+    }
+  }, years)
 
 test.describe("condition", () => {
   test("adding a term from the picker puts it in the URL, the condition bar, and the panel", async ({ page, request }) => {
@@ -67,21 +80,22 @@ test.describe("condition", () => {
     await expectQ(page, canonical)
   })
 
-  test("the created-year range replaces the previous range instead of joining it", async ({ page, request }) => {
+  test("a creation-date range replaces the previous range instead of joining it", async ({ page, request }) => {
     await page.goto("/entries")
     const panel = conditionPanel(page)
-    await panel.getByRole("textbox", { name: "From year" }).fill("2015")
-    await panel.getByRole("textbox", { name: "To year" }).fill("2016")
-    await panel.getByRole("button", { name: "Apply" }).click()
+    await panel.getByLabel("Created from").fill("2015-01-01")
+    await panel.getByLabel("Created to").fill("2016-12-31")
     await expectQ(page, "date_created:[2015-01-01 TO 2016-12-31]")
     await expect(conditionRegion(page)).toContainText("2015–2016")
-    await panel.getByRole("textbox", { name: "From year" }).fill("2018")
-    await panel.getByRole("textbox", { name: "To year" }).fill("2019")
-    await panel.getByRole("button", { name: "Apply" }).click()
-    await expectQ(page, "date_created:[2018-01-01 TO 2019-12-31]")
-    await expect(conditionRegion(page)).toContainText("2018–2019")
-    const count = await countOf(request, "date_created:[2018-01-01 TO 2019-12-31]")
-    await expect(page.getByRole("main")).toContainText(`${formatCount(count)} BioSamples match`)
+    await panel.getByRole("button", { name: "5 years" }).click()
+    const { from, to } = await lastYears(page, 5)
+    await expectQ(page, `date_created:[${from} TO ${to}]`)
+    await expect(panel.getByRole("button", { name: "5 years" })).toHaveAttribute("aria-pressed", "true")
+    await expect(conditionRegion(page)).toContainText(`${from} – ${to}`)
+    const count = await countOf(request, `date_created:[${from} TO ${to}]`)
+    await expect(page.getByRole("main")).toContainText(pageRangeText(count))
+    await panel.getByRole("button", { name: "All", exact: true }).click()
+    await expectQ(page, null)
   })
 
   test("the condition bar shows the count of each unit for the condition", async ({ page, request }) => {
@@ -93,43 +107,62 @@ test.describe("condition", () => {
     }
   })
 
-  test("a text match is added on Enter as a contains clause", async ({ page }) => {
+  test("typed words and phrases become the keywords of the condition and one row of the condition bar", async ({ page, request }) => {
     await page.goto("/entries")
-    const title = conditionPanel(page).getByRole("textbox", { name: "Title contains" })
-    await title.fill("run1")
-    await title.press("Enter")
-    await expectQ(page, "title:run1")
-    await expect(conditionRegion(page)).toContainText("Title contains")
-    await expect(conditionRegion(page)).toContainText("“run1”")
+    const box = conditionPanel(page).getByRole("textbox", { name: "Keyword" })
+    await box.fill("hypoxia")
+    await box.press("Enter")
+    await expectQ(page, "hypoxia")
+    await expect(conditionRegion(page)).toContainText("Keyword")
+    await expect(page.getByRole("main")).toContainText(pageRangeText(await countOf(request, "hypoxia")))
+    await box.fill('"breast cancer" organoid')
+    await expectQ(page, 'organoid AND "breast cancer"')
+    await expect(conditionRegion(page).getByTitle('organoid "breast cancer"')).toBeVisible()
   })
 
-  test("the year inputs show the range of the condition and reject an invalid range", async ({ page }) => {
-    await page.goto(workspaceUrl({ q: "date_created:[2018-01-01 TO 2022-12-31]" }))
-    const panel = conditionPanel(page)
-    const from = panel.getByRole("textbox", { name: "From year" })
-    const to = panel.getByRole("textbox", { name: "To year" })
-    const apply = panel.getByRole("button", { name: "Apply" })
-    await expect(from).toHaveValue("2018")
-    await expect(to).toHaveValue("2022")
-    await expect(apply).toBeDisabled()
-    await from.fill("2023")
-    await expect(panel).toContainText("The first year is after the last year.")
-    await expect(apply).toBeDisabled()
-    await from.fill("20")
-    await expect(panel).toContainText("Enter both years with four digits.")
-    await from.fill("")
-    await to.fill("")
-    await apply.click()
+  test("an accession typed as a keyword finds its entry", async ({ page, request }) => {
+    const [item] = (await entries(request, "biosample", "", 1)).items
+    if (!item) throw new Error("the dataset has no BioSample")
+    await page.goto("/entries")
+    const box = conditionPanel(page).getByRole("textbox", { name: "Keyword" })
+    await box.fill(item.identifier.toLowerCase())
+    await box.press("Enter")
+    await expectQ(page, item.identifier.toLowerCase())
+    await expect(page.getByRole("main")).toContainText(pageRangeText(1))
+  })
+
+  test("a wildcard in the keyword box is reported and leaves the condition as it is", async ({ page }) => {
+    await page.goto("/entries")
+    const box = conditionPanel(page).getByRole("textbox", { name: "Keyword" })
+    await box.fill("hepg*")
+    await box.press("Enter")
+    await expect(conditionPanel(page).getByRole("alert")).toContainText("wildcards")
     await expectQ(page, null)
   })
 
-  test("the year inputs are empty without a year condition", async ({ page, request }) => {
+  test("the date inputs show the range of the condition and report a start after the end", async ({ page }) => {
+    await page.goto(workspaceUrl({ q: "date_created:[2018-01-01 TO 2022-12-31]" }))
+    const panel = conditionPanel(page)
+    const from = panel.getByLabel("Created from")
+    const to = panel.getByLabel("Created to")
+    await expect(from).toHaveValue("2018-01-01")
+    await expect(to).toHaveValue("2022-12-31")
+    await expect(panel.getByRole("button", { name: "All", exact: true })).toHaveAttribute("aria-pressed", "false")
+    await from.fill("2023-01-01")
+    await expect(panel).toContainText("The start is after the end.")
+    await expectQ(page, "date_created:[2018-01-01 TO 2022-12-31]")
+    await from.fill("")
+    await to.fill("")
+    await expectQ(page, null)
+  })
+
+  test("the date inputs are empty and All is chosen without a date condition", async ({ page, request }) => {
     const { first } = await startingPoints(request)
     await page.goto(workspaceUrl({ q: `disease:"${first.value}"` }))
     const panel = conditionPanel(page)
-    await expect(panel.getByRole("textbox", { name: "From year" })).toHaveValue("")
-    await expect(panel.getByRole("textbox", { name: "To year" })).toHaveValue("")
-    await expect(panel.getByRole("button", { name: "Apply" })).toBeDisabled()
+    await expect(panel.getByLabel("Created from")).toHaveValue("")
+    await expect(panel.getByLabel("Created to")).toHaveValue("")
+    await expect(panel.getByRole("button", { name: "All", exact: true })).toHaveAttribute("aria-pressed", "true")
   })
 
   test("the status buttons show the status condition of the field that has one", async ({ page }) => {
@@ -144,13 +177,15 @@ test.describe("condition", () => {
     await expectQ(page, "tissue_status:no_value AND disease_status:unmapped")
   })
 
-  test("a text match in the condition is shown in the panel and can be removed there", async ({ page }) => {
-    await page.goto(workspaceUrl({ q: "title:run1 AND disease_value:cancer" }))
-    const panel = conditionPanel(page)
-    await expect(panel).toContainText("Title contains “run1”")
-    await expect(panel).toContainText("Disease contains “cancer”")
-    await panel.getByTitle("Title contains").getByRole("button", { name: "Remove" }).click()
-    await expectQ(page, "disease_value:cancer")
+  test("the keywords of the condition are shown in the box and removed from the condition bar", async ({ page, request }) => {
+    const { first } = await startingPoints(request)
+    const term = `disease:"${first.value}"`
+    await page.goto(workspaceUrl({ q: `${term} AND hypoxia` }))
+    const box = conditionPanel(page).getByRole("textbox", { name: "Keyword" })
+    await expect(box).toHaveValue("hypoxia")
+    await conditionRegion(page).getByTitle("hypoxia", { exact: true }).getByRole("button", { name: "Remove" }).click()
+    await expectQ(page, term)
+    await expect(box).toHaveValue("")
   })
 
   test("a negated clause and a disjunction over several fields are not shown as selections in the panel", async ({ page, request }) => {

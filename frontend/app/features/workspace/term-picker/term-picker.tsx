@@ -102,7 +102,7 @@ export const TermPicker = ({ request, onClose, fields, dimensions, q, unit, self
           })}
         {searchable && terms.data && terms.data.terms.length === 0 && (
           <div className="px-6 py-6 text-center text-fs-body-sm text-ink-soft">
-            No matching term. Try a synonym, or search the extracted value with “value contains” instead.
+            No matching term. Try a synonym, or search the word as a keyword instead.
           </div>
         )}
       </div>

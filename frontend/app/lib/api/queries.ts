@@ -55,6 +55,12 @@ export const selectElement = async (input: { q: string | null; clauses: Clause[]
 
 export const useSelectElement = () => useMutation({ mutationFn: selectElement })
 
+/** Replace the keywords of a condition with the keywords of text typed into a keyword box; empty text removes them. */
+export const setKeyword = async (input: { q: string | null; keyword: string }): Promise<ConditionResponse> =>
+  unwrap(await api.POST("/api/dsl/keyword", { body: { q: input.q, keyword: input.keyword } }))
+
+export const useSetKeyword = () => useMutation({ mutationFn: setKeyword })
+
 export const useSerialize = () =>
   useMutation({
     mutationFn: async (ast: AstNode): Promise<ConditionResponse> =>

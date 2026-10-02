@@ -5,6 +5,9 @@ import { cn, Segmented, Toggle } from "~/ui"
 
 import { type Tab, TABS, workspaceSearch,type WorkspaceState } from "./state"
 
+/** The tables list the entries of the full condition, so the counting unit and self-exclusion of the charts do not apply. */
+const TABLES: readonly Tab[] = ["samples", "projects"]
+
 const TAB_LABELS: Record<Tab, string> = {
   samples: "Samples",
   distribution: "Distribution",
@@ -28,6 +31,7 @@ export const Tabs = ({ state, onUnit, onSelfExclusion }: TabsProps) => (
           <Link
             key={tab}
             to={`/entries${workspaceSearch({ ...state, tab, page: 1 })}`}
+            preventScrollReset
             aria-current={active ? "page" : undefined}
             className={cn(
               "-mb-px border-b-2 px-3.5 pt-3 pb-2.5 text-fs-body no-underline hover:text-brand-deep",
@@ -39,7 +43,7 @@ export const Tabs = ({ state, onUnit, onSelfExclusion }: TabsProps) => (
         )
       })}
     </nav>
-    {state.tab !== "samples" && (
+    {!TABLES.includes(state.tab) && (
       <div className="flex items-center gap-4 pb-2 text-fs-label text-ink-soft">
         <span className="inline-flex items-center gap-1.5">
           Count

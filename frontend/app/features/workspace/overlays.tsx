@@ -3,6 +3,7 @@ import { type ReactNode, useEffect, useState } from "react"
 import { apiUrl, exportAccessionsUrl, exportEntriesUrl } from "~/lib/api/client"
 import { copyText } from "~/lib/export"
 import { formatCount } from "~/lib/format"
+import { TABLE_PER_PAGE } from "~/lib/workspace-state"
 import { ACTION_ICON, CopyButton, DownloadLink, Icon, Modal } from "~/ui"
 
 import type { WorkspaceState } from "./state"
@@ -17,7 +18,7 @@ type ExportMenuProps = {
 const ACCESSION_TYPES = [
   { type: "biosample", label: "BioSample", hint: "SAMN…" },
   { type: "sra-experiment", label: "SRA Experiment", hint: "SRX…" },
-  { type: "sra-run", label: "Run", hint: "SRR…" },
+  { type: "sra-run", label: "SRA Run", hint: "SRR…" },
   { type: "bioproject", label: "BioProject", hint: "PRJ…" },
 ] as const
 
@@ -100,6 +101,8 @@ type ApiModalProps = {
   open: boolean
   onClose: () => void
   state: WorkspaceState
+  /** The annotation fields whose composition the Projects tab shows. */
+  compositionFields: readonly string[]
   onToast: (message: string) => void
 }
 
@@ -112,12 +115,12 @@ const TAB_LABELS: Record<WorkspaceState["tab"], string> = {
 }
 
 /** The api request that returns the current view. */
-export const apiRequestFor = (state: WorkspaceState): string => {
+export const apiRequestFor = (state: WorkspaceState, compositionFields: readonly string[]): string => {
   const q = state.q ?? undefined
   const facetSelfExclude = state.selfExclusion ? "true" : undefined
   switch (state.tab) {
     case "samples":
-      return apiUrl(`/api/entries/${state.rows}`, { q, page: state.page, perPage: 25 })
+      return apiUrl(`/api/entries/${state.rows}`, { q, page: state.page, perPage: TABLE_PER_PAGE })
     case "distribution":
       return apiUrl("/api/distribution", { q, field: "disease", unit: state.unit, facetSelfExclude })
     case "heatmap":
@@ -133,7 +136,7 @@ export const apiRequestFor = (state: WorkspaceState): string => {
     case "trend":
       return apiUrl("/api/trend", { q, field: state.trendField ?? undefined, unit: state.unit, facetSelfExclude, elements: state.trendTerms?.join(",") })
     case "projects":
-      return apiUrl("/api/projects", { q, facetSelfExclude, sort: "biosampleCount:desc", page: state.page, perPage: 25, compositionFields: "disease,cell_line,tissue" })
+      return apiUrl("/api/projects", { q, sort: state.sort, page: state.page, perPage: TABLE_PER_PAGE, compositionFields: compositionFields.join(",") })
   }
 }
 
@@ -160,9 +163,9 @@ export const responseExcerpt = (text: string): string => {
 
 const BLOCK_HEADING = "mb-1.5 text-fs-body-sm font-semibold text-ink"
 
-export const ApiModal = ({ open, onClose, state, onToast }: ApiModalProps) => {
+export const ApiModal = ({ open, onClose, state, compositionFields, onToast }: ApiModalProps) => {
   const [response, setResponse] = useState<string>("")
-  const request = apiRequestFor(state)
+  const request = apiRequestFor(state, compositionFields)
   const url = typeof window === "undefined" ? request : `${window.location.origin}${request}`
   const curl = `curl -s "${url}" \\\n  -H "Accept: application/json"`
   useEffect(() => {

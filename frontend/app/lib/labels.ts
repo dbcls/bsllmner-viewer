@@ -14,14 +14,11 @@ export const FIELD_LABELS: Record<string, string> = {
   organism_id: "Organism",
   date_created: "Year",
   bioproject: "BioProject",
-  identifier: "Accession",
-  title: "Title",
 }
 
 export const fieldLabel = (field: string): string => {
   if (field in FIELD_LABELS) return FIELD_LABELS[field] ?? field
   if (field.endsWith("_status")) return `${fieldLabel(field.slice(0, -"_status".length))} status`
-  if (field.endsWith("_value")) return `${fieldLabel(field.slice(0, -"_value".length))} value`
   return field.replaceAll("_", " ").replace(/^./, (c) => c.toUpperCase())
 }
 

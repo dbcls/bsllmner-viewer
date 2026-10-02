@@ -29,7 +29,7 @@ export const SamplePage = ({ accession }: SamplePageProps) => {
   if (!entry.data) {
     const notFound = entry.error instanceof ApiError && entry.error.problem.status === 404
     return (
-      <div className="mx-auto w-full max-w-content-max px-page-gutter py-5">
+      <div className="mx-auto w-full max-w-content-max px-page-gutter py-4">
         <BackLink href={backHref(from)} />
         <div className="mt-3">
           <Card>
@@ -48,7 +48,7 @@ export const SamplePage = ({ accession }: SamplePageProps) => {
   const ncbi = data.identifier.startsWith("SAMN") || data.identifier.startsWith("SAME")
 
   return (
-    <div className="mx-auto w-full max-w-content-max px-page-gutter py-5">
+    <div className="mx-auto w-full max-w-content-max px-page-gutter py-4">
       <BackLink href={backHref(from)} />
       <div className="mt-3 mb-4">
         <Card>
@@ -260,7 +260,7 @@ const ExperimentsCard = ({ experiments }: { experiments: EntryExperiment[] }) =>
             Assay
           </th>
           <th className="border-b border-border-soft px-2 py-1.5 text-right text-fs-label font-semibold text-ink-soft">
-            Runs
+            SRA Runs
           </th>
           <th className="border-b border-border-soft px-2 py-1.5 text-left text-fs-label font-semibold text-ink-soft">
             Links

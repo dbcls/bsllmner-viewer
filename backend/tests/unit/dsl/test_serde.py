@@ -12,7 +12,7 @@ FIELDS = FieldSet(("disease",))
 
 
 def test_ast_to_json_uses_op_discriminated_nodes() -> None:
-    ast = parse('disease:"MONDO:1" AND NOT (disease_value:breast OR date_created:[2020-01-01 TO 2020-12-31])')
+    ast = parse('disease:"MONDO:1" AND NOT (disease_status:unmapped OR date_created:[2020-01-01 TO 2020-12-31])')
     assert ast_to_json(ast, FIELDS) == {
         "op": "AND",
         "rules": [
@@ -23,7 +23,7 @@ def test_ast_to_json_uses_op_discriminated_nodes() -> None:
                     {
                         "op": "OR",
                         "rules": [
-                            {"field": "disease_value", "op": "contains", "value": "breast"},
+                            {"field": "disease_status", "op": "eq", "value": "unmapped"},
                             {"field": "date_created", "op": "between", "from": "2020-01-01", "to": "2020-12-31"},
                         ],
                     }

@@ -20,7 +20,7 @@ test.describe("outputs of the condition", () => {
       { name: /Entries · JSON lines/, path: "/api/export/entries/biosample", format: "ndjson" },
       { name: /BioSample/, path: "/api/export/accessions/biosample", format: null },
       { name: /SRA Experiment/, path: "/api/export/accessions/sra-experiment", format: null },
-      { name: /Run/, path: "/api/export/accessions/sra-run", format: null },
+      { name: /SRA Run/, path: "/api/export/accessions/sra-run", format: null },
       { name: /BioProject/, path: "/api/export/accessions/bioproject", format: null },
     ]
     for (const { name, path, format } of expected) {

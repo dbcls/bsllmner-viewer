@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+from typing import Any
+
 import orjson
+import pytest
 from fastapi.testclient import TestClient
 
 from tests.synthetic import Synthetic
@@ -56,7 +60,7 @@ def test_parse_returns_ast_and_normalized_q(client: TestClient) -> None:
 
 def test_serialize_accepts_a_parse_result(client: TestClient) -> None:
     parsed = client.get(
-        "/api/dsl/parse", params={"q": "date_created:[2015-01-01 TO 2020-12-31] AND NOT title:tumor"}
+        "/api/dsl/parse", params={"q": "date_created:[2015-01-01 TO 2020-12-31] AND NOT organism_id:9606"}
     ).json()
     body = client.post("/api/dsl/serialize", json={"ast": parsed["ast"]}).json()
     assert body["dsl"] == parsed["q"]
@@ -84,7 +88,8 @@ def test_select_builds_the_documented_condition(client: TestClient) -> None:
 
 def test_invalid_conditions_are_problem_documents(client: TestClient) -> None:
     for q, slug in (
-        ("cancer", "free-text-not-supported"),
+        ("--", "invalid-value"),
+        ("cancer*", "unexpected-token"),
         ("nope:x", "unknown-field"),
         ("disease:(", "unexpected-token"),
     ):
@@ -140,8 +145,8 @@ def test_distribution_self_exclusion_drops_own_conjunct(client: TestClient) -> N
 
 
 def test_redundant_parentheses_do_not_change_the_population(client: TestClient) -> None:
-    flat = 'disease:"MONDO:0007254" AND title:run1 AND disease:"MONDO:0005061"'
-    nested = 'disease:"MONDO:0007254" AND (title:run1 AND disease:"MONDO:0005061")'
+    flat = 'disease:"MONDO:0007254" AND organism_id:9606 AND disease:"MONDO:0005061"'
+    nested = 'disease:"MONDO:0007254" AND (organism_id:9606 AND disease:"MONDO:0005061")'
     for path, params in (
         ("/api/distribution", {"field": "disease", "facetSelfExclude": "true"}),
         ("/api/crosstab", {"row": "disease", "col": "library_strategy", "facetSelfExclude": "true"}),
@@ -150,10 +155,10 @@ def test_redundant_parentheses_do_not_change_the_population(client: TestClient) 
         a = client.get(path, params={**params, "q": flat}).json()
         b = client.get(path, params={**params, "q": nested}).json()
         assert a["q"] == b["q"] == flat
-        assert a["populationQ"] == b["populationQ"] == "title:run1", path
+        assert a["populationQ"] == b["populationQ"] == "organism_id:9606", path
     trend = client.get("/api/trend", params={"q": nested, "facetSelfExclude": "true"}).json()
     assert trend["totalPopulationQ"] == flat
-    clause = {"field": "title", "value": "run1"}
+    clause = {"field": "organism_id", "value": "9606"}
     selected = [
         client.post("/api/dsl/select", json={"q": q, "clauses": [clause]}).json()["dsl"] for q in (flat, nested)
     ]
@@ -243,9 +248,9 @@ def test_select_narrow_builds_the_documented_condition(client: TestClient) -> No
     assert again["dsl"] == narrowed["dsl"]
     kept = client.post(
         "/api/dsl/select",
-        json={"q": "(cell_line:A OR cell_line:B) AND title:x", "clauses": cell[:1], "mode": "narrow"},
+        json={"q": "(cell_line:A OR cell_line:B) AND organism_id:9606", "clauses": cell[:1], "mode": "narrow"},
     ).json()
-    assert kept["dsl"] == "(cell_line:A OR cell_line:B) AND title:x AND cell_line:A"
+    assert kept["dsl"] == "(cell_line:A OR cell_line:B) AND organism_id:9606 AND cell_line:A"
     invalid = client.post("/api/dsl/select", json={"q": None, "clauses": cell, "mode": "other"})
     assert invalid.status_code == 400
     assert invalid.json()["type"] == "https://ddbj.nig.ac.jp/problems/invalid-ast"
@@ -316,13 +321,40 @@ def test_projects_lists_bioprojects_with_composition(client: TestClient) -> None
     assert [c["field"] for c in project["composition"]] == ["disease", "drug"]
     assert all(sum(s["count"] for s in c["segments"]) == c["total"] for c in project["composition"])
     assert all(c["total"] == project["biosampleCount"] for c in project["composition"])
-    by_experiment = client.get("/api/projects", params={"sort": "experimentCount:desc"}).json()["items"]
-    counts = [p["experimentCount"] for p in by_experiment]
-    assert counts == sorted(counts, reverse=True)
-    by_identifier = client.get("/api/projects", params={"sort": "identifier:asc"}).json()["items"]
-    identifiers = [p["identifier"] for p in by_identifier]
-    assert identifiers == sorted(identifiers)
-    assert client.get("/api/projects", params={"sort": "biosample"}).status_code == 422
+
+
+PROJECT_SORT_KEYS: dict[str, Callable[[dict[str, Any]], tuple[Any, ...]]] = {
+    "biosampleCount:desc": lambda p: (-p["biosampleCount"], -p["experimentCount"], p["identifier"]),
+    "biosampleCount:asc": lambda p: (p["biosampleCount"], p["experimentCount"], p["identifier"]),
+    "experimentCount:desc": lambda p: (-p["experimentCount"], -p["biosampleCount"], p["identifier"]),
+    "experimentCount:asc": lambda p: (p["experimentCount"], p["biosampleCount"], p["identifier"]),
+    "identifier:asc": lambda p: (p["identifier"],),
+}
+
+
+@pytest.mark.parametrize("sort", [*PROJECT_SORT_KEYS, "identifier:desc"])
+def test_projects_sort_each_key_and_direction_orders_all_items(client: TestClient, sort: str) -> None:
+    body = client.get("/api/projects", params={"sort": sort, "perPage": 100}).json()
+    assert body["sort"] == sort
+    items = body["items"]
+    assert len(items) == body["pagination"]["total"]
+    if sort == "identifier:desc":
+        assert [p["identifier"] for p in items] == sorted((p["identifier"] for p in items), reverse=True)
+    else:
+        assert items == sorted(items, key=PROJECT_SORT_KEYS[sort])
+
+
+@pytest.mark.parametrize("sort", ["biosampleCount:asc", "identifier:desc"])
+def test_projects_sort_pages_are_slices_of_one_order(client: TestClient, sort: str) -> None:
+    whole = client.get("/api/projects", params={"sort": sort, "perPage": 6}).json()["items"]
+    first = client.get("/api/projects", params={"sort": sort, "perPage": 3, "page": 1}).json()["items"]
+    second = client.get("/api/projects", params={"sort": sort, "perPage": 3, "page": 2}).json()["items"]
+    assert first + second == whole
+
+
+@pytest.mark.parametrize("sort", ["biosample", "biosampleCount", "biosampleCount:up", "title:asc", ""])
+def test_projects_sort_unknown_value_is_rejected(client: TestClient, sort: str) -> None:
+    assert client.get("/api/projects", params={"sort": sort}).status_code == 422
 
 
 def test_entries_pages_are_disjoint_and_cover_the_total(client: TestClient) -> None:

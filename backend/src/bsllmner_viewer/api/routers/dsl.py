@@ -6,10 +6,17 @@ from fastapi import APIRouter, Query
 
 from bsllmner_viewer.api.common import condition_labels, q_of, to_field_clause, version_ref
 from bsllmner_viewer.api.deps import StoreDep, parse_condition
-from bsllmner_viewer.api.schemas import ConditionResponse, ParseResponse, SelectRequest, SerializeRequest
+from bsllmner_viewer.api.schemas import (
+    ConditionResponse,
+    KeywordRequest,
+    ParseResponse,
+    SelectRequest,
+    SerializeRequest,
+)
 from bsllmner_viewer.dsl.ast import normalize
+from bsllmner_viewer.dsl.keyword import typed_keywords
 from bsllmner_viewer.dsl.serde import ast_to_json, json_to_ast
-from bsllmner_viewer.dsl.transform import narrow, select_element
+from bsllmner_viewer.dsl.transform import narrow, replace_keywords, select_element
 from bsllmner_viewer.dsl.validator import validate
 
 router = APIRouter(tags=["Condition"])
@@ -66,6 +73,31 @@ def select_dsl(store: StoreDep, body: SelectRequest) -> ConditionResponse:
     ast = parse_condition(store, body.q)
     clauses = [to_field_clause(c) for c in body.clauses]
     result = narrow(ast, clauses) if body.mode == "narrow" else select_element(ast, clauses)
+    if result is not None:
+        result = normalize(result)
+        validate(result, store.field_set)
+    return ConditionResponse(
+        dataset_version=version_ref(store),
+        dsl=q_of(result),
+        ast=None if result is None else ast_to_json(result, store.field_set),
+        labels=condition_labels(store, result),
+    )
+
+
+@router.post(
+    "/dsl/keyword",
+    operation_id="setKeyword",
+    response_model=ConditionResponse,
+    summary="Replace the keywords of a condition",
+    description=(
+        "Replaces the keywords among the top-level AND conjuncts of `q` with the keywords of `keyword`, read as a "
+        "search box reads text: quoted parts are phrases, and the other words form one keyword. `AND`, `OR`, and "
+        "`NOT` are ordinary words. An empty `keyword` removes the keywords."
+    ),
+)
+def keyword_dsl(store: StoreDep, body: KeywordRequest) -> ConditionResponse:
+    ast = parse_condition(store, body.q)
+    result = replace_keywords(ast, typed_keywords(body.keyword))
     if result is not None:
         result = normalize(result)
         validate(result, store.field_set)

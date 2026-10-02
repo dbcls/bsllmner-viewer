@@ -14,6 +14,7 @@ import { cn } from "./cn"
 export type IconName =
   | "search"
   | "close"
+  | "chevron-left"
   | "chevron-right"
   | "chevron-down"
   | "external"
@@ -23,6 +24,9 @@ export type IconName =
   | "check"
   | "download"
   | "app-window"
+  | "circle-help"
+  | "arrow-up-narrow-wide"
+  | "arrow-down-wide-narrow"
 
 const NODES: Record<IconName, ReactNode> = {
   "search": (
@@ -37,6 +41,7 @@ const NODES: Record<IconName, ReactNode> = {
       <path d="m6 6 12 12" />
     </>
   ),
+  "chevron-left": <path d="m15 18-6-6 6-6" />,
   "chevron-right": <path d="m9 18 6-6-6-6" />,
   "chevron-down": <path d="m6 9 6 6 6-6" />,
   "github": (
@@ -81,6 +86,31 @@ const NODES: Record<IconName, ReactNode> = {
       <path d="M14 8h.01" />
     </>
   ),
+  "circle-help": (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3" />
+      <path d="M12 17h.01" />
+    </>
+  ),
+  "arrow-up-narrow-wide": (
+    <>
+      <path d="m3 8 4-4 4 4" />
+      <path d="M7 4v16" />
+      <path d="M11 12h4" />
+      <path d="M11 16h7" />
+      <path d="M11 20h10" />
+    </>
+  ),
+  "arrow-down-wide-narrow": (
+    <>
+      <path d="m3 16 4 4 4-4" />
+      <path d="M7 20V4" />
+      <path d="M11 4h10" />
+      <path d="M11 8h7" />
+      <path d="M11 12h4" />
+    </>
+  ),
 }
 
 export const ICON_NAMES = Object.keys(NODES) as IconName[]
@@ -90,6 +120,7 @@ export const ACTION_ICON = {
   search: "search",
   clear: "close",
   goTo: "chevron-right",
+  goBack: "chevron-left",
   openList: "chevron-down",
   openInNewTab: "external",
   openRepository: "github",
@@ -98,6 +129,10 @@ export const ACTION_ICON = {
   copied: "check",
   download: "download",
   openDialog: "app-window",
+  showHelp: "circle-help",
+  /** The order that a sorted list runs in now, on the control that reverses the order. */
+  ascendingOrder: "arrow-up-narrow-wide",
+  descendingOrder: "arrow-down-wide-narrow",
 } as const satisfies Record<string, IconName>
 
 type IconProps = {

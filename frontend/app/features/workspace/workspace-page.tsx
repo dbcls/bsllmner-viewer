@@ -7,11 +7,13 @@ import { copyText } from "~/lib/export"
 import { fieldLabel } from "~/lib/labels"
 import { Toast } from "~/ui"
 
+import { leaves } from "./ast"
 import { ConditionBar } from "./condition-bar"
 import { ConditionPanel } from "./condition-panel"
 import { DistributionTab } from "./distribution/distribution-tab"
 import { type AxisSide, HeatmapTab } from "./heatmap/heatmap-tab"
 import { ApiModal, ExportMenu } from "./overlays"
+import { compositionFields } from "./projects/composition"
 import { ProjectsTab } from "./projects/projects-tab"
 import { SamplesTab } from "./samples/samples-tab"
 import { useWorkspaceState } from "./state"
@@ -92,7 +94,7 @@ export const WorkspacePage = () => {
       />
       <div className="flex min-h-0 flex-1 items-stretch">
         <ConditionPanel q={state.q} unit={state.unit} condition={condition} onAddTerm={(field) => setPicker({ field, mode: "condition" })} />
-        <main className="min-w-0 flex-1 pb-10">
+        <main className="min-w-0 flex-1 pb-4">
           <Tabs state={state} onUnit={(unit) => update({ unit })} onSelfExclusion={() => update({ selfExclusion: !state.selfExclusion })} />
           <div className="px-workspace-gutter pt-4">
             {state.tab === "samples" && (
@@ -119,7 +121,9 @@ export const WorkspacePage = () => {
             {state.tab === "trend" && (
               <TrendTab state={state} condition={condition} onSplit={(field) => update({ trendField: field, trendTerms: null })} />
             )}
-            {state.tab === "projects" && <ProjectsTab state={state} condition={condition} onPage={(page) => update({ page })} />}
+            {state.tab === "projects" && (
+              <ProjectsTab state={state} condition={condition} onPage={(page) => update({ page })} onSort={(sort) => update({ sort, page: 1 })} />
+            )}
           </div>
         </main>
       </div>
@@ -135,7 +139,13 @@ export const WorkspacePage = () => {
         onPick={onPick}
         onField={onPickerField}
       />
-      <ApiModal open={apiOpen} onClose={() => setApiOpen(false)} state={state} onToast={showToast} />
+      <ApiModal
+        open={apiOpen}
+        onClose={() => setApiOpen(false)}
+        state={state}
+        compositionFields={compositionFields(leaves(condition.ast).map((leaf) => leaf.field), new Set(fields))}
+        onToast={showToast}
+      />
       <Toast message={toast} />
     </>
   )

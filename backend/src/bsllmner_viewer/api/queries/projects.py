@@ -9,12 +9,23 @@ import duckdb
 from bsllmner_viewer.api.queries.core import Population
 from bsllmner_viewer.api.schemas import Composition, CompositionSegment
 
-type ProjectSort = Literal["biosampleCount:desc", "experimentCount:desc", "identifier:asc"]
+type ProjectSort = Literal[
+    "biosampleCount:desc",
+    "biosampleCount:asc",
+    "experimentCount:desc",
+    "experimentCount:asc",
+    "identifier:asc",
+    "identifier:desc",
+]
 
+# A count breaks ties with the other count in the same direction, then with the accession, so each order is total.
 _ORDER = {
     "biosampleCount:desc": "n_biosample DESC, n_experiment DESC, bioproject",
+    "biosampleCount:asc": "n_biosample, n_experiment, bioproject",
     "experimentCount:desc": "n_experiment DESC, n_biosample DESC, bioproject",
+    "experimentCount:asc": "n_experiment, n_biosample, bioproject",
     "identifier:asc": "bioproject",
+    "identifier:desc": "bioproject DESC",
 }
 
 

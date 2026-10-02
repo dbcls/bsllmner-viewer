@@ -17,6 +17,7 @@ The api follows the conventions of the [DDBJ Search API](https://ddbj.nig.ac.jp/
 - Entry types use the names of the DDBJ Search API: `biosample`, `sra-experiment`, `sra-run`, and `bioproject`.
 - An organism is an object with `identifier` (the NCBI Taxonomy ID as a string) and `name`.
 - A paginated list returns `pagination` (`page`, `perPage`, `total`, and `hasNext`) and `items`. `page` starts at 1, and `perPage` is between 1 and 100.
+- A `sort` parameter has the form `{field}:{direction}`, where `direction` is `asc` or `desc`.
 - Every response has an `X-Request-ID` header. If the request has an `X-Request-ID` header, then the response repeats its value. Otherwise, the api generates a UUID.
 - Cross-origin requests are allowed from every origin, with every method and header.
 - Every JSON response includes `datasetVersion`, the identifier of the dataset version defined in [build.md](build.md): the name, the creation time, the model, and a digest of the complete version information. `GET /api/dataset` returns the complete version information. Results recorded from the API should keep the identifier, because counts change with every build.
@@ -41,31 +42,44 @@ A condition is a single string, `q`. Queries for entries, aggregations, and expo
 The grammar is the Lucene subset used by the DDBJ Search API search DSL (the `/db-portal/*` endpoints). A condition string parses to an AST of the same shape in both.
 
 - `field:value`, `field:"phrase"`, and `field:[a TO b]`
+- keywords without a field: `hypoxia organoid` and `"breast cancer"`
 - `AND`, `OR`, and `NOT` (upper case), and grouping with `( )`
 - The JSON representation of the AST has the same shape, with node types discriminated by `op`.
 
 `GET /api/dsl/parse` and `POST /api/dsl/serialize` convert between the string and the AST. Their requests and responses have the shape of `/db-portal/parse` (`{ast}`) and `/db-portal/serialize` (`{dsl}`) of the DDBJ Search API, with the display labels of the term IDs and organism IDs in the condition added.
 
-Compatibility covers the grammar and the AST shape. The set of fields and their evaluation are specific to this API. Terms without a field (free-text search) are rejected with an error.
+Compatibility covers the grammar and the AST shape. The set of fields and the evaluation of fields and keywords are specific to this API.
 
 ### Fields
 
 | Kind | Example | Matches where |
 |---|---|---|
 | Annotation term | `disease:"MONDO:0007254"` | the field has the given term or one of its descendants |
-| Annotation extracted value | `disease_value:breast` | an extracted value of the field contains the string, case-insensitively |
 | Annotation status | `disease_status:unmapped` | the field has the given status, or a status under the given group |
 | Assay | `library_strategy:ATAC-seq` | the experiment has the given `library_strategy` |
 | Organism | `organism_id:9606` | the BioSample's organism has the given NCBI Taxonomy ID |
 | Creation date | `date_created:[2015-01-01 TO 2020-12-31]` | the BioSample's creation date is in the range |
 | BioProject | `bioproject:PRJNA123456` | the BioSample belongs to the given BioProject |
-| Accession | `identifier:SAMN00000001` | the BioSample or the experiment has the given accession |
-| Title | `title:tumor` | the BioSample's title contains the string |
 
-- Annotation field names are the field names of the select configuration. `_value` and `_status` are suffixes appended to a field name.
+- Annotation field names are the field names of the select configuration. `_status` is a suffix appended to a field name.
 - Other fields use the DDBJ Search API field name when the DDBJ Search API has a field for the same concept.
 - Statuses, status groups, and the evaluation of clauses against BioSamples and experiments are defined in [data-model.md](data-model.md).
 - The implementation is the source of truth for the set of available fields.
+
+### Keywords
+
+A term without a field is a keyword, such as `hypoxia organoid` or `"breast cancer"`. A keyword matches an entry whose searchable text contains it. The searchable text of a BioSample is defined in [data-model.md](data-model.md): its title, its organism name, the values of its attributes, and the extracted values and term labels of its annotations. Matching follows the free-text search of the DDBJ Search API wherever the two can be compared.
+
+- Letters are compared case-insensitively. Every character other than a letter or a digit separates words.
+- Every word of a keyword must occur in the text, in any order and in any part of the text. `breast cancer` matches a BioSample whose title says "breast" and whose disease is "cancer".
+- A word matches whole words, so `cell` does not match `cellulose`. The last word of a keyword also matches the start of a word, so `organoid` matches `organoids` and `H3K27` matches `H3K27ac`. A last word of one character matches whole words only.
+- A word that contains symbols, such as `IL-4` or `CD4+`, matches its parts in sequence (`IL 4`) and its parts written together (`IL4`). A word of the text that joins its parts with symbols, such as `MCF-7`, also matches the parts written together, so `MCF7` matches `MCF-7`.
+- A quoted keyword is a phrase. Its words must occur in sequence within one value, such as one attribute value or the title.
+- Words with symbols and phrases do not match the start of a word.
+- A word in the form of an accession matches the entry that has that accession, case-insensitively. The accession can be that of a BioSample (`SAMN`, `SAMD`, `SAMEA`), an SRA Experiment (`SRX`, `DRX`, `ERX`), an SRA Run (`SRR`, `DRR`, `ERR`), or a BioProject (`PRJNA`, `PRJDB`, `PRJEB`). An SRA Experiment or SRA Run accession matches only the entry of its experiment.
+- Wildcards are rejected with an error, as in the DDBJ Search API. A keyword without a letter or a digit is rejected with an error.
+
+Unlike the DDBJ Search API, a keyword may appear anywhere in a condition, including under `OR` and `NOT`, and a condition may have several keywords.
 
 ## Entries
 
@@ -89,7 +103,7 @@ With `facetSelfExclude=true`, an aggregation is computed without the conditions 
 
 The top-level conjuncts are the operands of the outermost `AND` after nested `AND` groups are merged. For example, `a AND (b AND c)` has three top-level conjuncts.
 
-Self-exclusion keeps every element of a dimension visible while one of its elements is selected, so that the selection can be compared with the alternatives. The UI computes every aggregation with self-exclusion unless the user turns it off. Drilling down within a selected term is done by expanding the term into its child terms.
+Self-exclusion keeps every element of a dimension visible while one of its elements is selected, so that the selection can be compared with the alternatives. The UI computes the distributions, the cross-tabulations, and the trend with self-exclusion unless the user turns it off. The UI computes the project statistics without self-exclusion, as it computes the entry list, so that the project statistics show only the BioProjects of the entries that match `q`. Drilling down within a selected term is done by expanding the term into its child terms.
 
 A distribution on an annotation term dimension also returns the status composition of the field. The status composition is an aggregation on the status dimension of the same field. With self-exclusion, its population excludes the conjuncts on the term dimension and the conjuncts on the status dimension. A condition on a term of the field therefore does not reduce the composition to the mapped statuses.
 

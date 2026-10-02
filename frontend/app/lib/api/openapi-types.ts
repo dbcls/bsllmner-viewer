@@ -75,6 +75,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/dsl/keyword": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Replace the keywords of a condition
+         * @description Replaces the keywords among the top-level AND conjuncts of `q` with the keywords of `keyword`, read as a search box reads text: quoted parts are phrases, and the other words form one keyword. `AND`, `OR`, and `NOT` are ordinary words. An empty `keyword` removes the keywords.
+         */
+        post: operations["setKeyword"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/entries/{type}": {
         parameters: {
             query?: never;
@@ -651,6 +671,16 @@ export interface components {
             /** Ontologies */
             ontologies: string[];
         };
+        /** KeywordRequest */
+        KeywordRequest: {
+            /** Q */
+            q?: string | null;
+            /**
+             * Keyword
+             * @description Text as typed into a keyword box: words, and phrases in double quotes. An empty keyword removes the keywords of the condition.
+             */
+            keyword: string;
+        };
         /**
          * Organism
          * @description An organism as the NCBI Taxonomy ID and the name.
@@ -748,7 +778,7 @@ export interface components {
             composition: components["schemas"]["Composition"][];
         };
         /** @enum {string} */
-        ProjectSort: "biosampleCount:desc" | "experimentCount:desc" | "identifier:asc";
+        ProjectSort: "biosampleCount:desc" | "biosampleCount:asc" | "experimentCount:desc" | "experimentCount:asc" | "identifier:asc" | "identifier:desc";
         /** ProjectsResponse */
         ProjectsResponse: {
             datasetVersion: components["schemas"]["DatasetVersionRef"];
@@ -1108,6 +1138,57 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["SelectRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConditionResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    setKeyword: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KeywordRequest"];
             };
         };
         responses: {

@@ -39,5 +39,5 @@ export type ProjectSort = Schemas["ProjectSort"]
 export type AstNode =
   | { op: "AND" | "OR" | "NOT"; rules: AstNode[] }
   | { op: "free_text"; value: string; is_phrase?: boolean }
-  | { field: string; op: "eq" | "contains"; value: string }
+  | { field: string; op: "eq"; value: string }
   | { field: string; op: "between"; from: string; to: string }

@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test"
 
 import { type Crosstab,crosstab, dataset, distribution, select, terms } from "./_api"
-import { axisHeader, cell, cellButton, expectChosen, expectParam, expectQ, formatCount, qOf, termPicker, viewTabs, workspaceUrl } from "./_helpers"
+import { axisHeader, cell, cellButton, expectChosen, expectParam, expectQ, formatCount, pageRangeText, qOf, termPicker, viewTabs, workspaceUrl } from "./_helpers"
 
 /** The first cell of the cross-tabulation with the given sign of count, with its row and column elements. */
 const findCell = (data: Crosstab, populated: boolean) => {
@@ -28,7 +28,7 @@ test.describe("heatmap", () => {
     await expectQ(page, narrowed)
     await expectParam(page, "tab", null)
     await expect(viewTabs(page).getByRole("link", { name: "Samples" })).toHaveAttribute("aria-current", "page")
-    await expect(page.getByRole("main")).toContainText(`${formatCount(target.count)} BioSamples match`)
+    await expect(page.getByRole("main")).toContainText(pageRangeText(target.count))
     await page.goBack()
     await expectQ(page, q)
     await expectParam(page, "tab", "heatmap")

@@ -1,7 +1,7 @@
 import { fc, test } from "@fast-check/vitest"
 import { describe, expect } from "vitest"
 
-import { DEFAULTS, readState, TABS, type WorkspaceState, writeState } from "~/lib/workspace-state"
+import { DEFAULTS, PROJECT_SORTS, readState, TABS, type WorkspaceState, writeState } from "~/lib/workspace-state"
 
 const term = fc.stringMatching(/^[A-Z]{2,5}:[0-9]{3,7}$/)
 const state: fc.Arbitrary<WorkspaceState> = fc.record({
@@ -11,6 +11,7 @@ const state: fc.Arbitrary<WorkspaceState> = fc.record({
   selfExclusion: fc.boolean(),
   rows: fc.constantFrom("biosample", "sra-experiment"),
   page: fc.integer({ min: 1, max: 9999 }),
+  sort: fc.constantFrom(...PROJECT_SORTS),
   row: fc.constantFrom("cell_line", "disease", "library_strategy"),
   col: fc.constantFrom("tissue", "drug", "date_created"),
   rowTerms: fc.option(fc.uniqueArray(term, { minLength: 1, maxLength: 5 }), { nil: null }),
@@ -36,11 +37,15 @@ describe("workspace state in the URL", () => {
     }
   })
 
-  test.prop({ tab: fc.string(), unit: fc.string(), page: fc.string() })("falls back to defaults for unknown values", ({ tab, unit, page }) => {
-    const params = new URLSearchParams({ tab, unit, page })
-    const parsed = readState(params)
-    expect(TABS).toContain(parsed.tab)
-    expect(["biosample", "sra-experiment", "bioproject"]).toContain(parsed.unit)
-    expect(parsed.page).toBeGreaterThanOrEqual(1)
-  })
+  test.prop({ tab: fc.string(), unit: fc.string(), page: fc.string(), sort: fc.string() })(
+    "falls back to defaults for unknown values",
+    ({ tab, unit, page, sort }) => {
+      const params = new URLSearchParams({ tab, unit, page, sort })
+      const parsed = readState(params)
+      expect(TABS).toContain(parsed.tab)
+      expect(["biosample", "sra-experiment", "bioproject"]).toContain(parsed.unit)
+      expect(parsed.page).toBeGreaterThanOrEqual(1)
+      expect(PROJECT_SORTS).toContain(parsed.sort)
+    },
+  )
 })

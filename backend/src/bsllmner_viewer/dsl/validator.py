@@ -8,6 +8,7 @@ import re
 from bsllmner_viewer.dsl.ast import BoolOp, FieldClause, FreeText, Node, Range
 from bsllmner_viewer.dsl.errors import DslError, ErrorType
 from bsllmner_viewer.dsl.fields import FieldDef, FieldSet, Operator, expand_status
+from bsllmner_viewer.dsl.keyword import word_matches
 
 MAX_DEPTH = 5
 MAX_NODES = 512
@@ -59,7 +60,7 @@ def _operator_for(field: FieldDef, clause: FieldClause) -> Operator | None:
         return None
     if kind not in ("word", "phrase"):
         return None
-    return "contains" if field.kind in ("value", "title") else "eq"
+    return "eq"
 
 
 def _count(node: Node) -> int:
@@ -84,12 +85,14 @@ def _check_depth(node: Node, current: int, max_depth: int) -> None:
 
 def _check_nodes(node: Node, fields: FieldSet) -> None:
     if isinstance(node, FreeText):
-        raise DslError(
-            type=ErrorType.free_text_not_supported,
-            detail=f"free text is not supported; use field:value at column {node.position.column}",
-            column=node.position.column,
-            length=node.position.length,
-        )
+        if not word_matches(node):
+            raise DslError(
+                type=ErrorType.invalid_value,
+                detail=f"a keyword needs a letter or a digit at column {node.position.column}",
+                column=node.position.column,
+                length=node.position.length,
+            )
+        return
     if isinstance(node, BoolOp):
         for child in node.children:
             _check_nodes(child, fields)

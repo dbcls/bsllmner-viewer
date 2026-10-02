@@ -13,7 +13,6 @@ class ErrorType(StrEnum):
     invalid_value = "invalid-value"
     nest_depth_exceeded = "nest-depth-exceeded"
     missing_value = "missing-value"
-    free_text_not_supported = "free-text-not-supported"
     invalid_ast = "invalid-ast"
 
 

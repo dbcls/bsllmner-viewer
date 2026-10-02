@@ -1,7 +1,7 @@
 import { type APIRequestContext,expect, test } from "@playwright/test"
 
 import { countOf, dataset, distribution, entries, entry, select, terms } from "./_api"
-import { conditionPanel, conditionRegion, expectChosen, expectParam, expectQ, fieldLabel, formatCount, qOf, viewTabs, workspaceUrl } from "./_helpers"
+import { conditionPanel, conditionRegion, expectChosen, expectParam, expectQ, fieldLabel, formatCount, pageRangeText, qOf, TABLE_PER_PAGE, viewTabs, workspaceUrl } from "./_helpers"
 
 /** The condition of the most frequent disease, with the term it names. */
 const topDiseaseCondition = async (request: APIRequestContext) => {
@@ -60,13 +60,13 @@ test.describe("workspace navigation", () => {
   test("a URL restores the entry type and the page of the entry list", async ({ page, request }) => {
     const { q } = await topDiseaseCondition(request)
     const total = (await entries(request, "sra-experiment", q, 1)).pagination.total
-    const pages = Math.ceil(total / 25)
+    const pages = Math.ceil(total / TABLE_PER_PAGE)
     expect(pages, "pages of the experiment list").toBeGreaterThanOrEqual(3)
     await page.goto(workspaceUrl({ q, rows: "sra-experiment", page: "2" }))
     await expect(page.getByRole("radio", { name: "SRA Experiments" })).toHaveAttribute("aria-checked", "true")
     await expect(page.getByRole("main").getByRole("columnheader", { name: "SRA Experiment", exact: true })).toBeVisible()
-    await expect(page.getByRole("main")).toContainText(`Page 2 of ${formatCount(pages)}`)
-    await page.getByRole("button", { name: "Next page" }).click()
+    await expect(page.getByRole("main")).toContainText(pageRangeText(total, 2))
+    await page.getByRole("button", { name: "Next page" }).first().click()
     await expectParam(page, "page", "3")
     await page.getByRole("radio", { name: "BioSamples" }).click()
     await expectParam(page, "rows", null)

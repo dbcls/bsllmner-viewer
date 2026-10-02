@@ -10,7 +10,11 @@ type SegmentedProps<T extends string> = {
   size?: "sm" | "md"
 }
 
-/** A joined group of exclusive choices; the active one is filled with the brand color. */
+/**
+ * A joined group of exclusive choices; the active one is filled with the brand color. Both sizes are 28px high, border
+ * included, as `Button` `sm` and `Select` `sm`, and differ in the size of the text. Each label is trimmed to the height of
+ * its capitals so the capitals sit in the middle.
+ */
 export const Segmented = <T extends string>({ ariaLabel, options, value, onChange, size = "sm" }: SegmentedProps<T>) => (
   <span
     role="radiogroup"
@@ -27,12 +31,12 @@ export const Segmented = <T extends string>({ ariaLabel, options, value, onChang
           aria-checked={active}
           onClick={() => onChange(option.value)}
           className={cn(
-            "cursor-pointer font-medium leading-none",
-            size === "sm" ? "px-2.5 py-1.5 text-fs-label" : "px-2.5 py-1.5 text-fs-body-sm",
+            "inline-flex h-6.5 cursor-pointer items-center px-2.5 font-medium leading-none",
+            size === "sm" ? "text-fs-label" : "text-fs-body-sm",
             active ? "bg-brand text-white" : "bg-surface text-ink-mid hover:bg-surface-subtle",
           )}
         >
-          {option.label}
+          <span className="text-trim-cap">{option.label}</span>
         </button>
       )
     })}
