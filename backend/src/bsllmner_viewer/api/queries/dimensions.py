@@ -1,4 +1,4 @@
-"""Aggregation dimensions: which records belong to which element, and the clause each element stands for."""
+"""Aggregation dimensions: which BioSamples belong to which element, and the clause each element stands for."""
 
 from __future__ import annotations
 

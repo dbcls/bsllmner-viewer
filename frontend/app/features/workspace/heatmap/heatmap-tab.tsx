@@ -60,7 +60,7 @@ export const HeatmapTab = ({ state, condition, update, onOpenPicker, onAxisEleme
   const unit = unitLabel(state.unit)
   const excluded = data !== undefined && data.populationQ !== data.q
 
-  /** Open the record list narrowed to a cell: the population of the table plus the cell's row and column clauses. */
+  /** Open the entry list narrowed to a cell: the population of the table plus the cell's row and column clauses. */
   const openCell = async (clauses: Clause[]) => {
     if (!data) return
     const q = await condition.narrowed(data.populationQ, clauses)
@@ -417,7 +417,7 @@ export const HeatmapTab = ({ state, condition, update, onOpenPicker, onAxisEleme
         </div>
         <CardFooter>
           <span className="text-fs-micro">
-            A cell opens its records in Samples. Rows and columns overlap (multi-valued fields, child terms), so marginal totals are not sums
+            A cell opens its entries in Samples. Rows and columns overlap (multi-valued fields, child terms), so marginal totals are not sums
             of the cells and may exceed the overall total. Cells with an expected count below 5 are not classified. r is the adjusted
             standardized residual.
           </span>

@@ -11,7 +11,18 @@ import type { ReactNode } from "react"
 
 import { cn } from "./cn"
 
-export type IconName = "search" | "close" | "chevron-right" | "chevron-down" | "external" | "github" | "braces"
+export type IconName =
+  | "search"
+  | "close"
+  | "chevron-right"
+  | "chevron-down"
+  | "external"
+  | "github"
+  | "braces"
+  | "copy"
+  | "check"
+  | "download"
+  | "app-window"
 
 const NODES: Record<IconName, ReactNode> = {
   "search": (
@@ -48,6 +59,28 @@ const NODES: Record<IconName, ReactNode> = {
       <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
     </>
   ),
+  "copy": (
+    <>
+      <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
+      <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+    </>
+  ),
+  "check": <path d="M20 6 9 17l-5-5" />,
+  "download": (
+    <>
+      <path d="M12 15V3" />
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+      <path d="m7 10 5 5 5-5" />
+    </>
+  ),
+  "app-window": (
+    <>
+      <rect width="20" height="16" x="2" y="4" rx="2" />
+      <path d="M6 8h.01" />
+      <path d="M10 8h.01" />
+      <path d="M14 8h.01" />
+    </>
+  ),
 }
 
 export const ICON_NAMES = Object.keys(NODES) as IconName[]
@@ -61,6 +94,10 @@ export const ACTION_ICON = {
   openInNewTab: "external",
   openRepository: "github",
   openApiDocs: "braces",
+  copy: "copy",
+  copied: "check",
+  download: "download",
+  openDialog: "app-window",
 } as const satisfies Record<string, IconName>
 
 type IconProps = {

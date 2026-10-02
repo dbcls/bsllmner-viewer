@@ -1,6 +1,11 @@
 import { expect, type Locator, type Page } from "@playwright/test"
 
-const POLL = { timeout: 10_000 }
+const POLL = { timeout: 15_000 }
+
+/** A count as the UI writes it. */
+export const formatCount = (value: number): string => value.toLocaleString("en-US")
+
+export const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 
 export const paramOf = (page: Page, name: string): string | null => new URL(page.url()).searchParams.get(name)
 
@@ -23,6 +28,11 @@ export const workspaceUrl = (params: Record<string, string>): string => {
 
 export const conditionRegion = (page: Page): Locator => page.getByRole("region", { name: "Condition" })
 
+/** Waits until the condition bar has its counts, which means that the page is interactive. */
+export const expectCounted = async (page: Page): Promise<void> => {
+  await expect(conditionRegion(page)).toContainText(/\d+\s+BioSamples/)
+}
+
 export const conditionPanel = (page: Page): Locator => page.getByRole("complementary")
 
 export const termPicker = (page: Page): Locator => page.getByRole("dialog", { name: "Choose a term" })
@@ -38,7 +48,11 @@ export const bar = (page: Page, label: string): Locator =>
   page.getByRole("main").getByRole("button").filter({ has: page.getByText(label, { exact: true }) })
 
 /** A cell of the heatmap, found by its row and column labels. */
-export const cell = (page: Page, row: string, col: string): Locator => page.getByTitle(new RegExp(`^${row} × ${col}:`))
+export const cell = (page: Page, row: string, col: string): Locator => page.getByTitle(new RegExp(`^${escapeRegExp(row)} × ${escapeRegExp(col)}:`))
+
+/** The button of a populated heatmap cell. */
+export const cellButton = (page: Page, row: string, col: string): Locator =>
+  page.getByRole("button", { name: new RegExp(`^${escapeRegExp(row)} × ${escapeRegExp(col)}:`) })
 
 /** The header row of one axis card of the heatmap. */
 export const axisHeader = (page: Page, side: "Row" | "Column"): Locator =>
@@ -54,3 +68,29 @@ export const choose = async (combobox: Locator, label: string): Promise<void> =>
   await combobox.click()
   await combobox.page().getByRole("listbox").getByRole("option", { name: label, exact: true }).click()
 }
+
+const STATUS_LABELS: Record<string, string> = {
+  mapped: "Mapped",
+  unmapped: "Unmapped",
+  no_value: "No value",
+  mapped_exact: "Exact match",
+  mapped_selected: "LLM selected",
+  unmapped_no_candidate: "No candidate",
+  unmapped_rejected: "Rejected",
+  not_stated: "Not stated",
+  extraction_failed: "Extraction failed",
+}
+
+/** The label that the UI shows for a status or a status group of the api. */
+export const statusLabel = (value: string): string => STATUS_LABELS[value] ?? value
+
+const FIELD_LABELS: Record<string, string> = {
+  library_strategy: "Assay",
+  organism_id: "Organism",
+  date_created: "Year",
+  chip_antigen: "ChIP antigen",
+}
+
+/** The label that the UI shows for a field of the api. */
+export const fieldLabel = (field: string): string =>
+  FIELD_LABELS[field] ?? field.replaceAll("_", " ").replace(/^./, (c) => c.toUpperCase())

@@ -59,7 +59,7 @@ def serialize_dsl(store: StoreDep, body: SerializeRequest) -> ConditionResponse:
         "In `toggle` mode, adds each clause to the condition: joined with OR into the top-level clause group of the "
         "same field when one exists, otherwise as a new AND conjunct. When every clause is already present, the "
         "clauses are removed instead. In `narrow` mode, adds each clause as a new AND conjunct; with the population "
-        "of an aggregation as `q`, the result matches the records counted by the element."
+        "of an aggregation as `q`, the result matches the BioSamples or experiments counted by the element."
     ),
 )
 def select_dsl(store: StoreDep, body: SelectRequest) -> ConditionResponse:

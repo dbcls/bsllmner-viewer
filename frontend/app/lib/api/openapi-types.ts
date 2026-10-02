@@ -66,7 +66,7 @@ export interface paths {
         put?: never;
         /**
          * Apply the clauses of an aggregation element to a condition
-         * @description In `toggle` mode, adds each clause to the condition: joined with OR into the top-level clause group of the same field when one exists, otherwise as a new AND conjunct. When every clause is already present, the clauses are removed instead. In `narrow` mode, adds each clause as a new AND conjunct; with the population of an aggregation as `q`, the result matches the records counted by the element.
+         * @description In `toggle` mode, adds each clause to the condition: joined with OR into the top-level clause group of the same field when one exists, otherwise as a new AND conjunct. When every clause is already present, the clauses are removed instead. In `narrow` mode, adds each clause as a new AND conjunct; with the population of an aggregation as `q`, the result matches the BioSamples or experiments counted by the element.
          */
         post: operations["selectElement"];
         delete?: never;
@@ -82,7 +82,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Matching records as BioSample or experiment entries */
+        /** BioSample or SRA experiment entries that match the condition */
         get: operations["listEntries"];
         put?: never;
         post?: never;
@@ -173,7 +173,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** BioProjects of the matching records */
+        /** BioProjects of the matching BioSamples */
         get: operations["listProjects"];
         put?: never;
         post?: never;
@@ -227,7 +227,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Accession list of the matching records, one per line */
+        /** Accession list of the matching entries, one per line */
         get: operations["exportAccessions"];
         put?: never;
         post?: never;
@@ -568,7 +568,7 @@ export interface components {
             biosample: string;
             /**
              * Experiments
-             * @description Experiments of the BioSample in the matching records
+             * @description Experiments of the BioSample that match the condition
              */
             experiments: string[];
             /** Title */
@@ -886,8 +886,6 @@ export interface components {
             experiment: number;
             /** Bioproject */
             bioproject: number;
-            /** Record */
-            record: number;
         };
         /** TrendPoint */
         TrendPoint: {

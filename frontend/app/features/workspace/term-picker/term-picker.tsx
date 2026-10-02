@@ -5,7 +5,7 @@ import type { Clause, TermHit, Unit } from "~/lib/api/types"
 import { formatCount } from "~/lib/format"
 import { fieldLabel, unitLabel } from "~/lib/labels"
 import { termDetail } from "~/lib/terms"
-import { ACTION_ICON, LinkButton, Modal, Select, TermRow, TextInput } from "~/ui"
+import { ACTION_ICON, Modal, Select, TermRow, TextInput } from "~/ui"
 
 export type PickerMode = "condition" | "row" | "col"
 
@@ -52,8 +52,8 @@ export const TermPicker = ({ request, onClose, fields, dimensions, q, unit, self
       ? [{ value: ALL_FIELDS, label: "All fields" }, ...fields.map((f) => ({ value: f, label: fieldLabel(f) }))]
       : dimensions
   return (
-    <Modal open={request !== null} onClose={onClose} label="Choose a term">
-      <div className="flex items-center gap-2 border-b border-border-soft px-3.5 py-3">
+    <Modal open={request !== null} onClose={onClose} title="Choose a term">
+      <div className="flex items-center gap-2 border-b border-border-soft px-6 pb-3">
         <Select
           options={options}
           value={field}
@@ -106,12 +106,9 @@ export const TermPicker = ({ request, onClose, fields, dimensions, q, unit, self
           </div>
         )}
       </div>
-      <div className="flex justify-between border-t border-border-soft px-3.5 py-2 text-fs-micro text-ink-soft">
-        <span>
-          {unit !== "biosample" && `Counts are ${unitLabel(unit)}. `}Each count excludes the condition on the term's own field. A term
-          condition also matches its descendant terms.
-        </span>
-        <LinkButton onClick={onClose}>Close (Esc)</LinkButton>
+      <div className="border-t border-border-soft px-6 py-2 text-fs-micro text-ink-soft">
+        {unit !== "biosample" && `Counts are ${unitLabel(unit)}. `}Each count excludes the condition on the term's own field. A term
+        condition also matches its descendant terms.
       </div>
     </Modal>
   )

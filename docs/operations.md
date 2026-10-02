@@ -86,7 +86,7 @@ The api opens the store named by `BSLLMNER_VIEWER_STORE` when it starts and keep
 
 A store file that is being served is never modified. Old files can be deleted once no api process refers to them.
 
-A store records the version of the store schema that it was written with, and the api starts only with a store of the schema version that its own code reads. If an update of the code changes the schema, then write a new store with `refresh` before you restart the api.
+A store holds the version of the store schema that it was written with, and the api starts only with a store of the schema version that its own code reads. If an update of the code changes the schema, then write a new store with `refresh` before you restart the api.
 
 ## Deployment
 
@@ -112,7 +112,7 @@ podman-compose -p bsllmner-viewer up -d
 | `BSLLMNER_VIEWER_API_WORKERS` | uvicorn worker processes (default 2); each opens the store |
 | `BSLLMNER_VIEWER_THREADS` | DuckDB threads per worker (default 8) |
 | `BSLLMNER_VIEWER_NOINDEX` | `true` for a deployment that search engines must not index, such as a staging deployment (default `false`) |
-| `BSLLMNER_VIEWER_COMMIT` | Commit that the images record. The footer of the frontend and the version in `/api/service-info` show it. Only the build reads it, so give it on the command that builds the images, not in `deploy/.env`. If it is not set, then no commit is shown |
+| `BSLLMNER_VIEWER_COMMIT` | Commit that the images carry. The footer of the frontend and the version in `/api/service-info` show it. Only the build reads it, so give it on the command that builds the images, not in `deploy/.env`. If it is not set, then no commit is shown |
 
 ### Health
 

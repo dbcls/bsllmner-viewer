@@ -1,26 +1,39 @@
-import { expect, test } from "@playwright/test"
+import { type APIRequestContext,expect, test } from "@playwright/test"
 
-import { conditionPanel, conditionRegion, expectChosen, expectParam, expectQ, qOf, viewTabs, workspaceUrl } from "./helpers"
+import { countOf, dataset, distribution, entries, entry, select, terms } from "./_api"
+import { conditionPanel, conditionRegion, expectChosen, expectParam, expectQ, fieldLabel, formatCount, qOf, viewTabs, workspaceUrl } from "./_helpers"
 
-const BREAST_CANCER = "MONDO:0007254"
+/** The condition of the most frequent disease, with the term it names. */
+const topDiseaseCondition = async (request: APIRequestContext) => {
+  const [term] = (await distribution(request, "disease")).elements
+  if (!term) throw new Error("the dataset has no disease")
+  return { term, q: await select(request, null, term.clauses) }
+}
+
+const tabLabel = (tab: string | null): string => {
+  const name = tab ?? "samples"
+  return name.charAt(0).toUpperCase() + name.slice(1)
+}
 
 test.describe("workspace navigation", () => {
-  test("switching tabs keeps the condition and the counting unit", async ({ page }) => {
-    await page.goto(workspaceUrl({ q: `disease:"${BREAST_CANCER}"`, tab: "distribution", unit: "bioproject" }))
+  test("switching tabs keeps the condition and the counting unit", async ({ page, request }) => {
+    const { term, q } = await topDiseaseCondition(request)
+    await page.goto(workspaceUrl({ q, tab: "distribution", unit: "bioproject" }))
     await viewTabs(page).getByRole("link", { name: "Heatmap" }).click()
     await expectParam(page, "tab", "heatmap")
-    await expectQ(page, `disease:"${BREAST_CANCER}"`)
+    await expectQ(page, q)
     await expectParam(page, "unit", "bioproject")
     await expect(viewTabs(page).getByRole("link", { name: "Heatmap" })).toHaveAttribute("aria-current", "page")
     await expect(page.getByRole("radio", { name: "BioProjects" })).toHaveAttribute("aria-checked", "true")
     await viewTabs(page).getByRole("link", { name: "Samples" }).click()
     await expectParam(page, "tab", null)
-    await expectQ(page, `disease:"${BREAST_CANCER}"`)
-    await expect(conditionRegion(page).getByTitle(BREAST_CANCER)).toContainText("breast cancer")
+    await expectQ(page, q)
+    await expect(conditionRegion(page).getByTitle(term.value)).toContainText(term.label)
   })
 
-  test("choosing Experiments writes the api value of the counting unit to the URL", async ({ page }) => {
-    await page.goto(workspaceUrl({ tab: "distribution" }))
+  test("choosing Experiments writes the api value of the counting unit to the URL", async ({ page, request }) => {
+    const { q } = await topDiseaseCondition(request)
+    await page.goto(workspaceUrl({ tab: "distribution", q }))
     await page.getByRole("radio", { name: "SRA Experiments" }).click()
     await expectParam(page, "unit", "sra-experiment")
   })
@@ -30,23 +43,29 @@ test.describe("workspace navigation", () => {
     await expect(page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: /^API/ })).toHaveAttribute("href", "/api")
   })
 
-  test("a URL restores the condition, the unit, self-exclusion, and the status expansion", async ({ page }) => {
-    await page.goto(
-      workspaceUrl({ q: `disease:"${BREAST_CANCER}" AND library_strategy:ATAC-seq`, tab: "distribution", unit: "bioproject", se: "0", states: "6" }),
-    )
-    await expect(conditionRegion(page).getByTitle(BREAST_CANCER)).toContainText("breast cancer")
-    await expect(conditionPanel(page).getByRole("checkbox", { name: /ATAC-seq/ })).toBeChecked()
+  test("a URL restores the condition, the unit, self-exclusion, and the status expansion", async ({ page, request }) => {
+    const { term, q: termQ } = await topDiseaseCondition(request)
+    const assay = (await dataset(request)).targetAssays[0]
+    if (!assay) throw new Error("the dataset has no target assay")
+    const q = await select(request, termQ, [{ field: "library_strategy", value: assay }])
+    await page.goto(workspaceUrl({ q, tab: "distribution", unit: "bioproject", se: "0", states: "6" }))
+    await expect(conditionRegion(page).getByTitle(term.value)).toContainText(term.label)
+    await expect(conditionPanel(page).getByRole("checkbox", { name: new RegExp(assay) })).toBeChecked()
     await expect(viewTabs(page).getByRole("link", { name: "Distribution" })).toHaveAttribute("aria-current", "page")
     await expect(page.getByRole("radio", { name: "BioProjects" })).toHaveAttribute("aria-checked", "true")
     await expect(page.getByRole("switch")).not.toBeChecked()
     await expect(page.getByRole("main").getByRole("button", { name: "3 groups" }).first()).toBeVisible()
   })
 
-  test("a URL restores the record unit and the page of the record list", async ({ page }) => {
-    await page.goto(workspaceUrl({ rows: "sra-experiment", page: "2" }))
+  test("a URL restores the entry type and the page of the entry list", async ({ page, request }) => {
+    const { q } = await topDiseaseCondition(request)
+    const total = (await entries(request, "sra-experiment", q, 1)).pagination.total
+    const pages = Math.ceil(total / 25)
+    expect(pages, "pages of the experiment list").toBeGreaterThanOrEqual(3)
+    await page.goto(workspaceUrl({ q, rows: "sra-experiment", page: "2" }))
     await expect(page.getByRole("radio", { name: "SRA Experiments" })).toHaveAttribute("aria-checked", "true")
     await expect(page.getByRole("main").getByRole("columnheader", { name: "SRA Experiment", exact: true })).toBeVisible()
-    await expect(page.getByRole("main")).toContainText("Page 2 of")
+    await expect(page.getByRole("main")).toContainText(`Page 2 of ${formatCount(pages)}`)
     await page.getByRole("button", { name: "Next page" }).click()
     await expectParam(page, "page", "3")
     await page.getByRole("radio", { name: "BioSamples" }).click()
@@ -54,84 +73,111 @@ test.describe("workspace navigation", () => {
     await expectParam(page, "page", null)
   })
 
-  test("a row of the record list opens the sample and the back link returns to the same state", async ({ page }) => {
-    await page.goto(workspaceUrl({ q: `disease:"${BREAST_CANCER}"`, unit: "bioproject" }))
-    const first = page.getByRole("main").locator("tbody tr").first()
-    const accession = (await first.locator("td").first().innerText()).trim()
-    await first.click()
-    await expect(page).toHaveURL(new RegExp(`/entries/${accession}\\?from=`))
-    await expect(page.getByText(accession, { exact: true }).first()).toBeVisible()
+  test("a row of the entry list opens the sample and the back link returns to the same state", async ({ page, request }) => {
+    const { q } = await topDiseaseCondition(request)
+    const [first] = (await entries(request, "biosample", q)).items
+    if (!first) throw new Error("the condition matches no BioSample")
+    const detail = await entry(request, first.identifier)
+    await page.goto(workspaceUrl({ q, unit: "bioproject" }))
+    const row = page.getByRole("main").locator("tbody tr").first()
+    await expect(row.locator("td").first()).toHaveText(first.identifier)
+    await row.click()
+    await expect(page).toHaveURL(new RegExp(`/entries/${first.identifier}\\?from=`))
+    await expect(page.getByText(first.identifier, { exact: true }).first()).toBeVisible()
+    if (detail.title) await expect(page.getByText(detail.title, { exact: true }).first()).toBeVisible()
     await expect(page.getByText("Original attributes")).toBeVisible()
     await expect(page.getByText("Annotations", { exact: true })).toBeVisible()
+    if (detail.annotations.some((annotation) => annotation.evidence.length > 0)) await expect(page.locator("mark").first()).toBeVisible()
     await page.getByRole("link", { name: "Back to results" }).click()
     await expect(page).toHaveURL((url) => url.pathname === "/entries")
-    await expectQ(page, `disease:"${BREAST_CANCER}"`)
+    await expectQ(page, q)
     await expectParam(page, "unit", "bioproject")
   })
 
-  test("a term on the sample page searches for the samples annotated with it", async ({ page }) => {
-    await page.goto(workspaceUrl({ q: `disease:"${BREAST_CANCER}"` }))
-    await page.getByRole("main").locator("tbody tr").first().click()
-    await expect(page).toHaveURL(/\/entries\/[A-Z]+\d+\?from=/)
-    // The sample matched the condition by breast cancer or one of its descendants; its own term is linked.
-    const link = page.locator("a[href^='/entries?q=disease']").filter({ hasNotText: "Back to results" }).first()
-    const label = (await link.innerText()).trim()
-    const q = new URL(await link.evaluate((a: HTMLAnchorElement) => a.href)).searchParams.get("q")
-    expect(q).toMatch(/^disease:"MONDO:\d+"$/)
+  test("a term on the sample page searches for the samples annotated with it", async ({ page, request }) => {
+    const { q } = await topDiseaseCondition(request)
+    const [first] = (await entries(request, "biosample", q)).items
+    if (!first) throw new Error("the condition matches no BioSample")
+    const annotated = (await entry(request, first.identifier)).annotations.find((annotation) => annotation.termId)
+    if (!annotated?.termId) throw new Error("the sample has no annotated term")
+    const expected = `${annotated.field}:"${annotated.termId}"`
+    await page.goto(`/entries/${first.identifier}`)
+    const link = page.locator(`a[href="/entries?${new URLSearchParams({ q: expected }).toString()}"]`).first()
     await link.click()
     await expect(page).toHaveURL((url) => url.pathname === "/entries")
-    expect(qOf(page)).toBe(q)
-    await expect(conditionRegion(page)).toContainText(label)
+    expect(qOf(page)).toBe(expected)
+    await expect(conditionRegion(page).getByTitle(annotated.termId)).toContainText(annotated.label ?? annotated.termId)
   })
 
-  test("a question on the landing page opens the workspace with its condition and view", async ({ page }) => {
+  test("a question on the landing page opens the workspace with its condition and view", async ({ page, request }) => {
     await page.goto("/")
-    await page.getByRole("link", { name: /ATAC-seq data for breast cancer/ }).click()
-    await expectQ(page, `disease:"${BREAST_CANCER}" AND library_strategy:ATAC-seq`)
-    await expectParam(page, "tab", "projects")
-    await expectParam(page, "unit", "bioproject")
-    await expect(viewTabs(page).getByRole("link", { name: "Projects" })).toHaveAttribute("aria-current", "page")
-    await expect(page.getByRole("main").locator("tbody tr").first()).toBeVisible()
+    const link = page.locator("a[href^='/entries?']").first()
+    const href = await link.getAttribute("href")
+    const expected = new URL(href ?? "", page.url()).searchParams
+    const q = expected.get("q")
+    if (!q) throw new Error("the first example has no condition")
+    await link.click()
+    await expectQ(page, q)
+    await expectParam(page, "tab", expected.get("tab"))
+    await expectParam(page, "unit", expected.get("unit"))
+    await expect(viewTabs(page).getByRole("link", { name: tabLabel(expected.get("tab")) })).toHaveAttribute("aria-current", "page")
+    await expect(conditionRegion(page)).toContainText(new RegExp(`${formatCount(await countOf(request, q))}\\s+BioSamples`))
   })
 
-  test("the landing search finds a term in every field and opens the workspace with it", async ({ page }) => {
+  test("the landing search finds a term in every field and opens the workspace with it", async ({ page, request }) => {
+    const [cellLine] = (await distribution(request, "cell_line")).elements
+    if (!cellLine) throw new Error("the dataset has no cell line")
+    const q = await select(request, null, cellLine.clauses)
     await page.goto("/")
-    await page.getByRole("textbox", { name: /Search terms/ }).fill("K562")
-    const hit = page.getByRole("button").filter({ hasText: "CVCL:0004" })
-    await expect(hit).toContainText("Cell line")
-    await expect(hit).toContainText("K-562")
+    await page.getByRole("textbox", { name: /Search terms/ }).fill(cellLine.label)
+    const hit = page.getByRole("button").filter({ hasText: cellLine.value })
+    await expect(hit).toContainText(fieldLabel("cell_line"))
+    await expect(hit).toContainText(cellLine.label)
     await hit.click()
     await expect(page).toHaveURL((url) => url.pathname === "/entries")
-    await expectQ(page, 'cell_line:"CVCL:0004"')
-    await expect(conditionRegion(page).getByTitle("CVCL:0004")).toContainText("K-562")
+    await expectQ(page, q)
+    await expect(conditionRegion(page).getByTitle(cellLine.value)).toContainText(cellLine.label)
   })
 
-  test("a field on the landing page lists the terms of that field", async ({ page }) => {
+  test("a field on the landing page lists the terms of that field", async ({ page, request }) => {
+    const [field] = (await dataset(request)).fields
+    if (!field) throw new Error("the dataset has no annotation field")
+    const label = fieldLabel(field.name)
+    const [top] = await terms(request, field.name, "")
+    if (!top) throw new Error(`the field ${field.name} has no term`)
     await page.goto("/")
-    await page.getByRole("button", { name: "Browse Tissue terms" }).click()
-    await expectChosen(page.getByRole("combobox", { name: "Field" }), "Tissue")
-    const hit = page.getByRole("button").filter({ hasText: "UBERON:0002107" })
-    await expect(hit).toContainText("liver")
+    await page.getByRole("button", { name: `Browse ${label} terms` }).click()
+    await expectChosen(page.getByRole("combobox", { name: "Field" }), label)
+    await expect(page.getByRole("button").filter({ hasText: top.termId })).toContainText(top.label ?? top.termId)
     await page.getByRole("button", { name: "Clear search" }).click()
     await expectChosen(page.getByRole("combobox", { name: "Field" }), "All fields")
-    await expect(page.getByRole("button", { name: "Browse Tissue terms" })).toBeVisible()
+    await expect(page.getByRole("button", { name: `Browse ${label} terms` })).toBeVisible()
   })
 
-  test("a bar of the landing statistics opens the workspace with its clause", async ({ page }) => {
+  test("a bar of the landing statistics opens the workspace with its clause", async ({ page, request }) => {
+    const [top] = (await distribution(request, "library_strategy", { limit: 3 })).elements
+    if (!top) throw new Error("the dataset has no assay")
+    const q = await select(request, null, top.clauses)
     await page.goto("/")
-    await page.getByRole("button").filter({ hasText: "ATAC-seq" }).click()
+    const bar = page.getByRole("button").filter({ hasText: top.label })
+    await expect(bar).toContainText(formatCount(top.count))
+    await bar.click()
     await expect(page).toHaveURL((url) => url.pathname === "/entries")
-    await expectQ(page, "library_strategy:ATAC-seq")
+    await expectQ(page, q)
   })
 
   test("an example heatmap on the landing page opens the heatmap with its axes", async ({ page }) => {
     await page.goto("/")
-    await page.getByRole("link", { name: "Disease × Tissue" }).click()
+    const link = page.locator("a[href*='tab=heatmap']").first()
+    const expected = new URL((await link.getAttribute("href")) ?? "", page.url()).searchParams
+    const [row, col] = [expected.get("row"), expected.get("col")]
+    if (!row || !col) throw new Error("the first example heatmap has no axes")
+    await link.click()
     await expectParam(page, "tab", "heatmap")
-    await expectParam(page, "row", "disease")
-    await expectParam(page, "col", "tissue")
-    await expectParam(page, "unit", "bioproject")
-    await expectChosen(page.getByRole("combobox", { name: "Row dimension" }), "Disease")
-    await expectChosen(page.getByRole("combobox", { name: "Column dimension" }), "Tissue")
+    await expectParam(page, "row", row)
+    await expectParam(page, "col", col)
+    await expectParam(page, "unit", expected.get("unit"))
+    await expectChosen(page.getByRole("combobox", { name: "Row dimension" }), fieldLabel(row))
+    await expectChosen(page.getByRole("combobox", { name: "Column dimension" }), fieldLabel(col))
   })
 })

@@ -30,3 +30,13 @@ def test_store_refuses_another_schema_version(store_path: Path, tmp_path: Path, 
     con.close()
     with pytest.raises(RuntimeError, match="store schema version"):
         Store(copy)
+
+
+def test_store_refuses_a_store_written_with_schema_version_2(store_path: Path, tmp_path: Path) -> None:
+    copy = tmp_path / "v2.duckdb"
+    shutil.copy(store_path, copy)
+    con = duckdb.connect(str(copy))
+    con.execute("UPDATE store_meta SET value = '2' WHERE key = 'schema_version'")
+    con.close()
+    with pytest.raises(RuntimeError, match="store schema version 2"):
+        Store(copy)

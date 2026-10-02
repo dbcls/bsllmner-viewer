@@ -50,14 +50,18 @@ docker compose run --rm --no-deps frontend npm run gen:api-types   # needs the a
 
 ### End-to-end tests
 
-The end-to-end tests (`tests/e2e/`, Playwright) drive the dev server, which proxies the api. Both must be running, and the api must serve the synthetic store; the tests refuse any other dataset because they assert on its terms and records.
+The end-to-end tests (`tests/e2e/`, Playwright) drive a deployed site with its real dataset. The policy is in [testing.md](testing.md).
 
 ```
-docker compose run --rm --no-deps frontend npm run test:e2e
+docker compose run --rm --no-deps -T \
+  -e BSLLMNER_VIEWER_E2E_BASE_URL=https://example.invalid \
+  -e BSLLMNER_VIEWER_E2E_NOINDEX=true -e BSLLMNER_VIEWER_E2E_COMMIT=<commit> \
+  frontend npm run test:e2e
 ```
 
+- `BSLLMNER_VIEWER_E2E_BASE_URL` is the address of the deployment. The tests stop before the first scenario if it is not set.
+- `BSLLMNER_VIEWER_E2E_NOINDEX` (the deployment's `BSLLMNER_VIEWER_NOINDEX`) and `BSLLMNER_VIEWER_E2E_COMMIT` (the deployed commit) are what the deployment is meant to be. The scenarios that check them skip if they are not set.
 - The frontend image contains Chromium, so no browser is installed on the host.
-- The tests reach the dev server at `http://frontend:5173` on the compose network. `BSLLMNER_VIEWER_E2E_BASE_URL` overrides the address.
 - The report is written to `frontend/playwright-report/` and the traces of failed tests to `frontend/test-results/`.
 
 ## Conventions

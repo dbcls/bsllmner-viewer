@@ -61,7 +61,6 @@ class Totals(ApiModel):
     biosample: int
     experiment: int
     bioproject: int
-    record: int
 
 
 class DatasetResponse(ApiModel):
@@ -243,7 +242,7 @@ class EntryItem(ApiModel):
     identifier: str = Field(description="BioSample accession for `biosample` rows, experiment accession otherwise")
     type: EntryType
     biosample: str
-    experiments: list[str] = Field(description="Experiments of the BioSample in the matching records")
+    experiments: list[str] = Field(description="Experiments of the BioSample that match the condition")
     title: str | None
     organism: Organism | None
     library_strategy: list[str]

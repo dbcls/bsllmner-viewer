@@ -24,7 +24,7 @@ def test_compile_status_group_expands_to_statuses() -> None:
 
 def test_compile_boolean_structure_and_parameter_order() -> None:
     pred = compile_condition(parse("NOT organism_id:9606 AND (library_strategy:a OR title:b)"), FIELDS)
-    assert pred.sql == "(NOT (r.organism_id = ?) AND (r.library_strategy = ? OR r.title_norm LIKE ? ESCAPE '\\'))"
+    assert pred.sql == "(NOT (pn.organism_id = ?) AND (pn.library_strategy = ? OR pn.title_norm LIKE ? ESCAPE '\\'))"
     assert pred.params == [9606, "a", "%b%"]
 
 

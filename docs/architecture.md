@@ -15,7 +15,7 @@ bsllmner-viewer consists of four components: **build** produces a store, the **s
 | build | Validating inputs, ingesting runs and reference data, deriving query-ready data, and verifying the resulting store | Serving data |
 | store | A single DuckDB file representing one version of one dataset | Changing after publication |
 | api | Opening the store read-only, parsing and evaluating the condition DSL, and returning entries, aggregations, and exports | Writing to the store |
-| frontend | Composing conditions and displaying results returned by the api | Counting records or evaluating conditions |
+| frontend | Composing conditions and displaying results returned by the api | Counting matches or evaluating conditions |
 
 ## Repository layout
 
@@ -33,7 +33,7 @@ Input formats and build operations are specified in [build.md](build.md), the me
 
 ### Everything the UI shows is available from the API
 
-The frontend displays what the api returns and does not count records or evaluate conditions itself. Each UI view corresponds to exactly one api query, and every query accepts the same condition DSL. Any result shown in the UI is therefore reproducible by an API client using the same condition.
+The frontend displays what the api returns and does not count matches or evaluate conditions itself. Each UI view corresponds to exactly one api query, and every query accepts the same condition DSL. Any result shown in the UI is therefore reproducible by an API client using the same condition.
 
 The frontend may sort, color, and lay out results, but every count it displays comes from the api.
 

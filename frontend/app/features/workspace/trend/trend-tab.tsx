@@ -48,7 +48,7 @@ export const TrendTab = ({ state, condition, onSplit }: TrendTabProps) => {
   const series = data?.series ?? []
   const max = yMax([...total.map((p) => p.count), ...series.flatMap((s) => s.points.map((p) => p.count))])
   const unit = unitLabel(state.unit)
-  const totalLabel = state.q ? "Condition" : "All records"
+  const totalLabel = state.q ? "Condition" : "All entries"
 
   const yearUnfiltered = data !== undefined && data.totalPopulationQ !== data.q
   const splitUnfiltered = data !== undefined && split !== null && data.populationQ !== data.totalPopulationQ
@@ -64,7 +64,7 @@ export const TrendTab = ({ state, condition, onSplit }: TrendTabProps) => {
   const totalColor = token("--color-brand")
   const seriesLabel = (value: string, label: string): string => (split === "organism_id" ? organismLabel(value, label) : label)
 
-  /** Open the record list narrowed to one element and year: the population of the series plus the point's clauses. */
+  /** Open the entry list narrowed to one element and year: the population of the series plus the point's clauses. */
   const openPoint = async (clauses: Clause[]) => {
     if (!data) return
     const q = await condition.narrowed(data.populationQ, clauses)
@@ -211,7 +211,7 @@ export const TrendTab = ({ state, condition, onSplit }: TrendTabProps) => {
           </div>
         </>
       ) : (
-        data && <div className="py-10 text-center text-fs-body-sm text-ink-soft">No records with a creation year match this condition.</div>
+        data && <div className="py-10 text-center text-fs-body-sm text-ink-soft">No entries with a creation year match this condition.</div>
       )}
     </Card>
   )

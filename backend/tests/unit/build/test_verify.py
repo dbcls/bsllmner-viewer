@@ -13,13 +13,13 @@ def test_verify_accepts_a_built_store(store_con: duckdb.DuckDBPyConnection) -> N
     result = verify(store_con)
     assert result.ok
     assert result.problems == ()
-    assert result.counts["record"] > 0
+    assert result.counts["population"] > 0
 
 
 @pytest.mark.parametrize(
     ("table", "message"),
     [
-        ("record", "the population is empty"),
+        ("population", "the population is empty"),
         ("biosample_bioproject", "no BioSample-BioProject relation"),
         ("sra_run", "no experiment-run relation"),
     ],

@@ -17,13 +17,13 @@ type SamplesTabProps = {
   search: string
 }
 
-/** The record list: one row per BioSample or per experiment, always filtered by the full condition. */
+/** The entry list: one row per BioSample or per SRA experiment, always filtered by the full condition. */
 export const SamplesTab = ({ state, onRows, onPage, search }: SamplesTabProps) => {
   const navigate = useNavigate()
   const dataset = useDataset()
   const fields = dataset.data?.fields.map((f) => f.name) ?? []
-  const records = useEntries({ q: state.q, type: state.rows, page: state.page, perPage: PER_PAGE })
-  const total = records.data?.pagination.total ?? 0
+  const entries = useEntries({ q: state.q, type: state.rows, page: state.page, perPage: PER_PAGE })
+  const total = entries.data?.pagination.total ?? 0
   const pages = Math.max(1, Math.ceil(total / PER_PAGE))
   return (
     <Card padding="none" flush>
@@ -41,7 +41,7 @@ export const SamplesTab = ({ state, onRows, onPage, search }: SamplesTabProps) =
           />
         </span>
         <span>
-          {records.data ? `${formatCount(total)} ${unitLabel(state.rows)} match` : "Counting…"} · always filtered by the full condition
+          {entries.data ? `${formatCount(total)} ${unitLabel(state.rows)} match` : "Counting…"} · always filtered by the full condition
         </span>
       </CardHeader>
       <div className="overflow-auto">
@@ -59,7 +59,7 @@ export const SamplesTab = ({ state, onRows, onPage, search }: SamplesTabProps) =
             </tr>
           </thead>
           <tbody>
-            {(records.data?.items ?? []).map((row) => (
+            {(entries.data?.items ?? []).map((row) => (
               <tr
                 key={`${row.type}/${row.identifier}`}
                 onClick={() => navigate(`/entries/${row.biosample}${search ? `?from=${encodeURIComponent(search)}` : ""}`)}

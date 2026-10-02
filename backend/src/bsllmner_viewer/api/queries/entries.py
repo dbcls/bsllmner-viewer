@@ -1,4 +1,4 @@
-"""Record list and per-BioSample details for a page of results."""
+"""BioSample or experiment entries and per-BioSample details for a page of results."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from bsllmner_viewer.api.queries.core import Population
 from bsllmner_viewer.api.schemas import AnnotationValue, EntryItem, EntryType, Organism
 
 
-def count_records(cur: duckdb.DuckDBPyConnection, pop: Population, unit: EntryType) -> int:
+def count_entries(cur: duckdb.DuckDBPyConnection, pop: Population, unit: EntryType) -> int:
     expr = "count(DISTINCT p.biosample)" if unit == "biosample" else "count(*)"
     row = cur.execute(f"WITH {pop.cte()} SELECT {expr} FROM pop p", list(pop.params)).fetchone()
     return int(row[0]) if row else 0
@@ -35,7 +35,7 @@ def page_keys(
     return [(str(r[0]), str(r[1])) for r in rows]
 
 
-def record_rows(
+def entry_rows(
     cur: duckdb.DuckDBPyConnection, pop: Population, keys: list[tuple[str, str | None]], fields: tuple[str, ...]
 ) -> list[EntryItem]:
     if not keys:

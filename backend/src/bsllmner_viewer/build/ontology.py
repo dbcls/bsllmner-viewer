@@ -1,7 +1,7 @@
 """Readers for ontology files: OBO and OWL (RDF/XML).
 
-Both produce the same records: term ID, label, synonyms, and parent term IDs. Term IDs are normalized
-the way bsllmner-mk2 records them (`MONDO:0007254`, `CVCL:0030`, `NCBIGene:7157`).
+Both produce the same entries: term ID, label, synonyms, and parent term IDs. Term IDs are normalized
+the way bsllmner-mk2 writes them (`MONDO:0007254`, `CVCL:0030`, `NCBIGene:7157`).
 """
 
 from __future__ import annotations

@@ -33,7 +33,7 @@ export const WorkspacePage = () => {
   const [apiOpen, setApiOpen] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const records = useEntries({ q: state.q, type: "biosample", page: 1, perPage: 1 })
+  const entries = useEntries({ q: state.q, type: "biosample", page: 1, perPage: 1 })
   const axisElements = useRef<Record<AxisSide, string[]>>({ row: [], col: [] })
   const onAxisElements = useCallback((side: AxisSide, values: string[]) => {
     axisElements.current[side] = values
@@ -76,7 +76,8 @@ export const WorkspacePage = () => {
 
   const share = async () => {
     const ok = await copyText(window.location.href)
-    showToast(ok ? "Link copied" : "Copy failed")
+    if (!ok) showToast("Copy failed")
+    return ok
   }
 
   return (
@@ -84,10 +85,10 @@ export const WorkspacePage = () => {
       <ConditionBar
         q={state.q}
         condition={condition}
-        onShare={() => void share()}
+        onShare={share}
         onExport={() => setExportOpen((open) => !open)}
         onApi={() => setApiOpen(true)}
-        exportMenu={<ExportMenu open={exportOpen} onClose={() => setExportOpen(false)} q={state.q} totalRecords={records.data?.pagination.total} />}
+        exportMenu={<ExportMenu open={exportOpen} onClose={() => setExportOpen(false)} q={state.q} totalEntries={entries.data?.pagination.total} />}
       />
       <div className="flex min-h-0 flex-1 items-stretch">
         <ConditionPanel q={state.q} unit={state.unit} condition={condition} onAddTerm={(field) => setPicker({ field, mode: "condition" })} />

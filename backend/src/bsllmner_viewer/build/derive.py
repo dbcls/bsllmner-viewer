@@ -142,7 +142,7 @@ def derive(con: duckdb.DuckDBPyConnection, target_assays: list[str]) -> None:
     placeholders = ", ".join("?" for _ in target_assays)
     con.execute(
         f"""
-        CREATE TABLE record AS
+        CREATE TABLE population AS
         SELECT be.biosample, be.experiment, e.library_strategy, b.organism_id, b.date_created,
                year(b.date_created) AS year, lower(b.title) AS title_norm
         FROM biosample_experiment be
@@ -158,17 +158,17 @@ def derive(con: duckdb.DuckDBPyConnection, target_assays: list[str]) -> None:
         CREATE TABLE field_term_count AS
         WITH expanded AS (
             SELECT ac.field, ac.ancestor AS term_id,
-                   count(DISTINCT r.biosample) AS n_biosample,
-                   count(DISTINCT r.experiment) AS n_experiment,
+                   count(DISTINCT pn.biosample) AS n_biosample,
+                   count(DISTINCT pn.experiment) AS n_experiment,
                    count(DISTINCT bp.bioproject) AS n_bioproject
-            FROM record r
-            JOIN annotation_closure ac ON ac.biosample = r.biosample
-            LEFT JOIN biosample_bioproject bp ON bp.biosample = r.biosample
+            FROM population pn
+            JOIN annotation_closure ac ON ac.biosample = pn.biosample
+            LEFT JOIN biosample_bioproject bp ON bp.biosample = pn.biosample
             GROUP BY ac.field, ac.ancestor
         ),
         direct AS (
-            SELECT a.field, a.term_id, count(DISTINCT r.biosample) AS n_direct
-            FROM record r JOIN annotation a ON a.biosample = r.biosample
+            SELECT a.field, a.term_id, count(DISTINCT pn.biosample) AS n_direct
+            FROM population pn JOIN annotation a ON a.biosample = pn.biosample
             WHERE a.term_id IS NOT NULL
             GROUP BY a.field, a.term_id
         )
@@ -196,12 +196,12 @@ def derive(con: duckdb.DuckDBPyConnection, target_assays: list[str]) -> None:
         """
         CREATE TABLE field_status_count AS
         SELECT a.field, a.status,
-               count(DISTINCT r.biosample) AS n_biosample,
-               count(DISTINCT r.experiment) AS n_experiment,
+               count(DISTINCT pn.biosample) AS n_biosample,
+               count(DISTINCT pn.experiment) AS n_experiment,
                count(DISTINCT bp.bioproject) AS n_bioproject
-        FROM record r
-        JOIN annotation a ON a.biosample = r.biosample
-        LEFT JOIN biosample_bioproject bp ON bp.biosample = r.biosample
+        FROM population pn
+        JOIN annotation a ON a.biosample = pn.biosample
+        LEFT JOIN biosample_bioproject bp ON bp.biosample = pn.biosample
         GROUP BY a.field, a.status
         ORDER BY a.field, a.status
         """
@@ -209,11 +209,10 @@ def derive(con: duckdb.DuckDBPyConnection, target_assays: list[str]) -> None:
     con.execute(
         """
         CREATE TABLE population_count AS
-        SELECT count(DISTINCT r.biosample) AS n_biosample,
-               count(DISTINCT r.experiment) AS n_experiment,
-               (SELECT count(DISTINCT bp.bioproject) FROM record r2
-                JOIN biosample_bioproject bp ON bp.biosample = r2.biosample) AS n_bioproject,
-               count(*) AS n_record
-        FROM record r
+        SELECT count(DISTINCT pn.biosample) AS n_biosample,
+               count(DISTINCT pn.experiment) AS n_experiment,
+               (SELECT count(DISTINCT bp.bioproject) FROM population pn2
+                JOIN biosample_bioproject bp ON bp.biosample = pn2.biosample) AS n_bioproject
+        FROM population pn
         """
     )

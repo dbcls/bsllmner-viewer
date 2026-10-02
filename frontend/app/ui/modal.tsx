@@ -1,18 +1,26 @@
 import { type ReactNode, useEffect } from "react"
 
 import { cn } from "./cn"
+import { SectionHeading } from "./heading"
+import { ACTION_ICON, Icon } from "./icons"
 
 type ModalProps = {
   open: boolean
   onClose: () => void
+  /** The heading of the dialog and its accessible name. */
+  title: string
+  /** One line under the title that says what the dialog shows. */
+  description?: ReactNode
   children: ReactNode
   width?: "md" | "lg"
   align?: "top" | "center"
-  label: string
 }
 
-/** An overlay dialog closed by Escape or by clicking the backdrop. */
-export const Modal = ({ open, onClose, children, width = "md", align = "top", label }: ModalProps) => {
+/**
+ * An overlay dialog closed by Escape, by its close button, or by clicking the backdrop. The title is a section heading
+ * with its brand rule on the dialog's left edge; the content under it supplies its own `px-6` padding.
+ */
+export const Modal = ({ open, onClose, title, description, children, width = "md", align = "top" }: ModalProps) => {
   useEffect(() => {
     if (!open) return
     const onKey = (event: KeyboardEvent) => {
@@ -34,13 +42,28 @@ export const Modal = ({ open, onClose, children, width = "md", align = "top", la
       <div
         role="dialog"
         aria-modal="true"
-        aria-label={label}
+        aria-label={title}
         onClick={(event) => event.stopPropagation()}
         className={cn(
           "overflow-hidden rounded-card bg-surface shadow-modal",
           width === "md" ? "w-modal" : "w-modal-wide",
         )}
       >
+        <div className="flex items-start justify-between gap-4 px-6 pt-5 pb-3">
+          <div className="min-w-0">
+            <SectionHeading rule="edge">{title}</SectionHeading>
+            {description && <p className="mt-1.5 text-fs-body-sm text-ink-soft">{description}</p>}
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            title="Close (Esc)"
+            className="-mt-1 -mr-2 cursor-pointer rounded-button p-1.5 text-fs-h2 leading-none text-ink-soft hover:bg-brand-soft hover:text-ink"
+          >
+            <Icon name={ACTION_ICON.clear} />
+          </button>
+        </div>
         {children}
       </div>
     </div>

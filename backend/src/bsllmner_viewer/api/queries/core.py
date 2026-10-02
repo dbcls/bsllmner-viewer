@@ -13,7 +13,7 @@ from bsllmner_viewer.dsl.fields import FieldSet
 
 @dataclass(frozen=True, slots=True)
 class Population:
-    """`pop` CTE body selecting the records matching a condition."""
+    """`pop` CTE body selecting the BioSamples with a linked experiment that match a condition."""
 
     sql: str
     params: tuple[Any, ...]
@@ -23,10 +23,11 @@ class Population:
 
 
 def population(ast: Node | None, fields: FieldSet) -> Population:
-    predicate = compile_condition(ast, fields, alias="r")
+    predicate = compile_condition(ast, fields, alias="pn")
     sql = (
-        "SELECT r.biosample, r.experiment, r.library_strategy, r.organism_id, r.date_created, r.year, r.title_norm "
-        f"FROM record r WHERE {predicate.sql}"
+        "SELECT pn.biosample, pn.experiment, pn.library_strategy, pn.organism_id, pn.date_created, "
+        "pn.year, pn.title_norm "
+        f"FROM population pn WHERE {predicate.sql}"
     )
     return Population(sql, tuple(predicate.params))
 

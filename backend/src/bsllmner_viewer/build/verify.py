@@ -26,7 +26,7 @@ def verify(con: duckdb.DuckDBPyConnection) -> Verification:
         return Verification(False, tuple(problems), {})
     counts = {
         table: int(con.execute(f"SELECT count(*) FROM {table}").fetchone()[0])  # type: ignore[index]
-        for table in ("run", "entry", "biosample", "annotation", "record", "term", "term_closure")
+        for table in ("run", "entry", "biosample", "annotation", "population", "term", "term_closure")
     }
     unstored = con.execute(
         "SELECT count(*) FROM entry WHERE accession NOT IN (SELECT accession FROM biosample)"
@@ -38,7 +38,7 @@ def verify(con: duckdb.DuckDBPyConnection) -> Verification:
     ).fetchone()
     if duplicated and duplicated[0]:
         problems.append(f"{duplicated[0]} BioSamples are stored more than once")
-    if counts["record"] == 0:
+    if counts["population"] == 0:
         problems.append("the population is empty")
     for table, relation in (("biosample_bioproject", "BioSample-BioProject"), ("sra_run", "experiment-run")):
         row = con.execute(f"SELECT count(*) FROM {table}").fetchone()

@@ -9,10 +9,10 @@ from fastapi import APIRouter, Query
 from bsllmner_viewer.api.common import q_of, version_ref
 from bsllmner_viewer.api.deps import QParam, StoreDep, parse_condition
 from bsllmner_viewer.api.problems import NOT_FOUND_RESPONSE, ApiError
-from bsllmner_viewer.api.queries import records as rq
+from bsllmner_viewer.api.queries import entries as rq
 from bsllmner_viewer.api.queries.core import population
+from bsllmner_viewer.api.queries.entries import attributes_of, organism_of
 from bsllmner_viewer.api.queries.evidence import STRING_MATCH, find_spans
-from bsllmner_viewer.api.queries.records import attributes_of, organism_of
 from bsllmner_viewer.api.schemas import (
     Attribute,
     EntriesResponse,
@@ -35,7 +35,7 @@ TITLE_ATTRIBUTE = "title"
     operation_id="listEntries",
     responses=NOT_FOUND_RESPONSE,
     response_model=EntriesResponse,
-    summary="Matching records as BioSample or experiment entries",
+    summary="BioSample or SRA experiment entries that match the condition",
 )
 def list_entries(
     store: StoreDep,
@@ -47,9 +47,9 @@ def list_entries(
     ast = parse_condition(store, q)
     pop = population(ast, store.field_set)
     with store.cursor() as cur:
-        total = rq.count_records(cur, pop, type)
+        total = rq.count_entries(cur, pop, type)
         keys = rq.page_keys(cur, pop, type, page, per_page)
-        rows = rq.record_rows(cur, pop, keys, tuple(f.name for f in store.fields))
+        rows = rq.entry_rows(cur, pop, keys, tuple(f.name for f in store.fields))
     return EntriesResponse(
         dataset_version=version_ref(store),
         q=q_of(ast),
@@ -83,7 +83,8 @@ def get_entry(store: StoreDep, accession: str) -> EntryResponse:
         experiments = cur.execute(
             """
             SELECT be.experiment, e.library_strategy,
-                   EXISTS (SELECT 1 FROM record r WHERE r.biosample = be.biosample AND r.experiment = be.experiment),
+                   EXISTS (SELECT 1 FROM population pn
+                           WHERE pn.biosample = be.biosample AND pn.experiment = be.experiment),
                    (SELECT list(accession ORDER BY accession) FROM sra_run s WHERE s.experiment = be.experiment),
                    (SELECT list(assembly ORDER BY assembly) FROM chip_atlas c WHERE c.experiment = be.experiment)
             FROM biosample_experiment be JOIN experiment e ON e.accession = be.experiment

@@ -1,6 +1,6 @@
 # Data Model
 
-This document defines what a store represents: which records form the population, how annotations are classified, how conditions are evaluated, and how records are counted. Input formats and build operations are specified in [build.md](build.md).
+This document defines what a store represents: which BioSamples and experiments form the population, how annotations are classified, how conditions are evaluated, and how matches are counted. Input formats and build operations are specified in [build.md](build.md).
 
 ## Dataset
 
@@ -8,14 +8,14 @@ A **dataset** is a set of runs analyzed with a single model, together with refer
 
 Target assays are a list of SRA `library_strategy` values.
 
-## Records and population
+## Population
 
-A **record** is a pair of a BioSample and an SRA experiment linked to it. Conditions are evaluated and records are counted per record.
-
-The **population** is the set of records that satisfy both of the following:
+The **population** is the set of BioSamples, each together with an SRA experiment linked to it, that satisfy both of the following:
 
 - The BioSample was analyzed by a run in the dataset.
 - The experiment's `library_strategy` is one of the target assays.
+
+A BioSample linked to several experiments of target assays is in the population once with each of them.
 
 A BioSample analyzed by a run but linked to no experiment of a target assay is kept in the store and is absent from the population. Adding an assay to the target assays makes such BioSamples part of the population without re-ingesting runs.
 
@@ -69,31 +69,32 @@ A condition on a term matches the term itself and all of its descendants.
 
 ## Condition evaluation
 
-Each clause of a condition is evaluated against a record.
+A condition is evaluated on a BioSample of the population together with one of its experiments, once for each experiment.
 
-- Clauses on annotations, organism, creation date, BioProject, and title are evaluated against the record's BioSample.
-- Clauses on `library_strategy` are evaluated against the record's experiment.
+- Clauses on annotations, organism, creation date, BioProject, and title are evaluated against the BioSample.
+- Clauses on `library_strategy` are evaluated against the experiment.
+- Clauses on `identifier` are evaluated against both, and are true when either accession matches.
 - A clause on a field is true when at least one value of that field satisfies it. A clause on a field-level or BioSample-level status (`not_stated`, `extraction_failed`) is evaluated against the field as a whole.
 
-Because a record carries the assay of a single experiment, a condition requiring two different assays in one record matches nothing. Assays are compared by counting records per assay under the same annotation conditions.
+Because each evaluation sees the assay of a single experiment, a condition that requires two different assays matches nothing, even for a BioSample that has experiments of both. Assays are compared by counting per assay under the same annotation conditions.
 
 ## Counting
 
-Matching records are counted in three units.
+A condition's matches are counted in three units.
 
 | Unit | Count |
 |---|---|
-| BioSample | Distinct BioSamples of the matching records |
-| Experiment | Distinct experiments of the matching records |
-| BioProject | Distinct BioProjects linked to the BioSamples of the matching records |
+| BioSample | Distinct BioSamples that match together with at least one of their experiments |
+| SRA Experiment | Distinct experiments that match together with their BioSample |
+| BioProject | Distinct BioProjects linked to the matching BioSamples |
 
 The BioProject count shows how many independent studies cover a condition, and exposes cases where a single large project dominates the BioSample count.
 
-Rows and bars of an aggregation are not mutually exclusive. One record contributes to several rows when:
+Rows and bars of an aggregation are not mutually exclusive. One BioSample contributes to several rows when:
 
 - its term is a descendant of several terms shown as rows,
-- its BioSample holds several values in a multi-valued field,
-- its BioSample is linked to experiments of several assays, or
-- its BioSample is linked to several BioProjects.
+- it holds several values in a multi-valued field,
+- it is linked to experiments of several assays, or
+- it is linked to several BioProjects.
 
 The sum of row counts is therefore not equal to the total count.

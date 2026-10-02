@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import duckdb
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 RAW_TABLES: tuple[str, ...] = (
     "store_meta",
@@ -42,7 +42,7 @@ DERIVED_TABLES: tuple[str, ...] = (
     "bioproject",
     "biosample_bioproject",
     "chip_atlas",
-    "record",
+    "population",
     "field_term_count",
     "term_search",
     "field_status_count",

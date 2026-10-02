@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react"
+import { type ReactNode, useEffect, useState } from "react"
 
 import { apiUrl, exportAccessionsUrl, exportEntriesUrl } from "~/lib/api/client"
 import { copyText } from "~/lib/export"
 import { formatCount } from "~/lib/format"
-import { DownloadLink, LinkButton, Modal } from "~/ui"
+import { ACTION_ICON, CopyButton, DownloadLink, Icon, Modal } from "~/ui"
 
 import type { WorkspaceState } from "./state"
 
@@ -11,7 +11,7 @@ type ExportMenuProps = {
   open: boolean
   onClose: () => void
   q: string | null
-  totalRecords: number | undefined
+  totalEntries: number | undefined
 }
 
 const ACCESSION_TYPES = [
@@ -21,8 +21,42 @@ const ACCESSION_TYPES = [
   { type: "bioproject", label: "BioProject", hint: "PRJ…" },
 ] as const
 
-/** The outputs of the condition: record exports and accession lists. */
-export const ExportMenu = ({ open, onClose, q, totalRecords }: ExportMenuProps) => {
+type MenuGroupProps = {
+  title: string
+  note: string
+  children: ReactNode
+}
+
+const MenuGroup = ({ title, note, children }: MenuGroupProps) => (
+  <div role="group" aria-label={`${title} (${note})`} className="px-1.5 pt-2.5 pb-1">
+    <div aria-hidden="true" className="mx-1.5 mb-1 flex items-baseline gap-1.5 border-b border-border-soft pb-1.5">
+      <span className="border-l-4 border-brand pl-2 text-fs-body-sm leading-tight font-bold text-ink">{title}</span>
+      <span className="text-fs-label text-ink-soft">{note}</span>
+    </div>
+    {children}
+  </div>
+)
+
+type MenuItemProps = {
+  href: string
+  label: string
+  hint?: string
+}
+
+const MenuItem = ({ href, label, hint }: MenuItemProps) => (
+  <DownloadLink
+    role="menuitem"
+    href={href}
+    className="flex items-center gap-2 rounded-button px-2 py-1.5 text-fs-body-sm text-ink no-underline hover:bg-brand-soft hover:text-brand-deep"
+  >
+    <Icon name={ACTION_ICON.download} className="text-brand" />
+    <span className="flex-1">{label}</span>
+    {hint && <span className="font-mono text-fs-label text-ink-soft">{hint}</span>}
+  </DownloadLink>
+)
+
+/** The outputs of the condition: entry exports and accession lists. */
+export const ExportMenu = ({ open, onClose, q, totalEntries }: ExportMenuProps) => {
   useEffect(() => {
     if (!open) return
     const onKey = (event: KeyboardEvent) => {
@@ -39,30 +73,25 @@ export const ExportMenu = ({ open, onClose, q, totalRecords }: ExportMenuProps) 
     }
   }, [open, onClose])
   if (!open) return null
-  const item = "flex justify-between rounded-button px-2 py-1.5 text-ink no-underline hover:bg-brand-soft"
   return (
     <div
       role="menu"
       onClick={(event) => event.stopPropagation()}
-      className="absolute top-9 right-13 z-popover w-menu rounded-card border border-border-soft bg-surface p-2 text-fs-body-sm shadow-modal"
+      className="absolute top-full right-0 z-popover mt-1.5 w-menu rounded-card border border-border-soft bg-surface pb-1.5 shadow-modal"
     >
-      <div className="px-2 pt-1.5 pb-1 text-fs-label font-semibold text-ink-soft">Records (all annotation fields)</div>
-      <DownloadLink role="menuitem" className={item} href={exportEntriesUrl("biosample", q, "tsv")}>
-        <span>Records · TSV</span>
-        <span className="font-mono text-fs-label text-ink-soft">{totalRecords === undefined ? "" : `${formatCount(totalRecords)} rows`}</span>
-      </DownloadLink>
-      <DownloadLink role="menuitem" className={item} href={exportEntriesUrl("biosample", q, "ndjson")}>
-        <span>Records · JSON lines</span>
-      </DownloadLink>
-      <div className="mt-1 border-t border-brand-soft px-2 pt-2.5 pb-1 text-fs-label font-semibold text-ink-soft">
-        Accession lists (one per line)
-      </div>
-      {ACCESSION_TYPES.map(({ type, label, hint }) => (
-        <DownloadLink key={type} role="menuitem" className={item} href={exportAccessionsUrl(type, q)}>
-          <span>{label}</span>
-          <span className="font-mono text-fs-label text-ink-soft">{hint}</span>
-        </DownloadLink>
-      ))}
+      <MenuGroup title="Entries" note="all annotation fields">
+        <MenuItem
+          href={exportEntriesUrl("biosample", q, "tsv")}
+          label="Entries · TSV"
+          {...(totalEntries === undefined ? {} : { hint: `${formatCount(totalEntries)} rows` })}
+        />
+        <MenuItem href={exportEntriesUrl("biosample", q, "ndjson")} label="Entries · JSON lines" />
+      </MenuGroup>
+      <MenuGroup title="Accession lists" note="one per line">
+        {ACCESSION_TYPES.map(({ type, label, hint }) => (
+          <MenuItem key={type} href={exportAccessionsUrl(type, q)} label={label} hint={hint} />
+        ))}
+      </MenuGroup>
     </div>
   )
 }
@@ -108,6 +137,29 @@ export const apiRequestFor = (state: WorkspaceState): string => {
   }
 }
 
+/** The longest response the dialog shows before it cuts the rest. */
+const EXCERPT_LENGTH = 2500
+
+/**
+ * The response as the dialog shows it: indented JSON without `datasetVersion`, so the part that answers the request
+ * comes first, cut at `EXCERPT_LENGTH`. A body that is not JSON is cut as it is.
+ */
+export const responseExcerpt = (text: string): string => {
+  let body: unknown
+  try {
+    body = JSON.parse(text)
+  } catch {
+    return text.slice(0, EXCERPT_LENGTH)
+  }
+  if (typeof body === "object" && body !== null && !Array.isArray(body)) {
+    body = Object.fromEntries(Object.entries(body).filter(([key]) => key !== "datasetVersion"))
+  }
+  const pretty = JSON.stringify(body, null, 2)
+  return pretty.length > EXCERPT_LENGTH ? `${pretty.slice(0, EXCERPT_LENGTH)}\n  …` : pretty
+}
+
+const BLOCK_HEADING = "mb-1.5 text-fs-body-sm font-semibold text-ink"
+
 export const ApiModal = ({ open, onClose, state, onToast }: ApiModalProps) => {
   const [response, setResponse] = useState<string>("")
   const request = apiRequestFor(state)
@@ -120,13 +172,7 @@ export const ApiModal = ({ open, onClose, state, onToast }: ApiModalProps) => {
     fetch(request)
       .then((r) => r.text())
       .then((text) => {
-        if (cancelled) return
-        try {
-          const pretty = JSON.stringify(JSON.parse(text), null, 2)
-          setResponse(pretty.length > 2500 ? `${pretty.slice(0, 2500)}\n  …` : pretty)
-        } catch {
-          setResponse(text.slice(0, 2500))
-        }
+        if (!cancelled) setResponse(responseExcerpt(text))
       })
       .catch(() => setResponse("(request failed)"))
     return () => {
@@ -134,35 +180,35 @@ export const ApiModal = ({ open, onClose, state, onToast }: ApiModalProps) => {
     }
   }, [open, request])
   return (
-    <Modal open={open} onClose={onClose} width="lg" align="center" label="Same result via the API">
-      <div className="flex items-center justify-between border-b border-border-soft px-4.5 py-3.5">
-        <div>
-          <div className="text-fs-h3 font-semibold">Same result via the API</div>
-          <div className="text-fs-label text-ink-soft">Returns the {TAB_LABELS[state.tab]} view for the current condition. Same q, same unit.</div>
+    <Modal
+      open={open}
+      onClose={onClose}
+      width="lg"
+      align="center"
+      title="Same result via the API"
+      description={`Returns the ${TAB_LABELS[state.tab]} view for the current condition. Same q, same unit.`}
+    >
+      <div className="px-6 pb-6">
+        <h3 className={BLOCK_HEADING}>Request</h3>
+        <div className="relative mb-4">
+          <pre className="rounded-button bg-ink py-3 pr-28 pl-3.5 font-mono text-fs-label leading-relaxed break-all whitespace-pre-wrap text-brand-soft">{curl}</pre>
+          <span className="absolute top-2 right-2">
+            <CopyButton
+              kind="inverse"
+              onCopy={async () => {
+                const ok = await copyText(curl)
+                if (!ok) onToast("Copy failed")
+                return ok
+              }}
+            >
+              Copy
+            </CopyButton>
+          </span>
         </div>
-        <LinkButton tone="soft" size="md" onClick={onClose} aria-label="Close">
-          ×
-        </LinkButton>
-      </div>
-      <div className="px-4.5 py-3.5">
-        <div className="mb-1 text-fs-label font-semibold text-ink-soft">Request</div>
-        <pre className="mb-3.5 rounded-button bg-ink px-3.5 py-3 font-mono text-fs-label leading-relaxed break-all whitespace-pre-wrap text-brand-soft">{curl}</pre>
-        <div className="mb-1 text-fs-label font-semibold text-ink-soft">Response (excerpt)</div>
+        <h3 className={BLOCK_HEADING}>Response (excerpt)</h3>
         <pre className="max-h-64 overflow-auto rounded-button border border-border-soft bg-surface-subtle px-3.5 py-3 font-mono text-fs-label leading-relaxed whitespace-pre-wrap text-ink-mid">
           {response || "Loading…"}
         </pre>
-      </div>
-      <div className="flex justify-between border-t border-border-soft px-4.5 py-2.5 text-fs-label text-ink-soft">
-        <span>
-          Pin <span className="font-mono">datasetVersion</span> in scripts; counts change with each build.
-        </span>
-        <LinkButton
-          onClick={async () => {
-            onToast((await copyText(curl)) ? "curl copied" : "Copy failed")
-          }}
-        >
-          Copy curl
-        </LinkButton>
       </div>
     </Modal>
   )

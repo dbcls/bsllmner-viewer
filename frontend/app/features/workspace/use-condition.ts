@@ -1,6 +1,7 @@
+import { useQueryClient } from "@tanstack/react-query"
 import { useCallback } from "react"
 
-import { useParsedCondition, useSelectElement } from "~/lib/api/queries"
+import { parsedConditionOptions, useParsedCondition, useSelectElement } from "~/lib/api/queries"
 import type { AstNode, Clause } from "~/lib/api/types"
 
 import { clausesOfField, hasClauses } from "./ast"
@@ -10,6 +11,7 @@ import type { Patch } from "./state"
 export const useCondition = (q: string | null, update: (patch: Patch) => void) => {
   const parsed = useParsedCondition(q)
   const select = useSelectElement()
+  const queryClient = useQueryClient()
   const ast = (parsed.data?.ast ?? null) as AstNode | null
   const labels = parsed.data?.labels ?? {}
 
@@ -22,9 +24,11 @@ export const useCondition = (q: string | null, update: (patch: Patch) => void) =
     [q, select, update],
   )
 
+  /** Replace the clauses of a field with one clause. The AST is fetched for `q`, because the parsed condition of the hook can still be loading after `q` changed. */
   const replaceField = useCallback(
     async (field: string, clause: Clause) => {
-      const present = clausesOfField(ast, field)
+      const parsedQ = await queryClient.fetchQuery(parsedConditionOptions(q))
+      const present = clausesOfField((parsedQ?.ast ?? null) as AstNode | null, field)
       let current = q
       if (present.length) {
         current = (await select.mutateAsync({ q: current, clauses: present })).dsl
@@ -32,10 +36,10 @@ export const useCondition = (q: string | null, update: (patch: Patch) => void) =
       const result = await select.mutateAsync({ q: current, clauses: [clause] })
       update({ q: result.dsl })
     },
-    [ast, q, select, update],
+    [q, queryClient, select, update],
   )
 
-  /** The condition that matches the records an element counts: the element's clauses added by AND to its population. */
+  /** The condition that matches what an element counts: the element's clauses added by AND to its population. */
   const narrowed = useCallback(
     async (populationQ: string | null, clauses: Clause[]) => (await select.mutateAsync({ q: populationQ, clauses, mode: "narrow" })).dsl,
     [select],

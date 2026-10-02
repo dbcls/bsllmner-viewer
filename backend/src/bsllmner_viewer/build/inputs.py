@@ -1,6 +1,6 @@
 """Reader for the BioSample JSONL given to a run.
 
-Each line is a BioSample record as exported from NCBI BioSample XML, either wrapped as
+Each line is a BioSample entry as exported from NCBI BioSample XML, either wrapped as
 `{"BioSample": {...}, "accession": ...}` or with the same members at the top level.
 """
 

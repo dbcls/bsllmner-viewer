@@ -302,7 +302,7 @@ const ExperimentsCard = ({ experiments }: { experiments: EntryExperiment[] }) =>
 const BioProjectsCard = ({ bioprojects }: { bioprojects: EntryBioProject[] }) => (
   <Card>
     <div className="mb-2 font-semibold">BioProject</div>
-    {bioprojects.length === 0 && <div className="text-fs-body-sm text-ink-soft">No BioProject on record.</div>}
+    {bioprojects.length === 0 && <div className="text-fs-body-sm text-ink-soft">No linked BioProject.</div>}
     {bioprojects.map((bioproject, index) => (
       <div key={bioproject.accession} className={index > 0 ? "mt-3" : undefined}>
         <Link to={bioprojectHref(bioproject.accession)} className="font-mono text-fs-body-sm text-brand no-underline hover:text-brand-deep">

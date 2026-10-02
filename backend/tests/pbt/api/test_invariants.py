@@ -88,9 +88,7 @@ def test_element_count_equals_population_and_element(
 
 @settings(max_examples=25)
 @given(conditions, st.sampled_from(UNITS), st.booleans())
-def test_crosstab_cells_and_margins_match_record_counts(
-    client: TestClient, ast: Node | None, unit: str, excl: bool
-) -> None:
+def test_crosstab_cells_and_margins_match_counts(client: TestClient, ast: Node | None, unit: str, excl: bool) -> None:
     body = client.get(
         "/api/crosstab",
         params={
@@ -144,7 +142,7 @@ def test_narrowing_to_a_cell_matches_the_count_of_the_cell(
 
 @settings(max_examples=25)
 @given(conditions, st.sampled_from(UNITS), st.booleans(), st.sampled_from([None, "disease", "library_strategy"]))
-def test_trend_points_match_record_counts(
+def test_trend_points_match_counts(
     client: TestClient, ast: Node | None, unit: str, excl: bool, field: str | None
 ) -> None:
     params = {"unit": unit, "q": _q(ast) or "", "facetSelfExclude": str(excl).lower(), "limit": 2}
@@ -184,7 +182,7 @@ def test_default_elements_contain_every_value_the_condition_names(
     st.sampled_from(UNITS),
     st.booleans(),
 )
-def test_term_hits_match_record_counts_in_the_population_of_their_field(
+def test_term_hits_match_counts_in_the_population_of_their_field(
     client: TestClient, ast: Node | None, query: str, unit: str, excl: bool
 ) -> None:
     flag = str(excl).lower()

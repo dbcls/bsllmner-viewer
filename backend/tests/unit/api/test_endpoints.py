@@ -12,13 +12,18 @@ def test_dataset_reports_version_fields_and_totals(client: TestClient) -> None:
     assert len(body["datasetVersion"]["digest"]) == 16
     assert [f["name"] for f in body["fields"]] == ["cell_line", "disease", "tissue", "drug", "chip_antigen"]
     assert body["fields"][1]["ontologies"] == ["MONDO"]
-    assert body["totals"]["record"] > 0
+    assert all(body["totals"][key] > 0 for key in ("biosample", "experiment", "bioproject"))
     assert list(body["statuses"]) == ["mapped", "unmapped", "no_value"]
     assert {o["identifier"] for o in body["organisms"]} <= {"9606", "10090"}
     assert all(set(o) == {"identifier", "name", "biosampleCount"} for o in body["organisms"])
     assert "createdAt" in body["version"]
     assert "reference_snapshots" not in body["version"]
     assert "referenceSnapshots" in body["version"]
+
+
+def test_dataset_totals_have_exactly_biosample_experiment_and_bioproject(client: TestClient) -> None:
+    totals = client.get("/api/dataset").json()["totals"]
+    assert set(totals) == {"biosample", "experiment", "bioproject"}
 
 
 def test_every_response_carries_the_same_dataset_version(client: TestClient) -> None:

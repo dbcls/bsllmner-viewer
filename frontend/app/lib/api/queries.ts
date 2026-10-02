@@ -1,4 +1,4 @@
-import { useMutation, useQuery } from "@tanstack/react-query"
+import { queryOptions, useMutation, useQuery } from "@tanstack/react-query"
 
 import { api, unwrap } from "./client"
 import type {
@@ -35,14 +35,17 @@ export const useDataset = () =>
     staleTime: Infinity,
   })
 
-export const useParsedCondition = (condition: string | null) =>
-  useQuery({
+/** The parse of a condition. An operation that changes a condition fetches it with these options, so that it reads the AST of the condition it changes. */
+export const parsedConditionOptions = (condition: string | null) =>
+  queryOptions({
     queryKey: ["parse", condition],
     queryFn: async (): Promise<ParseResponse | null> =>
       condition ? unwrap(await api.GET("/api/dsl/parse", { params: { query: { q: condition } } })) : null,
     staleTime: Infinity,
     retry: false,
   })
+
+export const useParsedCondition = (condition: string | null) => useQuery(parsedConditionOptions(condition))
 
 export type SelectMode = "toggle" | "narrow"
 

@@ -120,9 +120,8 @@
   --spacing-modal:        640px;
   --spacing-modal-wide:   760px;
   --spacing-matrix-max:   620px;
-  --spacing-rail-col:      44px;
-  --spacing-rail-offset:   34px;
-  --spacing-rail-width:    22px;
+  --spacing-rail-col:      44px;  /* the AND badge and the lines that join it to the rows of the condition */
+  --spacing-condition-label: 144px;  /* field names of the condition, so every row's values start at one x */
   --spacing-heat-cell:     72px;
   --spacing-heat-head:     96px;
   --spacing-composition:  150px;
@@ -152,6 +151,12 @@
   --shadow-card:       0 1px 2px rgba(26, 23, 38, 0.04);
   --shadow-card-hover: 0 4px 16px -4px rgba(80, 46, 107, 0.12);
   --shadow-modal:      0 20px 50px -10px rgba(20, 15, 30, 0.35);
+}
+
+/* Trims a line of text to the height of its capitals, so a flex container that centers the text centers the
+   capitals instead of the font's ascent and descent. A browser without text-box keeps the font's box. */
+@utility text-trim-cap {
+  text-box: trim-both cap alphabetic;
 }
 
 /* === Global a11y rules ==================================================== */

@@ -8,20 +8,24 @@ type LinkButtonProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "className"
   tone?: "brand" | "soft"
   mono?: boolean
   size?: "sm" | "md"
+  /** The glyph of the action, before the text. */
+  icon?: IconName
 }
 
 /** Text that acts as a button: "+ Add", "Clear all", "TSV". */
-export const LinkButton = ({ children, tone = "brand", mono, size = "sm", type = "button", ...rest }: LinkButtonProps) => (
+export const LinkButton = ({ children, tone = "brand", mono, size = "sm", icon, type = "button", ...rest }: LinkButtonProps) => (
   <button
     {...rest}
     type={type}
     className={cn(
       "cursor-pointer whitespace-nowrap hover:text-brand-deep",
+      icon && "inline-flex items-center gap-1",
       tone === "brand" ? "text-brand" : "text-ink-soft",
       mono && "font-mono",
       size === "sm" ? "text-fs-label" : "text-fs-body-sm",
     )}
   >
+    {icon && <Icon name={icon} />}
     {children}
   </button>
 )

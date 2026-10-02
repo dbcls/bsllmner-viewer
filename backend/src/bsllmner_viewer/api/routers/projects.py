@@ -21,7 +21,7 @@ MAX_COMPOSITION_FIELDS = 3
     "/projects",
     operation_id="listProjects",
     response_model=ProjectsResponse,
-    summary="BioProjects of the matching records",
+    summary="BioProjects of the matching BioSamples",
 )
 def get_projects(
     store: StoreDep,

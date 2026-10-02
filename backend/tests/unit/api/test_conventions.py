@@ -274,13 +274,6 @@ class TestPaths:
         assert body["status"] == 404
         assert body["instance"] == path
 
-    @pytest.mark.parametrize(
-        "path",
-        ["/health", "/api/health", "/api/records", "/api/export/records", "/api/export/accessions", "/api/docs"],
-    )
-    def test_removed_paths_are_not_found(self, client: TestClient, path: str) -> None:
-        assert client.get(path).status_code in (404, 405)
-
     @pytest.mark.parametrize("path", ["/api/dataset/", "/api/entries/biosample/", "/api/service-info/"])
     def test_trailing_slash_is_not_redirected(self, client: TestClient, path: str) -> None:
         response = client.get(path, follow_redirects=False)

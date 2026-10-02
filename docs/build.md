@@ -24,10 +24,10 @@ A run is one execution of `bsllmner2_select` of bsllmner-mk2.
 | File | Format |
 |---|---|
 | Result | SelectResult JSON, as specified in the bsllmner-mk2 data format documentation |
-| Input | BioSample JSONL given to the execution: one NCBI BioSample record per line as exported from BioSample XML (`Ids`, `Description`, `Attributes`, `submission_date`, `publication_date`, `last_update`), either wrapped as `{"BioSample": {...}, "accession": ...}` or with the same members at the top level next to `accession` |
+| Input | BioSample JSONL given to the execution: one NCBI BioSample entry per line as exported from BioSample XML (`Ids`, `Description`, `Attributes`, `submission_date`, `publication_date`, `last_update`), either wrapped as `{"BioSample": {...}, "accession": ...}` or with the same members at the top level next to `accession` |
 | Select configuration | The select configuration JSON given to the execution, mapping each field to an ontology file |
 
-From an input record, build takes the organism (`Description.Organism`), the title, the creation date (`submission_date`, or `publication_date` when absent), the modification date (`last_update`), and the attributes (`Attributes.Attribute`).
+From an input entry, build takes the organism (`Description.Organism`), the title, the creation date (`submission_date`, or `publication_date` when absent), the modification date (`last_update`), and the attributes (`Attributes.Attribute`).
 
 ### Reference data
 
@@ -71,7 +71,7 @@ The extracted values of a field are the string in `extract.extracted[field]`, or
 
 A BioSample can appear in more than one run, for example when its metadata is updated and the BioSample is analyzed again in a later run. The store keeps the annotations of exactly one run per BioSample, selected as follows:
 
-1. The run whose input record for the BioSample has the latest modification date (`last_update`) is selected. A record without a modification date is treated as older than any record with one.
+1. The run whose input entry for the BioSample has the latest modification date (`last_update`) is selected. An entry without a modification date is treated as older than any entry with one.
 2. Among runs with the same modification date, the run listed last in the manifest is selected.
 
 All annotations and attributes of the BioSample are taken from the selected run; values from different runs are never combined. The selection depends only on the set of runs and their order in the manifest, not on the order of ingestion.
@@ -102,7 +102,7 @@ Publication switches the api to a verified store file (see [architecture.md](arc
 
 ## Dataset version information
 
-A store records the following version information. The api returns all of it from its dataset endpoint, and every response and export carries an identifier of the store: the dataset name, the creation time, the model, and a digest of the complete version information.
+A store holds the following version information. The api returns all of it from its dataset endpoint, and every response and export carries an identifier of the store: the dataset name, the creation time, the model, and a digest of the complete version information.
 
 - Dataset name and store creation time
 - Model

@@ -1,4 +1,4 @@
-"""Exports of matching records and accession lists."""
+"""Exports of matching entries and accession lists."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from fastapi.responses import StreamingResponse
 from bsllmner_viewer.api.common import q_of, version_ref
 from bsllmner_viewer.api.deps import QParam, StoreDep, parse_condition
 from bsllmner_viewer.api.problems import NOT_FOUND_RESPONSE
-from bsllmner_viewer.api.queries import records as rq
+from bsllmner_viewer.api.queries import entries as rq
 from bsllmner_viewer.api.queries.core import population
 from bsllmner_viewer.api.schemas import AccessionType, EntryType
 
@@ -48,7 +48,7 @@ _ACCESSION_SQL: dict[str, str] = {
     "/export/accessions/{type}",
     operation_id="exportAccessions",
     responses=NOT_FOUND_RESPONSE,
-    summary="Accession list of the matching records, one per line",
+    summary="Accession list of the matching entries, one per line",
     response_class=StreamingResponse,
 )
 def export_accessions(store: StoreDep, type: AccessionType, q: QParam = None) -> StreamingResponse:
@@ -99,7 +99,7 @@ def export_entries(
                 keys = rq.page_keys(cur, pop, type, page, _BATCH)
                 if not keys:
                     break
-                for item in rq.record_rows(cur, pop, keys, fields):
+                for item in rq.entry_rows(cur, pop, keys, fields):
                     if format == "ndjson":
                         yield orjson.dumps(item.model_dump(mode="json", by_alias=True)) + b"\n"
                     else:

@@ -102,7 +102,7 @@ def test_read_input_reads_both_shapes_from_one_file(tmp_path: Path) -> None:
     assert [[a.name for a in d.attributes] for d in docs] == [["tissue"], ["sample_name"], ["tissue"]]
 
 
-def test_parse_input_doc_prefers_the_wrapped_record_over_top_level_members() -> None:
+def test_parse_input_doc_prefers_the_wrapped_entry_over_top_level_members() -> None:
     doc = {
         "BioSample": {"Description": {"Title": "inner", "Organism": {"taxonomy_id": "9606"}}},
         "Description": {"Title": "outer", "Organism": {"taxonomy_id": "10090"}},

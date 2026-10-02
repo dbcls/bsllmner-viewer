@@ -70,10 +70,11 @@ def test_build_population_holds_only_target_assays(store_con: duckdb.DuckDBPyCon
     expected = {
         (bs, srx) for bs, exps in synthetic.truth.experiments.items() for srx, assay in exps if assay in TARGET_ASSAYS
     }
-    assert set(_rows(store_con, "SELECT biosample, experiment FROM record")) == expected
-    kept = _rows(store_con, "SELECT count(*) FROM biosample WHERE accession NOT IN (SELECT biosample FROM record)")[0][
-        0
-    ]
+    assert set(_rows(store_con, "SELECT biosample, experiment FROM population")) == expected
+    kept = _rows(
+        store_con,
+        "SELECT count(*) FROM biosample WHERE accession NOT IN (SELECT biosample FROM population)",
+    )[0][0]
     assert kept == sum(
         1 for bs, exps in synthetic.truth.experiments.items() if not any(a in TARGET_ASSAYS for _, a in exps)
     )
@@ -85,7 +86,7 @@ def test_build_closure_includes_self_and_all_paths(store_con: duckdb.DuckDBPyCon
     assert _rows(store_con, "SELECT count(*) FROM term WHERE term_id = 'OBS:1'")[0] == (0,)
 
 
-def test_build_records_reference_relations(store_con: duckdb.DuckDBPyConnection, synthetic: Synthetic) -> None:
+def test_build_entries_reference_relations(store_con: duckdb.DuckDBPyConnection, synthetic: Synthetic) -> None:
     bps = {(bs, bp) for bs, items in synthetic.truth.bioprojects.items() for bp in items}
     assert set(_rows(store_con, "SELECT biosample, bioproject FROM biosample_bioproject")) == bps
     runs = _rows(store_con, "SELECT count(*) FROM sra_run")[0][0]

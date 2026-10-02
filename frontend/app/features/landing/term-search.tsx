@@ -7,7 +7,7 @@ import { formatCount } from "~/lib/format"
 import { fieldLabel } from "~/lib/labels"
 import { termDetail } from "~/lib/terms"
 import { workspaceSearch } from "~/lib/workspace-state"
-import { ACTION_ICON, Button, Card, CardHeader, Clickable, Icon, Select, TermRow, TextInput } from "~/ui"
+import { ACTION_ICON, Button, Card, CardHeader, Clickable, Select, TermRow, TextInput } from "~/ui"
 
 /** The field choice that searches every annotation field. */
 const ALL_FIELDS = "*"
@@ -73,8 +73,7 @@ export const TermSearch = () => {
           <Card padding="none" flush>
             <CardHeader>
               <span className="font-semibold text-ink">{resultTitle(everyField ? null : fieldLabel(field), debounced)}</span>
-              <Button kind="secondary" size="sm" onClick={clear}>
-                <Icon name={ACTION_ICON.clear} />
+              <Button kind="secondary" size="sm" icon={ACTION_ICON.clear} onClick={clear}>
                 Clear search
               </Button>
             </CardHeader>

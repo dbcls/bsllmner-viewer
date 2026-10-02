@@ -34,7 +34,7 @@ Errors are RFC 7807 Problem Details (`application/problem+json`) with `type`, `t
 
 ## Condition DSL
 
-A condition is a single string, `q`. Queries for entries, aggregations, and exports all accept the same `q`. If `q` is omitted or empty, then the condition matches every record of the population.
+A condition is a single string, `q`. Queries for entries, aggregations, and exports all accept the same `q`. If `q` is omitted or empty, then the condition matches the whole population.
 
 ### Grammar
 
@@ -50,7 +50,7 @@ Compatibility covers the grammar and the AST shape. The set of fields and their 
 
 ### Fields
 
-| Kind | Example | Matches records where |
+| Kind | Example | Matches where |
 |---|---|---|
 | Annotation term | `disease:"MONDO:0007254"` | the field has the given term or one of its descendants |
 | Annotation extracted value | `disease_value:breast` | an extracted value of the field contains the string, case-insensitively |
@@ -64,12 +64,12 @@ Compatibility covers the grammar and the AST shape. The set of fields and their 
 
 - Annotation field names are the field names of the select configuration. `_value` and `_status` are suffixes appended to a field name.
 - Other fields use the DDBJ Search API field name when the DDBJ Search API has a field for the same concept.
-- Statuses, status groups, and the evaluation of clauses against records are defined in [data-model.md](data-model.md).
+- Statuses, status groups, and the evaluation of clauses against BioSamples and experiments are defined in [data-model.md](data-model.md).
 - The implementation is the source of truth for the set of available fields.
 
 ## Entries
 
-An entry is a BioSample or an SRA experiment. `GET /api/entries/biosample` lists the BioSamples of the records that match `q`, and `GET /api/entries/sra-experiment` lists their experiments. Each item has the accession of the entry as `identifier`, its type as `type`, and the BioSample's metadata and annotations. An entry list is always computed from `q` itself.
+An entry is a BioSample or an SRA experiment. `GET /api/entries/biosample` lists the BioSamples that match `q`, and `GET /api/entries/sra-experiment` lists the experiments that match `q`, in the sense of the counting units in [data-model.md](data-model.md). Each item has the accession of the entry as `identifier`, its type as `type`, and the BioSample's metadata and annotations. An entry list is always computed from `q` itself.
 
 `GET /api/entries/biosample/{accession}` returns one BioSample with its original attributes, its annotations with evidence, its experiments, and its BioProjects. The BioSample does not have to be in the population; its experiments show which of them are.
 
@@ -77,7 +77,7 @@ The exports return every matching entry of a type as TSV or as newline-delimited
 
 ## Aggregations
 
-An aggregation counts matching records per element along one or two **dimensions**. A dimension is a DSL field, such as `disease`, `disease_status`, `library_strategy`, `date_created`, or `bioproject`. Every element carries a clause on each dimension of the aggregation that represents it, for example `disease:"MONDO:0007254"` for a bar of a distribution, or one clause per axis for a cell of a cross-tabulation.
+An aggregation counts the matches of `q` per element along one or two **dimensions**, in a counting unit. A dimension is a DSL field, such as `disease`, `disease_status`, `library_strategy`, `date_created`, or `bioproject`. Every element carries a clause on each dimension of the aggregation that represents it, for example `disease:"MONDO:0007254"` for a bar of a distribution, or one clause per axis for a cell of a cross-tabulation.
 
 The bucket of an element has `value`, `label`, and `count`, as a facet bucket of the DDBJ Search API, and the element's `clauses` in addition.
 
@@ -97,15 +97,15 @@ A distribution on an annotation term dimension also returns the status compositi
 
 If a request does not name the elements of a dimension, then the api chooses the elements.
 
-- For an annotation term dimension, the api chooses the terms that are assigned directly to the most BioSamples in the population of the aggregation. The count of a term includes the records of its descendants, but the choice does not. A term that is only an ancestor of the assigned terms, such as the root of an ontology, is therefore not chosen.
+- For an annotation term dimension, the api chooses the terms that are assigned directly to the most BioSamples in the population of the aggregation. The count of a term includes its descendants, but the choice does not. A term that is only an ancestor of the assigned terms, such as the root of an ontology, is therefore not chosen.
 - The api adds the elements that `q` names in a top-level clause, or in a top-level disjunction of clauses, on the dimension without `NOT`. A selected element is therefore present even if it is not one of the most frequent elements.
 - The api returns term, assay, and organism elements in descending order of their counts.
 
 ### Trend
 
-A trend counts the records of the condition for each creation year of the BioSample. With self-exclusion, the population of these counts is `q` without the conjuncts on `date_created`.
+A trend counts the condition for each creation year of the BioSample. With self-exclusion, the population of these counts is `q` without the conjuncts on `date_created`.
 
-If a request names a dimension, then the trend also counts the records of each element of the dimension for each year. With self-exclusion, the population of these counts also excludes the conjuncts on that dimension.
+If a request names a dimension, then the trend also counts each element of the dimension for each year. With self-exclusion, the population of these counts also excludes the conjuncts on that dimension.
 
 ### Expected counts in cross-tabulations
 
@@ -114,7 +114,7 @@ For each cell of a cross-tabulation, the api returns the expected count and the 
 - expected count `E = R × C / N`
 - adjusted standardized residual `r = (O − E) / sqrt(E × (1 − R / N) × (1 − C / N))`, or null when the denominator is zero
 
-Row and column counts are counts of matching records, not sums of cell counts.
+Row and column counts are counts of the matches of the row or the column, not sums of cell counts.
 
 A cell with `E ≥ 5` is classified as follows. Cells with `E < 5` are not classified.
 
@@ -128,7 +128,7 @@ The thresholds are fixed. Rows and columns overlap and BioProject counts are dis
 
 ### Invariant
 
-For every element of an aggregation, the element's count equals the count of records matching `q'` combined with the element's clauses by `AND`, in the same counting unit, where `q'` is the population of the aggregation.
+For every element of an aggregation, the element's count equals the count of `q'` combined with the element's clauses by `AND`, in the same counting unit, where `q'` is the population of the aggregation.
 
 ### From elements to conditions
 
@@ -140,7 +140,7 @@ An element with one clause is a bar of a distribution or a point of the trend of
 
 For example, selecting `disease:A`, then `library_strategy:ATAC-seq`, then `disease:B` produces `(disease:A OR disease:B) AND library_strategy:ATAC-seq`.
 
-An element with two clauses is a cell of a cross-tabulation or a point of the trend of an element. Selecting the element in the UI narrows the condition to the element. The new condition is the population of the aggregation combined by `AND` with both clauses. The number of records that match the new condition equals the count of the element.
+An element with two clauses is a cell of a cross-tabulation or a point of the trend of an element. Selecting the element in the UI narrows the condition to the element. The new condition is the population of the aggregation combined by `AND` with both clauses. The count of the new condition equals the count of the element, in the same counting unit.
 
 For example, with `q` equal to `library_strategy:ChIP-Seq`, selecting the cell of `cell_line:A` and `library_strategy:RNA-Seq` in a cross-tabulation of the two fields produces `cell_line:A AND library_strategy:RNA-Seq`.
 
