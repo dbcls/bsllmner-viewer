@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { gridLines, PLOT, showYearLabel, xForIndex, yForValue, yMax } from "~/features/workspace/trend/scale"
+import { gridLines, gridStep, PLOT, showYearLabel, xForIndex, yForValue, yMax } from "~/features/workspace/trend/scale"
 
 describe("xForIndex", () => {
   it("singleYear_isCenteredInThePlot", () => {
@@ -40,6 +40,27 @@ describe("yForValue", () => {
   })
 })
 
+describe("gridStep", () => {
+  it("smallCounts_useAStepOfOne", () => {
+    expect(gridStep(1)).toBe(1)
+    expect(gridStep(5)).toBe(1)
+  })
+
+  it("picksTheSmallestRoundStepWithinFiveIntervals", () => {
+    expect(gridStep(6)).toBe(2)
+    expect(gridStep(11)).toBe(5)
+    expect(gridStep(26)).toBe(10)
+    expect(gridStep(125)).toBe(25)
+    expect(gridStep(126)).toBe(50)
+    expect(gridStep(509_971)).toBe(200_000)
+  })
+
+  it("neverReturnsAFractionalStep", () => {
+    expect(gridStep(12)).toBe(5)
+    expect(Number.isInteger(gridStep(12.4))).toBe(true)
+  })
+})
+
 describe("yMax", () => {
   it("allZeroCounts_flooredAtOne", () => {
     expect(yMax([0, 0, 0])).toBe(1)
@@ -49,23 +70,34 @@ describe("yMax", () => {
     expect(yMax([])).toBe(1)
   })
 
-  it("countsAboveOne_returnsTheLargest", () => {
-    expect(yMax([3, 41, 7])).toBe(41)
+  it("roundsTheLargestCountUpToAGridLine", () => {
+    expect(yMax([3, 41, 7])).toBe(50)
+    expect(yMax([509_971])).toBe(600_000)
+    expect(yMax([1_466])).toBe(1_500)
+  })
+
+  it("aCountOnAGridLine_isItsOwnMaximum", () => {
+    expect(yMax([100])).toBe(100)
+    expect(yMax([5])).toBe(5)
   })
 })
 
 describe("gridLines", () => {
-  it("returnsFiveLinesAtQuarterFractionsOfTheMaximum", () => {
-    expect(gridLines(100).map((line) => line.value)).toEqual([0, 25, 50, 75, 100])
+  it("returnsOneLinePerStepFromZeroToTheMaximum", () => {
+    expect(gridLines(100).map((line) => line.value)).toEqual([0, 20, 40, 60, 80, 100])
+    expect(gridLines(600_000).map((line) => line.value)).toEqual([0, 200_000, 400_000, 600_000])
+    expect(gridLines(1).map((line) => line.value)).toEqual([0, 1])
   })
 
-  it("zeroMaximum_stillReturnsFiveLinesAllAtZero", () => {
-    expect(gridLines(0).map((line) => line.value)).toEqual([0, 0, 0, 0, 0])
+  it("zeroMaximum_returnsOnlyTheBaseline", () => {
+    expect(gridLines(0).map((line) => line.value)).toEqual([0])
   })
 
   it("higherValues_sitCloserToThePlotTop", () => {
     const ys = gridLines(100).map((line) => line.y)
-    expect(ys).toEqual([PLOT.bottom, yForValue(25, 100), yForValue(50, 100), yForValue(75, 100), PLOT.top])
+    expect(ys[0]).toBe(PLOT.bottom)
+    expect(ys.at(-1)).toBe(PLOT.top)
+    expect([...ys].sort((a, b) => b - a)).toEqual(ys)
   })
 })
 

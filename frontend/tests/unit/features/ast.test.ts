@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { clauseLabel, clausesOfField, conditionGroups, formatAst, hasClauses } from "~/features/workspace/ast"
+import { clauseLabel, clausesOfField, conditionGroups, describeAst, hasClauses, selectedClauses } from "~/features/workspace/ast"
 import type { AstNode } from "~/lib/api/types"
 
 const leaf = (field: string, value: string): AstNode => ({ field, op: "eq", value })
@@ -21,8 +21,8 @@ describe("conditionGroups", () => {
   it("renders mixed or negated conjuncts as an expression", () => {
     const ast: AstNode = { op: "AND", rules: [{ op: "NOT", rules: [leaf("disease", "A")] }, { op: "OR", rules: [leaf("disease", "A"), leaf("tissue", "T")] }] }
     const groups = conditionGroups(ast)
-    expect(groups[0]).toEqual({ kind: "expression", text: "NOT disease:A", node: ast.rules[0] })
-    expect(groups[1]).toMatchObject({ kind: "expression", text: "disease:A OR tissue:T" })
+    expect(groups[0]).toEqual({ kind: "expression", node: ast.rules[0] })
+    expect(groups[1]).toEqual({ kind: "expression", node: ast.rules[1] })
   })
 
   it("treats a single clause as its own group", () => {
@@ -31,10 +31,32 @@ describe("conditionGroups", () => {
   })
 })
 
-describe("formatAst", () => {
-  it("quotes values that are not bare words and parenthesizes OR under AND", () => {
-    const ast: AstNode = { op: "AND", rules: [{ op: "OR", rules: [leaf("disease", "MONDO:1"), leaf("disease", "MONDO:2")] }, leaf("title", "a b")] }
-    expect(formatAst(ast)).toBe('(disease:"MONDO:1" OR disease:"MONDO:2") AND title:"a b"')
+describe("describeAst", () => {
+  const labels = { "MONDO:1": "breast cancer", "CVCL:1": "MCF-7" }
+
+  it("names fields and terms by their labels", () => {
+    expect(describeAst(leaf("disease", "MONDO:1"), labels)).toBe("Disease: breast cancer")
+    expect(describeAst(leaf("disease", "MONDO:9"), labels)).toBe("Disease: MONDO:9")
+    expect(describeAst(range("2015-01-01", "2020-12-31"), labels)).toBe("Created: 2015–2020")
+  })
+
+  it("keeps NOT and joins the rules of a disjunction over several fields", () => {
+    expect(describeAst({ op: "NOT", rules: [leaf("library_strategy", "RNA-Seq")] }, labels)).toBe("NOT Assay: RNA-Seq")
+    expect(describeAst({ op: "OR", rules: [leaf("cell_line", "CVCL:1"), leaf("title", "tumor")] }, labels)).toBe(
+      "Cell line: MCF-7 OR Title contains: “tumor”",
+    )
+  })
+
+  it("parenthesizes a group nested under another operator", () => {
+    const nested: AstNode = { op: "NOT", rules: [{ op: "OR", rules: [leaf("disease", "MONDO:1"), leaf("cell_line", "CVCL:1")] }] }
+    expect(describeAst(nested, labels)).toBe("NOT (Disease: breast cancer OR Cell line: MCF-7)")
+    const mixed: AstNode = { op: "OR", rules: [{ op: "AND", rules: [leaf("disease", "MONDO:1"), leaf("title", "x")] }, leaf("title", "y")] }
+    expect(describeAst(mixed, labels)).toBe("(Disease: breast cancer AND Title contains: “x”) OR Title contains: “y”")
+  })
+
+  it("renders a NOT without a rule and a term without a field", () => {
+    expect(describeAst({ op: "NOT", rules: [] }, labels)).toBe("NOT")
+    expect(describeAst({ op: "free_text", value: "tumor" }, labels)).toBe("“tumor”")
   })
 })
 
@@ -61,5 +83,36 @@ describe("clauseLabel", () => {
     expect(clauseLabel({ field: "organism_id", value: "9606" }, {})).toBe("Human")
     expect(clauseLabel({ field: "date_created", from: "2015-01-01", to: "2020-12-31" }, {})).toBe("2015–2020")
     expect(clauseLabel({ field: "date_created", from: "2020-01-01", to: "2020-12-31" }, {})).toBe("2020")
+  })
+})
+
+describe("selectedClauses", () => {
+  it("lists top-level clauses and same-field disjunctions", () => {
+    const ast: AstNode = { op: "AND", rules: [{ op: "OR", rules: [leaf("disease", "A"), leaf("disease", "B")] }, leaf("library_strategy", "ATAC-seq")] }
+    expect(selectedClauses(ast)).toEqual([
+      { field: "disease", value: "A" },
+      { field: "disease", value: "B" },
+      { field: "library_strategy", value: "ATAC-seq" },
+    ])
+    expect(selectedClauses(null)).toEqual([])
+  })
+
+  it("does not treat a negated clause as selected", () => {
+    const ast: AstNode = { op: "AND", rules: [leaf("disease", "A"), { op: "NOT", rules: [leaf("library_strategy", "RNA-Seq")] }] }
+    expect(hasClauses(ast, [{ field: "library_strategy", value: "RNA-Seq" }])).toBe(false)
+    expect(clausesOfField(ast, "library_strategy")).toEqual([])
+    expect(hasClauses(ast, [{ field: "disease", value: "A" }])).toBe(true)
+  })
+
+  it("does not treat the clauses of a disjunction over several fields as selected", () => {
+    const ast: AstNode = { op: "OR", rules: [leaf("cell_line", "A"), leaf("tissue", "T")] }
+    expect(selectedClauses(ast)).toEqual([])
+    expect(clausesOfField(ast, "cell_line")).toEqual([])
+    expect(hasClauses(ast, [{ field: "tissue", value: "T" }])).toBe(false)
+  })
+
+  it("does not treat a clause nested under a conjunction inside a disjunction as selected", () => {
+    const ast: AstNode = { op: "OR", rules: [{ op: "AND", rules: [leaf("disease", "A"), leaf("title", "x")] }, leaf("disease", "B")] }
+    expect(clausesOfField(ast, "disease")).toEqual([])
   })
 })

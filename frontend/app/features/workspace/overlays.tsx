@@ -46,7 +46,7 @@ export const ExportMenu = ({ open, onClose, q, totalRecords }: ExportMenuProps) 
       onClick={(event) => event.stopPropagation()}
       className="absolute top-9 right-13 z-popover w-menu rounded-card border border-border-soft bg-surface p-2 text-fs-body-sm shadow-modal"
     >
-      <div className="px-2 pt-1.5 pb-1 text-fs-micro font-semibold tracking-label text-ink-soft uppercase">Records (all annotation fields)</div>
+      <div className="px-2 pt-1.5 pb-1 text-fs-label font-semibold text-ink-soft">Records (all annotation fields)</div>
       <DownloadLink role="menuitem" className={item} href={apiUrl("/api/export/records", { q: q ?? undefined, format: "tsv" })}>
         <span>Records · TSV</span>
         <span className="font-mono text-fs-label text-ink-soft">{totalRecords === undefined ? "" : `${formatCount(totalRecords)} rows`}</span>
@@ -54,7 +54,7 @@ export const ExportMenu = ({ open, onClose, q, totalRecords }: ExportMenuProps) 
       <DownloadLink role="menuitem" className={item} href={apiUrl("/api/export/records", { q: q ?? undefined, format: "json" })}>
         <span>Records · JSON lines</span>
       </DownloadLink>
-      <div className="mt-1 border-t border-brand-soft px-2 pt-2.5 pb-1 text-fs-micro font-semibold tracking-label text-ink-soft uppercase">
+      <div className="mt-1 border-t border-brand-soft px-2 pt-2.5 pb-1 text-fs-label font-semibold text-ink-soft">
         Accession lists (one per line)
       </div>
       {ACCESSION_KINDS.map(({ kind, label, hint }) => (
@@ -71,7 +71,6 @@ type ApiModalProps = {
   open: boolean
   onClose: () => void
   state: WorkspaceState
-  trendField: string
   onToast: (message: string) => void
 }
 
@@ -83,8 +82,8 @@ const TAB_LABELS: Record<WorkspaceState["tab"], string> = {
   projects: "Projects",
 }
 
-/** The api request that returns the current view; the trend's field is resolved by the workspace. */
-export const apiRequestFor = (state: WorkspaceState, trendField: string): string => {
+/** The api request that returns the current view. */
+export const apiRequestFor = (state: WorkspaceState): string => {
   const q = state.q ?? undefined
   const se = state.selfExclusion ? undefined : "false"
   switch (state.tab) {
@@ -103,15 +102,15 @@ export const apiRequestFor = (state: WorkspaceState, trendField: string): string
         col_elements: state.colTerms?.join(","),
       })
     case "trend":
-      return apiUrl("/api/trend", { q, field: trendField, unit: state.unit, self_exclusion: se, elements: state.trendTerms?.join(",") })
+      return apiUrl("/api/trend", { q, field: state.trendField ?? undefined, unit: state.unit, self_exclusion: se, elements: state.trendTerms?.join(",") })
     case "projects":
       return apiUrl("/api/projects", { q, self_exclusion: se, sort: "biosample", page: state.page, per_page: 25, composition_fields: "disease,cell_line,tissue" })
   }
 }
 
-export const ApiModal = ({ open, onClose, state, trendField, onToast }: ApiModalProps) => {
+export const ApiModal = ({ open, onClose, state, onToast }: ApiModalProps) => {
   const [response, setResponse] = useState<string>("")
-  const request = apiRequestFor(state, trendField)
+  const request = apiRequestFor(state)
   const url = typeof window === "undefined" ? request : `${window.location.origin}${request}`
   const curl = `curl -s "${url}" \\\n  -H "Accept: application/json"`
   useEffect(() => {
@@ -146,9 +145,9 @@ export const ApiModal = ({ open, onClose, state, trendField, onToast }: ApiModal
         </LinkButton>
       </div>
       <div className="px-4.5 py-3.5">
-        <div className="mb-1 text-fs-micro font-semibold tracking-label text-ink-soft uppercase">Request</div>
+        <div className="mb-1 text-fs-label font-semibold text-ink-soft">Request</div>
         <pre className="mb-3.5 rounded-button bg-ink px-3.5 py-3 font-mono text-fs-label leading-relaxed break-all whitespace-pre-wrap text-brand-soft">{curl}</pre>
-        <div className="mb-1 text-fs-micro font-semibold tracking-label text-ink-soft uppercase">Response (excerpt)</div>
+        <div className="mb-1 text-fs-label font-semibold text-ink-soft">Response (excerpt)</div>
         <pre className="max-h-64 overflow-auto rounded-button border border-border-soft bg-surface-subtle px-3.5 py-3 font-mono text-fs-label leading-relaxed whitespace-pre-wrap text-ink-mid">
           {response || "Loading…"}
         </pre>

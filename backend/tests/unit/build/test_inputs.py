@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import datetime
+import json
+from pathlib import Path
 
 import pytest
 
-from bsllmner_viewer.build.inputs import parse_datetime, parse_input_doc
+from bsllmner_viewer.build.inputs import parse_datetime, parse_input_doc, read_input
 
 
 def test_parse_input_doc_reads_wrapped_shape() -> None:
@@ -72,3 +74,39 @@ def test_parse_input_doc_requires_accession() -> None:
 )
 def test_parse_datetime_normalizes_to_naive_utc(value: object, expected: datetime.datetime | None) -> None:
     assert parse_datetime(value) == expected
+
+
+def test_read_input_reads_both_shapes_from_one_file(tmp_path: Path) -> None:
+    wrapped = {
+        "BioSample": {
+            "submission_date": "2024-12-30T10:00:00",
+            "Description": {"Title": "wrapped", "Organism": {"taxonomy_id": "9606"}},
+            "Attributes": {"Attribute": [{"attribute_name": "tissue", "content": "colon"}]},
+        },
+        "accession": "SAMN1",
+    }
+    flat = {
+        "accession": "SAMN2",
+        "publication_date": "2013-01-07T00:00:00+09:00",
+        "Description": {"Title": "flat", "Organism": {"taxonomy_id": "10090"}},
+        "Attributes": {"Attribute": {"attribute_name": "sample_name", "content": "x"}},
+    }
+    path = tmp_path / "mixed.jsonl"
+    path.write_text("\n".join(json.dumps(d) for d in (wrapped, flat, wrapped | {"accession": "SAMN3"})) + "\n\n")
+    docs = list(read_input(path))
+    assert [(d.accession, d.title, d.organism_id) for d in docs] == [
+        ("SAMN1", "wrapped", 9606),
+        ("SAMN2", "flat", 10090),
+        ("SAMN3", "wrapped", 9606),
+    ]
+    assert [[a.name for a in d.attributes] for d in docs] == [["tissue"], ["sample_name"], ["tissue"]]
+
+
+def test_parse_input_doc_prefers_the_wrapped_record_over_top_level_members() -> None:
+    doc = {
+        "BioSample": {"Description": {"Title": "inner", "Organism": {"taxonomy_id": "9606"}}},
+        "Description": {"Title": "outer", "Organism": {"taxonomy_id": "10090"}},
+        "accession": "SAMN1",
+    }
+    parsed = parse_input_doc(doc)
+    assert (parsed.title, parsed.organism_id) == ("inner", 9606)

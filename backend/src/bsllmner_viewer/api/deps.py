@@ -7,7 +7,7 @@ from typing import Annotated
 from fastapi import Depends, Query, Request
 
 from bsllmner_viewer.api.store import Store
-from bsllmner_viewer.dsl.ast import Node
+from bsllmner_viewer.dsl.ast import Node, normalize
 from bsllmner_viewer.dsl.parser import parse
 from bsllmner_viewer.dsl.validator import validate
 
@@ -29,9 +29,13 @@ QParam = Annotated[
 
 
 def parse_condition(store: Store, q: str | None) -> Node | None:
-    """Parse and validate a condition, or None when q is empty."""
+    """Parse and validate a condition, or None when q is empty.
+
+    The result has nested groups of the same operator flattened, so that redundant parentheses in `q`
+    do not change which conjuncts are at the top level.
+    """
     if q is None or not q.strip():
         return None
     ast = parse(q)
     validate(ast, store.field_set)
-    return ast
+    return normalize(ast)

@@ -122,6 +122,24 @@ def test_distribution_self_exclusion_drops_own_conjunct(client: TestClient) -> N
     assert on["status_population_q"] == "library_strategy:RNA-Seq"
 
 
+def test_redundant_parentheses_do_not_change_the_population(client: TestClient) -> None:
+    flat = 'disease:"MONDO:0007254" AND title:run1 AND disease:"MONDO:0005061"'
+    nested = 'disease:"MONDO:0007254" AND (title:run1 AND disease:"MONDO:0005061")'
+    for path, params in (
+        ("/api/distribution", {"field": "disease"}),
+        ("/api/crosstab", {"row": "disease", "col": "library_strategy"}),
+        ("/api/trend", {"field": "disease"}),
+    ):
+        a = client.get(path, params={**params, "q": flat}).json()
+        b = client.get(path, params={**params, "q": nested}).json()
+        assert a["q"] == b["q"] == flat
+        assert a["population_q"] == b["population_q"] == "title:run1", path
+    assert client.get("/api/trend", params={"q": nested}).json()["total_population_q"] == flat
+    clause = {"field": "title", "value": "run1"}
+    selected = [client.post("/api/dsl/select", json={"q": q, "clauses": [clause]}).json()["q"] for q in (flat, nested)]
+    assert selected[0] == selected[1] == 'disease:"MONDO:0007254" AND disease:"MONDO:0005061"'
+
+
 def test_distribution_year_elements_carry_range_clauses(client: TestClient) -> None:
     body = client.get("/api/distribution", params={"field": "date_created"}).json()
     element = body["elements"][0]
@@ -145,10 +163,106 @@ def test_crosstab_returns_cells_with_expected_counts(client: TestClient) -> None
 def test_trend_returns_points_per_year(client: TestClient) -> None:
     body = client.get("/api/trend", params={"field": "tissue", "unit": "experiment", "limit": 2}).json()
     assert body["years"] == sorted(body["years"])
+    assert body["field"] == "tissue"
     assert len(body["series"]) <= 2
     for series in body["series"]:
         assert [p["year"] for p in series["points"]] == body["years"]
         assert series["points"][0]["clauses"][1]["field"] == "date_created"
+    assert [p["year"] for p in body["total"]] == body["years"]
+
+
+def test_trend_without_a_field_counts_the_condition_per_year(client: TestClient) -> None:
+    body = client.get("/api/trend").json()
+    assert body["field"] is None
+    assert body["series"] == []
+    assert body["total_population_q"] is None
+    assert body["population_q"] is None
+    assert [p["year"] for p in body["total"]] == body["years"]
+    assert all(p["count"] > 0 for p in body["total"])
+    point = body["total"][0]
+    assert point["clauses"] == [
+        {"field": "date_created", "from": f"{point['year']}-01-01", "to": f"{point['year']}-12-31"}
+    ]
+    assert sum(p["count"] for p in body["total"]) == client.get("/api/records").json()["total"]
+
+
+def test_trend_populations_exclude_the_year_and_the_series_dimension(client: TestClient) -> None:
+    q = 'disease:"MONDO:0007254" AND library_strategy:RNA-Seq AND date_created:[2015-01-01 TO 2016-12-31]'
+    on = client.get("/api/trend", params={"q": q, "field": "disease"}).json()
+    assert on["total_population_q"] == 'disease:"MONDO:0007254" AND library_strategy:RNA-Seq'
+    assert on["population_q"] == "library_strategy:RNA-Seq"
+    assert "MONDO:0007254" in [s["value"] for s in on["series"]]
+    off = client.get("/api/trend", params={"q": q, "field": "disease", "self_exclusion": "false"}).json()
+    assert off["total_population_q"] == off["population_q"] == q
+    assert all(2015 <= y <= 2016 for y in off["years"])
+
+
+def test_trend_rejects_the_year_as_its_dimension(client: TestClient) -> None:
+    response = client.get("/api/trend", params={"field": "date_created"})
+    assert response.status_code == 400
+    assert response.json()["type"] == "/problems/invalid-dimension"
+
+
+def test_select_narrow_builds_the_documented_condition(client: TestClient) -> None:
+    table = client.get(
+        "/api/crosstab", params={"row": "cell_line", "col": "library_strategy", "q": "library_strategy:ChIP-Seq"}
+    ).json()
+    assert table["population_q"] is None
+    cell = [{"field": "cell_line", "value": "A"}, {"field": "library_strategy", "value": "RNA-Seq"}]
+    narrowed = client.post(
+        "/api/dsl/select", json={"q": table["population_q"], "clauses": cell, "mode": "narrow"}
+    ).json()
+    assert narrowed["q"] == "cell_line:A AND library_strategy:RNA-Seq"
+    again = client.post("/api/dsl/select", json={"q": narrowed["q"], "clauses": cell, "mode": "narrow"}).json()
+    assert again["q"] == narrowed["q"]
+    kept = client.post(
+        "/api/dsl/select",
+        json={"q": "(cell_line:A OR cell_line:B) AND title:x", "clauses": cell[:1], "mode": "narrow"},
+    ).json()
+    assert kept["q"] == "(cell_line:A OR cell_line:B) AND title:x AND cell_line:A"
+    assert client.post("/api/dsl/select", json={"q": None, "clauses": cell, "mode": "other"}).status_code == 422
+
+
+def _two_disease_terms(client: TestClient) -> tuple[str, str]:
+    elements = client.get("/api/distribution", params={"field": "disease", "limit": 50}).json()["elements"]
+    top = client.get("/api/distribution", params={"field": "disease", "limit": 1}).json()["elements"][0]["value"]
+    other = next(e["value"] for e in reversed(elements) if e["value"] != top)
+    return top, other
+
+
+def test_default_elements_include_the_terms_the_condition_names(client: TestClient) -> None:
+    top, other = _two_disease_terms(client)
+    plain = client.get("/api/distribution", params={"field": "disease", "limit": 1}).json()
+    assert [e["value"] for e in plain["elements"]] == [top]
+    named = client.get("/api/distribution", params={"field": "disease", "limit": 1, "q": f'disease:"{other}"'}).json()
+    assert {e["value"] for e in named["elements"]} == {top, other}
+    counts = [e["count"] for e in named["elements"]]
+    assert counts == sorted(counts, reverse=True)
+    table = client.get(
+        "/api/crosstab", params={"row": "disease", "col": "library_strategy", "limit": 1, "q": f'disease:"{other}"'}
+    ).json()
+    assert {r["value"] for r in table["rows"]} == {top, other}
+    trend = client.get("/api/trend", params={"field": "disease", "limit": 1, "q": f'disease:"{other}"'}).json()
+    assert {s["value"] for s in trend["series"]} == {top, other}
+
+
+def test_default_elements_ignore_negated_and_explicitly_named_requests(client: TestClient) -> None:
+    top, other = _two_disease_terms(client)
+    negated = client.get(
+        "/api/distribution", params={"field": "disease", "limit": 1, "q": f'NOT disease:"{other}"'}
+    ).json()
+    assert other not in [e["value"] for e in negated["elements"]]
+    explicit = client.get(
+        "/api/distribution", params={"field": "disease", "elements": top, "q": f'disease:"{other}"'}
+    ).json()
+    assert [e["value"] for e in explicit["elements"]] == [top]
+
+
+def test_default_elements_include_an_unannotated_term_with_a_zero_count(client: TestClient) -> None:
+    body = client.get("/api/distribution", params={"field": "disease", "q": 'disease:"MONDO:9999999"'}).json()
+    named = next(e for e in body["elements"] if e["value"] == "MONDO:9999999")
+    assert named["count"] == 0
+    assert named["label"] == "MONDO:9999999"
 
 
 def test_projects_lists_bioprojects_with_composition(client: TestClient) -> None:
@@ -212,6 +326,47 @@ def test_terms_search_matches_label_synonym_and_id(client: TestClient) -> None:
     assert hit["path"][-1] == "breast cancer"
     assert hit["clauses"] == [{"field": "disease", "value": "MONDO:0004989"}]
     assert client.get("/api/terms", params={"field": "title", "query": "x"}).status_code == 400
+
+
+def test_terms_search_without_a_field_searches_every_annotation_field(client: TestClient) -> None:
+    fields = {f["name"] for f in client.get("/api/dataset").json()["fields"]}
+    body = client.get("/api/terms", params={"query": "breast"}).json()
+    assert body["field"] is None
+    assert body["population_q"] is None
+    assert ("disease", "MONDO:0007254") in {(h["field"], h["term_id"]) for h in body["terms"]}
+    assert all(
+        h["field"] in fields and h["clauses"] == [{"field": h["field"], "value": h["term_id"]}] for h in body["terms"]
+    )
+    by_synonym = client.get("/api/terms", params={"query": "K562"}).json()["terms"]
+    assert [(h["field"], h["term_id"]) for h in by_synonym] == [("cell_line", "CVCL:0004")]
+    by_id = client.get("/api/terms", params={"query": "ncbigene:10664"}).json()["terms"]
+    assert [(h["field"], h["label"]) for h in by_id] == [("chip_antigen", "CTCF")]
+
+
+def test_terms_search_without_a_query_lists_terms_of_several_fields_within_the_limit(client: TestClient) -> None:
+    body = client.get("/api/terms", params={"limit": 8}).json()
+    assert len(body["terms"]) == 8
+    assert len({h["field"] for h in body["terms"]}) > 1
+    assert len({(h["field"], h["term_id"]) for h in body["terms"]}) == 8
+    assert client.get("/api/terms", params={"query": "no such term text"}).json()["terms"] == []
+
+
+def test_terms_search_treats_like_wildcards_in_the_query_as_text(client: TestClient) -> None:
+    assert client.get("/api/terms", params={"query": "%"}).json()["terms"] == []
+    assert client.get("/api/terms", params={"query": "_"}).json()["terms"] == []
+
+
+def test_terms_search_counts_each_hit_without_the_conjuncts_on_its_own_field(client: TestClient) -> None:
+    q = 'disease:"MONDO:0005061" AND library_strategy:RNA-Seq'
+    hit = next(
+        h
+        for h in client.get("/api/terms", params={"query": "breast cancer", "q": q}).json()["terms"]
+        if (h["field"], h["term_id"]) == ("disease", "MONDO:0007254")
+    )
+    expected = client.get("/api/records", params={"q": 'library_strategy:RNA-Seq AND disease:"MONDO:0007254"'}).json()[
+        "total"
+    ]
+    assert hit["count"] == expected
 
 
 def test_terms_children_lists_annotated_children(client: TestClient) -> None:

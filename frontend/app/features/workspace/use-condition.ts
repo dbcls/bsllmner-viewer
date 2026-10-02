@@ -3,7 +3,7 @@ import { useCallback } from "react"
 import { useParsedCondition, useSelectElement } from "~/lib/api/queries"
 import type { AstNode, Clause } from "~/lib/api/types"
 
-import { hasClauses } from "./ast"
+import { clausesOfField, hasClauses } from "./ast"
 import type { Patch } from "./state"
 
 /** The parsed condition plus the operations that change it, all of which go through the api. */
@@ -24,7 +24,7 @@ export const useCondition = (q: string | null, update: (patch: Patch) => void) =
 
   const replaceField = useCallback(
     async (field: string, clause: Clause) => {
-      const present = ast ? clausesOf(ast, field) : []
+      const present = clausesOfField(ast, field)
       let current = q
       if (present.length) {
         current = (await select.mutateAsync({ q: current, clauses: present })).q
@@ -35,26 +35,19 @@ export const useCondition = (q: string | null, update: (patch: Patch) => void) =
     [ast, q, select, update],
   )
 
+  /** The condition that matches the records an element counts: the element's clauses added by AND to its population. */
+  const narrowed = useCallback(
+    async (populationQ: string | null, clauses: Clause[]) => (await select.mutateAsync({ q: populationQ, clauses, mode: "narrow" })).q,
+    [select],
+  )
+
   const clear = useCallback(() => update({ q: null }), [update])
 
   const applyText = useCallback((text: string) => update({ q: text || null }), [update])
 
   const isSelected = useCallback((clauses: Clause[]) => hasClauses(ast, clauses), [ast])
 
-  return { ast, labels, parseError: parsed.error, toggle, replaceField, clear, applyText, isSelected, pending: select.isPending }
-}
-
-const clausesOf = (ast: AstNode, field: string): Clause[] => {
-  const out: Clause[] = []
-  const walk = (node: AstNode) => {
-    if ("field" in node) {
-      if (node.field === field) out.push(node.op === "between" ? { field, from: node.from, to: node.to } : { field, value: node.value })
-      return
-    }
-    if ("rules" in node) node.rules.forEach(walk)
-  }
-  walk(ast)
-  return out
+  return { ast, labels, parseError: parsed.error, toggle, replaceField, narrowed, clear, applyText, isSelected, pending: select.isPending }
 }
 
 export type Condition = ReturnType<typeof useCondition>

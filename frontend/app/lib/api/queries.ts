@@ -44,11 +44,13 @@ export const useParsedCondition = (condition: string | null) =>
     retry: false,
   })
 
-export const useSelectElement = () =>
-  useMutation({
-    mutationFn: async (input: { q: string | null; clauses: Clause[] }): Promise<ConditionResponse> =>
-      unwrap(await api.POST("/api/dsl/select", { body: { q: input.q, clauses: input.clauses } })),
-  })
+export type SelectMode = "toggle" | "narrow"
+
+/** Apply the clauses of an element to a condition: toggle them, or narrow the condition to the element. */
+export const selectElement = async (input: { q: string | null; clauses: Clause[]; mode?: SelectMode }): Promise<ConditionResponse> =>
+  unwrap(await api.POST("/api/dsl/select", { body: { q: input.q, clauses: input.clauses, mode: input.mode ?? "toggle" } }))
+
+export const useSelectElement = () => useMutation({ mutationFn: selectElement })
 
 export const useSerialize = () =>
   useMutation({
@@ -125,7 +127,7 @@ export const useCrosstab = (params: CrosstabParams, enabled = true) =>
   })
 
 export type TrendParams = {
-  field: string
+  field?: string
   q: string | null
   unit: Unit
   selfExclusion: boolean
@@ -215,7 +217,7 @@ export const useEntry = (accession: string) =>
   })
 
 export type TermsParams = {
-  field: string
+  field?: string
   query: string
   q: string | null
   unit: Unit

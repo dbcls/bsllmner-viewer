@@ -3,7 +3,7 @@ from __future__ import annotations
 from bsllmner_viewer.dsl.ast import clause, structurally_equal
 from bsllmner_viewer.dsl.parser import parse
 from bsllmner_viewer.dsl.serializer import serialize
-from bsllmner_viewer.dsl.transform import exclude_dimensions, select_element
+from bsllmner_viewer.dsl.transform import exclude_dimensions, named_values, narrow, select_element
 
 
 def _q(ast: object) -> str | None:
@@ -68,3 +68,48 @@ def test_select_element_keeps_other_conjuncts_intact() -> None:
     out = select_element(ast, [clause("disease", "A")])
     assert out is not None
     assert structurally_equal(out, parse("title:x AND date_created:[2015-01-01 TO 2020-12-31] AND disease:A"))
+
+
+def test_narrow_adds_every_clause_as_a_new_conjunct() -> None:
+    cell = [clause("cell_line", "A"), clause("library_strategy", "RNA-Seq")]
+    assert _q(narrow(None, cell)) == "cell_line:A AND library_strategy:RNA-Seq"
+    assert _q(narrow(parse("title:x"), cell)) == "title:x AND cell_line:A AND library_strategy:RNA-Seq"
+
+
+def test_narrow_does_not_join_a_clause_into_a_group_of_the_same_field() -> None:
+    ast = parse("(cell_line:A OR cell_line:B) AND library_strategy:ChIP-Seq")
+    out = narrow(ast, [clause("cell_line", "A"), clause("library_strategy", "RNA-Seq")])
+    assert _q(out) == (
+        "(cell_line:A OR cell_line:B) AND library_strategy:ChIP-Seq AND cell_line:A AND library_strategy:RNA-Seq"
+    )
+
+
+def test_narrow_does_not_repeat_a_clause_that_is_already_a_conjunct() -> None:
+    ast = parse("cell_line:A AND library_strategy:RNA-Seq")
+    assert _q(narrow(ast, [clause("cell_line", "A", kind="phrase"), clause("library_strategy", "RNA-Seq")])) == _q(ast)
+    assert _q(narrow(parse("NOT cell_line:A"), [clause("cell_line", "A")])) == "NOT cell_line:A AND cell_line:A"
+
+
+def test_narrow_without_clauses_returns_the_condition() -> None:
+    assert narrow(None, []) is None
+    assert _q(narrow(parse("title:x"), [])) == "title:x"
+
+
+def test_named_values_reads_top_level_clauses_and_disjunctions_of_the_field() -> None:
+    ast = parse('(disease:"MONDO:1" OR disease:"MONDO:2") AND library_strategy:ATAC-seq AND disease:"MONDO:3"')
+    assert named_values(ast, "disease") == ["MONDO:1", "MONDO:2", "MONDO:3"]
+    assert named_values(ast, "library_strategy") == ["ATAC-seq"]
+    assert named_values(ast, "tissue") == []
+    assert named_values(None, "disease") == []
+
+
+def test_named_values_ignores_negated_mixed_and_nested_clauses() -> None:
+    assert named_values(parse('NOT disease:"MONDO:1"'), "disease") == []
+    assert named_values(parse('disease:"MONDO:1" OR tissue:"UBERON:1"'), "disease") == []
+    assert named_values(parse('(disease:"MONDO:1" AND title:x) OR title:y'), "disease") == []
+    assert named_values(parse('title:x AND (disease:"MONDO:1" OR NOT disease:"MONDO:2")'), "disease") == []
+
+
+def test_named_values_ignores_ranges_and_repeated_values() -> None:
+    assert named_values(parse("date_created:[2015-01-01 TO 2020-12-31]"), "date_created") == []
+    assert named_values(parse('disease:"MONDO:1" AND disease:"MONDO:1"'), "disease") == ["MONDO:1"]

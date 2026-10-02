@@ -4,7 +4,7 @@ import { useParsedCondition, useProjects, useRecords } from "~/lib/api/queries"
 import { formatCount } from "~/lib/format"
 import { Button, Chip, cn, LinkButton, Segmented, TextArea } from "~/ui"
 
-import { clauseLabel, conditionGroups, groupLabel } from "./ast"
+import { clauseLabel, conditionGroups, describeAst, groupLabel } from "./ast"
 import type { Condition } from "./use-condition"
 
 type Mode = "visual" | "query"
@@ -65,9 +65,7 @@ export const ConditionBar = ({ q, condition, onShare, onExport, onApi, exportMen
       <div className="min-w-0 flex-1">
         {mode === "visual" ? (
           groups.length === 0 ? (
-            <div className="flex min-h-7 items-center text-fs-body-sm text-ink-soft">
-              No condition — the whole dataset. Add terms from the panel, or click any bar, cell, point, or row.
-            </div>
+            <div className="flex min-h-7 items-center text-fs-body-sm text-ink-soft">No condition. Every record of the dataset matches.</div>
           ) : (
             <div className="flex items-stretch">
               <div className="relative z-10 flex w-rail-col shrink-0 flex-col items-center pt-1.5">
@@ -82,7 +80,7 @@ export const ConditionBar = ({ q, condition, onShare, onExport, onApi, exportMen
                     <span className="-ml-rail-offset h-0.5 w-rail-width shrink-0 bg-border-soft" />
                     {group.kind === "clauses" ? (
                       <>
-                        <span className="min-w-16 text-fs-micro tracking-tag whitespace-nowrap text-ink-soft uppercase">{groupLabel(group.field)}</span>
+                        <span className="min-w-16 text-fs-label whitespace-nowrap text-ink-soft">{groupLabel(group.field)}</span>
                         {group.clauses.length > 1 && (
                           <span className="rounded-tag bg-brand-tint px-1.5 py-0.5 text-fs-badge leading-none font-bold tracking-widest text-brand">OR</span>
                         )}
@@ -105,9 +103,9 @@ export const ConditionBar = ({ q, condition, onShare, onExport, onApi, exportMen
                       </>
                     ) : (
                       <>
-                        <span className="min-w-16 text-fs-micro tracking-tag whitespace-nowrap text-ink-soft uppercase">Expression</span>
+                        <span className="min-w-16 text-fs-label whitespace-nowrap text-ink-soft">Expression</span>
                         <Chip kind="soft" title="Edit this part of the condition in Query mode">
-                          <span className="font-mono text-fs-label">{group.text}</span>
+                          {describeAst(group.node, condition.labels)}
                         </Chip>
                       </>
                     )}
@@ -133,11 +131,13 @@ export const ConditionBar = ({ q, condition, onShare, onExport, onApi, exportMen
                 Apply
               </Button>
             </div>
-            <div className="mt-1 flex gap-2.5 text-fs-label text-ink-soft">
-              <span>
-                Fields: <span className="font-mono">{FIELD_HINT}</span>. ⌘/Ctrl+Enter applies.
-              </span>
-              {draftError && draftError !== "pending" && <span className="text-critical-fg">{draftError}</span>}
+            {draftError && draftError !== "pending" && (
+              <div role="alert" className="mt-1 text-fs-body-sm text-critical-fg">
+                {draftError}
+              </div>
+            )}
+            <div className="mt-1 text-fs-label text-ink-soft">
+              Fields: <span className="font-mono">{FIELD_HINT}</span>. ⌘/Ctrl+Enter applies.
             </div>
           </div>
         )}

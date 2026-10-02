@@ -137,6 +137,16 @@ def classify(observed: int, expected: float | None, residual: float | None) -> s
     return None
 
 
+def trend_total(cur: duckdb.DuckDBPyConnection, pop: Population, unit: Unit) -> dict[int, int]:
+    """Count of the population per creation year."""
+    rows = cur.execute(
+        f"WITH {pop.cte()} SELECT p.year, {count_expr(unit)} FROM pop p {bp_join(unit)} "
+        "WHERE p.year IS NOT NULL GROUP BY 1",
+        list(pop.params),
+    ).fetchall()
+    return {int(y): int(n) for y, n in rows}
+
+
 def trend(
     cur: duckdb.DuckDBPyConnection, pop: Population, dim: FieldDef, elements: list[str], unit: Unit
 ) -> tuple[list[int], dict[tuple[str, int], int]]:

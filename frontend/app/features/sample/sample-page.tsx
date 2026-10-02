@@ -5,7 +5,7 @@ import { ApiError } from "~/lib/api/client"
 import { useEntry } from "~/lib/api/queries"
 import type { EntryResponse, Evidence } from "~/lib/api/types"
 import { fieldLabel, statusInfo } from "~/lib/labels"
-import { Card, cn, ExternalLink, SectionLabel, StatusPill, Tag } from "~/ui"
+import { Caption, Card, cn, ExternalLink, StatusPill, Tag } from "~/ui"
 
 import { evidenceContext, segmentText } from "./evidence"
 
@@ -53,7 +53,7 @@ export const SamplePage = ({ accession }: SamplePageProps) => {
       <BackLink href={backHref} />
       <div className="mt-3.5 mb-5 flex items-start justify-between gap-6">
         <div>
-          <SectionLabel>BioSample</SectionLabel>
+          <Caption>BioSample</Caption>
           <div className="mt-0.5 font-mono text-fs-h1 font-semibold tracking-h1 text-ink">{data.accession}</div>
           {data.title && <div className="mt-1.5 text-fs-h2 text-ink">{data.title}</div>}
           <div className="mt-1.5 flex gap-3.5 text-fs-body-sm text-ink-soft">
@@ -178,9 +178,9 @@ const Annotations = ({ entry, highlighted, onHighlight }: AnnotationsProps) => (
       <AnnotationRow key={annotation.field} entry={entry} annotation={annotation} highlighted={highlighted} onHighlight={onHighlight} />
     ))}
     <div className="mt-2 text-fs-micro text-ink-soft">
-      Click a term to search for other samples with it. Statuses: Exact match — matched a registered name or synonym; LLM selected — chosen from
-      candidates by the model; No candidate — nothing similar in the ontology; Rejected — candidates existed but none was accepted; Not stated — no
-      value in the attributes; Extraction failed — model output could not be parsed.
+      Click a term to search for other samples with it. Exact match: the value matched a label or a synonym of the term. LLM selected: the
+      LLM chose the term from candidates. No candidate: the ontology has no similar term. Rejected: candidates existed, but none was adopted.
+      Not stated: no value was extracted. Extraction failed: the output of the LLM could not be read.
     </div>
   </Card>
 )
@@ -225,8 +225,8 @@ const AnnotationRow = ({
       <StatusPill status={annotation.status} glyph={info.glyph} label={info.label} />
       {annotation.evidence.length > 0 && (
         <div className="col-span-2 col-start-2 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-fs-label text-ink-soft">
-          <span className="text-fs-micro font-semibold tracking-label">
-            {annotation.evidence.length > 1 ? `FOUND IN ${annotation.evidence.length} ATTRIBUTES` : "FOUND IN"}
+          <span className="text-fs-micro font-semibold">
+            {annotation.evidence.length > 1 ? `Found in ${annotation.evidence.length} attributes` : "Found in"}
           </span>
           {annotation.evidence.map((evidence, index) => {
             const context = evidenceContext(evidenceSource(entry, evidence), evidence.start, evidence.end)
@@ -250,16 +250,16 @@ const ExperimentsCard = ({ experiments }: { experiments: EntryExperiment[] }) =>
     <table className="w-full border-collapse text-fs-body-sm">
       <thead>
         <tr>
-          <th className="border-b border-border-soft px-2 py-1.5 text-left text-fs-micro font-semibold tracking-tag text-ink-soft uppercase">
+          <th className="border-b border-border-soft px-2 py-1.5 text-left text-fs-label font-semibold text-ink-soft">
             Accession
           </th>
-          <th className="border-b border-border-soft px-2 py-1.5 text-left text-fs-micro font-semibold tracking-tag text-ink-soft uppercase">
+          <th className="border-b border-border-soft px-2 py-1.5 text-left text-fs-label font-semibold text-ink-soft">
             Assay
           </th>
-          <th className="border-b border-border-soft px-2 py-1.5 text-right text-fs-micro font-semibold tracking-tag text-ink-soft uppercase">
+          <th className="border-b border-border-soft px-2 py-1.5 text-right text-fs-label font-semibold text-ink-soft">
             Runs
           </th>
-          <th className="border-b border-border-soft px-2 py-1.5 text-left text-fs-micro font-semibold tracking-tag text-ink-soft uppercase">
+          <th className="border-b border-border-soft px-2 py-1.5 text-left text-fs-label font-semibold text-ink-soft">
             Links
           </th>
         </tr>

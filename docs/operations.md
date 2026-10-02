@@ -86,6 +86,8 @@ The api opens the store named by `BSLLMNER_VIEWER_STORE` when it starts and keep
 
 A store file that is being served is never modified. Old files can be deleted once no api process refers to them.
 
+A store records the version of the store schema that it was written with, and the api starts only with a store of the schema version that its own code reads. If an update of the code changes the schema, then write a new store with `refresh` before you restart the api.
+
 ## Deployment
 
 `deploy/compose.yml` runs two containers: `api` (the FastAPI server) and `web` (nginx serving the built frontend and proxying `/api/` to the api). It works with `docker compose` and `podman compose`.

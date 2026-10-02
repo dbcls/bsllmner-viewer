@@ -45,9 +45,27 @@ An aggregation counts matching records per element along one or two **dimensions
 
 By default, an aggregation is computed without the conditions on its own dimensions. The population of the aggregation is `q` with every top-level conjunct removed whose clauses are all on the aggregation's dimensions. The remaining conditions apply as usual.
 
+The top-level conjuncts are the operands of the outermost `AND` after nested `AND` groups are merged. For example, `a AND (b AND c)` has three top-level conjuncts.
+
 Self-exclusion keeps every element of a dimension visible while one of its elements is selected, so that the selection can be compared with the alternatives. Drilling down within a selected term is done by expanding the term into its child terms.
 
 A request parameter disables self-exclusion, in which case the population of the aggregation is `q` itself. The record list is always computed from `q` itself.
+
+A distribution on an annotation term dimension also returns the status composition of the field. The status composition is an aggregation on the status dimension of the same field. Its population excludes the conjuncts on the term dimension and the conjuncts on the status dimension. A condition on a term of the field therefore does not reduce the composition to the mapped statuses.
+
+### Default elements
+
+If a request does not name the elements of a dimension, then the api chooses the elements.
+
+- For an annotation term dimension, the api chooses the terms that are assigned directly to the most BioSamples in the population of the aggregation. The count of a term includes the records of its descendants, but the choice does not. A term that is only an ancestor of the assigned terms, such as the root of an ontology, is therefore not chosen.
+- The api adds the elements that `q` names in a top-level clause, or in a top-level disjunction of clauses, on the dimension without `NOT`. A selected element is therefore present even if it is not one of the most frequent elements.
+- The api returns term, assay, and organism elements in descending order of their counts.
+
+### Trend
+
+A trend counts the records of the condition for each creation year of the BioSample. The population of these counts is `q` without the conjuncts on `date_created`.
+
+If a request names a dimension, then the trend also counts the records of each element of the dimension for each year. The population of these counts also excludes the conjuncts on that dimension.
 
 ### Expected counts in cross-tabulations
 
@@ -74,16 +92,19 @@ For every element of an aggregation, the element's count equals the count of rec
 
 ### From elements to conditions
 
-Selecting an element in the UI adds each clause of the element to `q`:
+An element with one clause is a bar of a distribution or a point of the trend of the condition. Selecting the element in the UI toggles the clause in `q`:
 
-- If `q` has a top-level conjunct that is a clause, or a disjunction of clauses, on the same field without `NOT`, the new clause is joined to that conjunct with `OR`.
+- If `q` has a top-level conjunct that is a clause, or a disjunction of clauses, on the same field without `NOT`, then the new clause is joined to that conjunct with `OR`.
 - Otherwise, the new clause is added as a new top-level conjunct with `AND`.
-
-Selecting an element whose clauses are all already in `q` removes those clauses instead, and removes a conjunct that becomes empty. Selecting an element with several clauses of which only some are present adds the missing ones.
-
-The api performs this operation on behalf of clients, so that the UI and other clients derive the same condition from the same selection.
+- If the clause is already in `q`, then selecting the element removes the clause, and removes a conjunct that becomes empty.
 
 For example, selecting `disease:A`, then `library_strategy:ATAC-seq`, then `disease:B` produces `(disease:A OR disease:B) AND library_strategy:ATAC-seq`.
+
+An element with two clauses is a cell of a cross-tabulation or a point of the trend of an element. Selecting the element in the UI narrows the condition to the element. The new condition is the population of the aggregation combined by `AND` with both clauses. The number of records that match the new condition equals the count of the element.
+
+For example, with `q` equal to `library_strategy:ChIP-Seq`, selecting the cell of `cell_line:A` and `library_strategy:RNA-Seq` in a cross-tabulation of the two fields produces `cell_line:A AND library_strategy:RNA-Seq`.
+
+The api performs both operations on behalf of clients, so that the UI and other clients derive the same condition from the same selection.
 
 ## Queries and UI views
 

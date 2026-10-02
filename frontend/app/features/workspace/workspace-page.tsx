@@ -7,7 +7,6 @@ import { copyText } from "~/lib/export"
 import { fieldLabel } from "~/lib/labels"
 import { Toast } from "~/ui"
 
-import { leaves } from "./ast"
 import { ConditionBar } from "./condition-bar"
 import { ConditionPanel } from "./condition-panel"
 import { DistributionTab } from "./distribution/distribution-tab"
@@ -18,7 +17,6 @@ import { SamplesTab } from "./samples/samples-tab"
 import { useWorkspaceState } from "./state"
 import { Tabs } from "./tabs"
 import { type PickerMode, type PickerRequest, TermPicker } from "./term-picker/term-picker"
-import { trendFieldOf } from "./trend/field"
 import { TrendTab } from "./trend/trend-tab"
 import { useCondition } from "./use-condition"
 
@@ -52,7 +50,6 @@ export const WorkspacePage = () => {
   }, [])
 
   const dimensions = [...fields, ...AXIS_DIMENSIONS].map((d) => ({ value: d, label: fieldLabel(d) }))
-  const trendField = trendFieldOf(state.trendField, state.row, fields, leaves(condition.ast).map((leaf) => leaf.field))
 
   const axisTerms = (mode: PickerMode) => (mode === "row" ? state.rowTerms : state.colTerms)
   const setAxisTerms = (mode: PickerMode, terms: string[] | null) =>
@@ -118,7 +115,7 @@ export const WorkspacePage = () => {
             />
           )}
           {state.tab === "trend" && (
-            <TrendTab state={state} condition={condition} field={trendField} onTrendField={(field) => update({ trendField: field })} />
+            <TrendTab state={state} condition={condition} onSplit={(field) => update({ trendField: field, trendTerms: null })} />
           )}
           {state.tab === "projects" && <ProjectsTab state={state} condition={condition} onPage={(page) => update({ page })} />}
         </main>
@@ -135,7 +132,7 @@ export const WorkspacePage = () => {
         onPick={onPick}
         onField={onPickerField}
       />
-      <ApiModal open={apiOpen} onClose={() => setApiOpen(false)} state={state} trendField={trendField} onToast={showToast} />
+      <ApiModal open={apiOpen} onClose={() => setApiOpen(false)} state={state} onToast={showToast} />
       <Toast message={toast} />
     </>
   )

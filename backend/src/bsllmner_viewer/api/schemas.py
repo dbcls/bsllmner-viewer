@@ -93,6 +93,13 @@ class SerializeRequest(ApiModel):
 class SelectRequest(ApiModel):
     q: str | None = None
     clauses: list[Clause] = Field(min_length=1)
+    mode: Literal["toggle", "narrow"] = Field(
+        default="toggle",
+        description=(
+            "`toggle` adds each clause, or removes the clauses when all of them are present. "
+            "`narrow` adds each clause as a new AND conjunct."
+        ),
+    )
 
 
 class ConditionResponse(ApiModel):
@@ -167,11 +174,13 @@ class TrendSeries(ApiModel):
 class TrendResponse(ApiModel):
     dataset_version: DatasetVersionRef
     q: str | None
-    population_q: str | None
-    field: str
     unit: Unit
     self_exclusion: bool
     years: list[int]
+    total: list[TrendPoint] = Field(description="Counts of the condition per year")
+    total_population_q: str | None = Field(description="The condition the counts of `total` were computed from")
+    field: str | None = Field(description="The dimension of `series`, when the request names one")
+    population_q: str | None = Field(description="The condition the counts of `series` were computed from")
     series: list[TrendSeries]
 
 
@@ -294,6 +303,7 @@ class EntryResponse(ApiModel):
 
 
 class TermHit(ApiModel):
+    field: str
     term_id: str
     label: str | None
     ontology: str
@@ -305,9 +315,11 @@ class TermHit(ApiModel):
 
 class TermsResponse(ApiModel):
     dataset_version: DatasetVersionRef
-    field: str
+    field: str | None = Field(description="The searched field, or null when every annotation field was searched")
     query: str
-    population_q: str | None
+    population_q: str | None = Field(
+        description="The condition the counts were computed from, or null when every annotation field was searched"
+    )
     unit: Unit
     terms: list[TermHit]
 

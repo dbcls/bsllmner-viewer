@@ -27,20 +27,25 @@ export const leafToClause = (leaf: Leaf): Clause =>
 export const sameClause = (a: Clause, b: Clause): boolean =>
   a.field === b.field && a.value === b.value && a.from === b.from && a.to === b.to
 
-/** Whether every clause of an element is in the condition (as a top-level clause or clause group). */
+/**
+ * The clauses a condition names as selected: its top-level clauses and its top-level disjunctions of clauses on one field.
+ * Clauses under NOT and clauses in a disjunction over several fields are not selections of their field.
+ */
+export const selectedClauses = (ast: AstNode | null): Clause[] =>
+  conditionGroups(ast).flatMap((group) => (group.kind === "clauses" ? group.clauses : []))
+
+/** Whether every clause of an element is selected in the condition. */
 export const hasClauses = (ast: AstNode | null, clauses: Clause[]): boolean => {
-  const present = leaves(ast).map(leafToClause)
+  const present = selectedClauses(ast)
   return clauses.length > 0 && clauses.every((c) => present.some((p) => sameClause(p, c)))
 }
 
-export const clausesOfField = (ast: AstNode | null, field: string): Clause[] =>
-  leaves(ast)
-    .filter((leaf) => leaf.field === field)
-    .map(leafToClause)
+/** The selected clauses on a field. */
+export const clausesOfField = (ast: AstNode | null, field: string): Clause[] => selectedClauses(ast).filter((clause) => clause.field === field)
 
 export type ConditionGroup =
   | { kind: "clauses"; field: string; clauses: Clause[] }
-  | { kind: "expression"; text: string; node: AstNode }
+  | { kind: "expression"; node: AstNode }
 
 /** Groups shown by the visual condition: one row per top-level conjunct. */
 export const conditionGroups = (ast: AstNode | null): ConditionGroup[] =>
@@ -53,25 +58,23 @@ export const conditionGroups = (ast: AstNode | null): ConditionGroup[] =>
         return { kind: "clauses", field, clauses: rules.map(leafToClause) }
       }
     }
-    return { kind: "expression", text: formatAst(node), node }
+    return { kind: "expression", node }
   })
 
-const quote = (value: string): string => (/^[A-Za-z0-9_\-.]+$/.test(value) ? value : `"${value.replaceAll('"', '\\"')}"`)
-
-/** Display-only rendering of an AST; the api is the source of the canonical string. */
-export const formatAst = (node: AstNode, parentOp: string | null = null): string => {
+/** A readable rendering of a part of a condition, with field names and term labels in place of identifiers. */
+export const describeAst = (node: AstNode, labels: Record<string, string>, parentOp: string | null = null): string => {
   if (isLeaf(node)) {
-    if (node.op === "between") return `${node.field}:[${node.from} TO ${node.to}]`
-    return `${node.field}:${quote(node.value)}`
+    const clause = leafToClause(node)
+    return `${groupLabel(clause.field)}: ${clauseLabel(clause, labels)}`
   }
-  if (!isBool(node)) return quote(node.value)
+  if (!isBool(node)) return `“${node.value}”`
   if (node.op === "NOT") {
     const child = node.rules[0]
     if (!child) return "NOT"
-    return isBool(child) ? `NOT (${formatAst(child)})` : `NOT ${formatAst(child)}`
+    return isBool(child) ? `NOT (${describeAst(child, labels)})` : `NOT ${describeAst(child, labels)}`
   }
-  const text = node.rules.map((r) => formatAst(r, node.op)).join(` ${node.op} `)
-  return parentOp === "AND" && node.op === "OR" ? `(${text})` : text
+  const text = node.rules.map((rule) => describeAst(rule, labels, node.op)).join(` ${node.op} `)
+  return parentOp !== null && parentOp !== node.op ? `(${text})` : text
 }
 
 /** Short display label of a clause value. */

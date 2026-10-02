@@ -64,7 +64,7 @@ export const ProjectsTab = ({ state, condition, onPage }: ProjectsTabProps) => {
           {projects.data ? `${formatCount(total)} BioProjects match · page ${state.page} of ${pages}` : "Counting…"}
           {bioprojectFiltered && <Tag kind="warn">Not filtered by BioProject</Tag>}
         </span>
-        <span>Term composition shows how consistently a project's samples were annotated — a thin slice may be a mapping error worth checking.</span>
+        <span>Term composition shows how consistently the samples of a project were annotated. A thin slice may be a mapping error.</span>
       </div>
       <div className="mb-2.5 flex justify-end">
         <span className="inline-flex items-center gap-1.5 text-fs-label text-ink-soft">
@@ -126,7 +126,7 @@ export const ProjectsTab = ({ state, condition, onPage }: ProjectsTabProps) => {
 const Th = ({ children, align = "left", minWidth = false }: { children: ReactNode; align?: "left" | "right"; minWidth?: boolean }) => (
   <th
     className={cn(
-      "border-b border-border-soft px-2.5 py-2 text-fs-micro font-semibold tracking-tag whitespace-nowrap text-ink-soft uppercase",
+      "border-b border-border-soft px-2.5 py-2 text-fs-label font-semibold whitespace-nowrap text-ink-soft",
       align === "right" ? "text-right" : "text-left",
       minWidth && "min-w-40",
     )}

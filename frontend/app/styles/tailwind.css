@@ -60,10 +60,15 @@
   --color-failed:         #E9A79E;
   --color-grid:           #EDEBF2;
 
-  /* Trend series and the under-represented side of the residual scale. */
-  --color-series-2:     #1F5430;
-  --color-series-3:     #004098;
-  --color-series-4:     #705800;
+  /* Lines that split the trend, in a fixed order. The brand purple is the line of the condition itself;
+     the red of gaps and the goldenrod of unmapped values are not used for a line. */
+  --color-series-1:     #2A78D6;
+  --color-series-2:     #EB6834;
+  --color-series-3:     #1BAF7A;
+  --color-series-4:     #E87BA4;
+  --color-series-5:     #008300;
+
+  /* The under-represented side of the residual scale. */
   --color-under:        #004098;
   --color-under-soft:   #DFEBFB;
 

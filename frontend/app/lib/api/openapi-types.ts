@@ -65,8 +65,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Toggle the clauses of an aggregation element in a condition
-         * @description Adds each clause to the condition: joined with OR into the top-level clause group of the same field when one exists, otherwise as a new AND conjunct. When every clause of the element is already present, the clauses are removed instead.
+         * Apply the clauses of an aggregation element to a condition
+         * @description In `toggle` mode, adds each clause to the condition: joined with OR into the top-level clause group of the same field when one exists, otherwise as a new AND conjunct. When every clause is already present, the clauses are removed instead. In `narrow` mode, adds each clause as a new AND conjunct; with the population of an aggregation as `q`, the result matches the records counted by the element.
          */
         post: operations["select_dsl_api_dsl_select_post"];
         delete?: never;
@@ -118,7 +118,7 @@ export interface paths {
         };
         /**
          * Counts per element of one dimension
-         * @description Elements default to the terms most often annotated directly, ordered by their count with descendants. For an annotation field the response also carries the status composition of the field, computed without the conjuncts on the field's term and status dimensions.
+         * @description Elements default to the terms most often annotated directly, followed by the elements that the condition names, ordered by their count with descendants. For an annotation field the response also carries the status composition of the field, computed without the conjuncts on the field's term and status dimensions.
          */
         get: operations["get_distribution_api_distribution_get"];
         put?: never;
@@ -153,7 +153,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Counts per element and BioSample creation year */
+        /**
+         * Counts of the condition per BioSample creation year
+         * @description `total` counts the condition per year, computed without the conjuncts on `date_created`. When `field` is given, `series` counts each element of that dimension per year, computed without the conjuncts on that dimension as well.
+         */
         get: operations["get_trend_api_trend_get"];
         put?: never;
         post?: never;
@@ -187,7 +190,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Search the terms annotated in a field */
+        /**
+         * Search the terms annotated in a field, or in every annotation field
+         * @description Each hit is counted in the population of its own field: with self-exclusion, the condition without the conjuncts on that field.
+         */
         get: operations["search_terms_api_terms_get"];
         put?: never;
         post?: never;
@@ -690,6 +696,13 @@ export interface components {
             q?: string | null;
             /** Clauses */
             clauses: components["schemas"]["Clause-Input"][];
+            /**
+             * Mode
+             * @description `toggle` adds each clause, or removes the clauses when all of them are present. `narrow` adds each clause as a new AND conjunct.
+             * @default toggle
+             * @enum {string}
+             */
+            mode: "toggle" | "narrow";
         };
         /** SerializeRequest */
         SerializeRequest: {
@@ -730,6 +743,8 @@ export interface components {
         };
         /** TermHit */
         TermHit: {
+            /** Field */
+            field: string;
             /** Term Id */
             term_id: string;
             /** Label */
@@ -754,11 +769,17 @@ export interface components {
         /** TermsResponse */
         TermsResponse: {
             dataset_version: components["schemas"]["DatasetVersionRef"];
-            /** Field */
-            field: string;
+            /**
+             * Field
+             * @description The searched field, or null when every annotation field was searched
+             */
+            field: string | null;
             /** Query */
             query: string;
-            /** Population Q */
+            /**
+             * Population Q
+             * @description The condition the counts were computed from, or null when every annotation field was searched
+             */
             population_q: string | null;
             unit: components["schemas"]["Unit"];
             /** Terms */
@@ -789,15 +810,31 @@ export interface components {
             dataset_version: components["schemas"]["DatasetVersionRef"];
             /** Q */
             q: string | null;
-            /** Population Q */
-            population_q: string | null;
-            /** Field */
-            field: string;
             unit: components["schemas"]["Unit"];
             /** Self Exclusion */
             self_exclusion: boolean;
             /** Years */
             years: number[];
+            /**
+             * Total
+             * @description Counts of the condition per year
+             */
+            total: components["schemas"]["TrendPoint"][];
+            /**
+             * Total Population Q
+             * @description The condition the counts of `total` were computed from
+             */
+            total_population_q: string | null;
+            /**
+             * Field
+             * @description The dimension of `series`, when the request names one
+             */
+            field: string | null;
+            /**
+             * Population Q
+             * @description The condition the counts of `series` were computed from
+             */
+            population_q: string | null;
             /** Series */
             series: components["schemas"]["TrendSeries"][];
         };
@@ -1109,8 +1146,9 @@ export interface operations {
     };
     get_trend_api_trend_get: {
         parameters: {
-            query: {
-                field: string;
+            query?: {
+                /** @description Dimension of the series; omitted means no series */
+                field?: string | null;
                 /** @description Condition in the DSL. Omitted or empty means the whole population. */
                 q?: string | null;
                 /** @description Counting unit */
@@ -1189,8 +1227,9 @@ export interface operations {
     };
     search_terms_api_terms_get: {
         parameters: {
-            query: {
-                field: string;
+            query?: {
+                /** @description Annotation field; omitted means every annotation field */
+                field?: string | null;
                 /** @description Substring of a label, synonym, or term ID; empty lists the most annotated terms */
                 query?: string;
                 /** @description Condition in the DSL. Omitted or empty means the whole population. */

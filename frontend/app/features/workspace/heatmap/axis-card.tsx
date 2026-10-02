@@ -43,7 +43,7 @@ export const AxisCard = ({
   return (
     <Card padding="sm">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="w-14 text-fs-micro font-semibold tracking-label text-ink-soft uppercase">{side === "row" ? "Rows" : "Columns"}</span>
+        <span className="w-16 text-fs-body-sm font-semibold text-ink">{side === "row" ? "Rows" : "Columns"}</span>
         <Select options={dimensions} value={dimension} onChange={onDimension} aria-label={`${side === "row" ? "Row" : "Column"} dimension`} />
         <span className="text-fs-label text-ink-soft">
           {elements.length} {elements.length === 1 ? "term" : "terms"}
@@ -88,7 +88,7 @@ export const AxisCard = ({
             onChange={setPasteText}
             rows={3}
             mono
-            placeholder={`One term per line — label or ID, e.g. MONDO:0007254 (${fieldLabel(dimension)})`}
+            placeholder={`One ${fieldLabel(dimension)} term per line, as a label or an ID such as MONDO:0007254`}
             aria-label="Terms to set"
           />
           <Button

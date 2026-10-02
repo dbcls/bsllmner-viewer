@@ -179,6 +179,21 @@ def derive(con: duckdb.DuckDBPyConnection, target_assays: list[str]) -> None:
     )
     con.execute(
         """
+        CREATE TABLE term_search AS
+        SELECT DISTINCT c.field, c.term_id, x.text
+        FROM field_term_count c
+        JOIN (
+            SELECT term_id, lower(label) AS text FROM term WHERE label IS NOT NULL
+            UNION ALL
+            SELECT term_id, lower(term_id) AS text FROM term
+            UNION ALL
+            SELECT term_id, lower(synonym) AS text FROM term_synonym
+        ) x ON x.term_id = c.term_id
+        ORDER BY c.field, c.term_id
+        """
+    )
+    con.execute(
+        """
         CREATE TABLE field_status_count AS
         SELECT a.field, a.status,
                count(DISTINCT r.biosample) AS n_biosample,

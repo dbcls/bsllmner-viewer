@@ -40,4 +40,8 @@ def verify(con: duckdb.DuckDBPyConnection) -> Verification:
         problems.append(f"{duplicated[0]} BioSamples are stored more than once")
     if counts["record"] == 0:
         problems.append("the population is empty")
+    for table, relation in (("biosample_bioproject", "BioSample-BioProject"), ("sra_run", "experiment-run")):
+        row = con.execute(f"SELECT count(*) FROM {table}").fetchone()
+        if not row or not row[0]:
+            problems.append(f"no {relation} relation was read from the DBLink data")
     return Verification(not problems, tuple(problems), counts)

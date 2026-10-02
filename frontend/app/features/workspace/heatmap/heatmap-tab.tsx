@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react"
+import { useNavigate } from "react-router"
 
 import { api, unwrap } from "~/lib/api/client"
 import { useCrosstab, useDataset } from "~/lib/api/queries"
-import type { Cell } from "~/lib/api/types"
+import type { Cell, Clause } from "~/lib/api/types"
 import { countScale, countScaleIsDark, logPosition, residualScale, residualScaleIsDark, token } from "~/lib/color"
 import { downloadPngMarkup, downloadSvgMarkup, downloadTsv } from "~/lib/export"
 import { formatCount, formatResidual } from "~/lib/format"
@@ -10,8 +11,7 @@ import { fieldLabel, unitLabel } from "~/lib/labels"
 import { MATRIX_PRESETS } from "~/lib/presets"
 import { Card, Clickable, cn, LinkButton, Segmented, Select, Tag } from "~/ui"
 
-import { clausesOfField } from "../ast"
-import type { HeatmapColor, Patch, WorkspaceState } from "../state"
+import { type HeatmapColor, type Patch, workspaceSearch, type WorkspaceState } from "../state"
 import type { Condition } from "../use-condition"
 import { AxisCard, type AxisSide } from "./axis-card"
 import { type MatrixCell, matrixSvg, matrixSvgSize } from "./matrix-svg"
@@ -33,6 +33,7 @@ const CLASS_LABEL: Record<string, string> = { gap: "gap", under: "under-represen
 
 /** Cross-tabulation of two dimensions with expected counts, residuals, and gap marks. */
 export const HeatmapTab = ({ state, condition, update, onOpenPicker, onAxisElements, onToast }: HeatmapTabProps) => {
+  const navigate = useNavigate()
   const dataset = useDataset()
   const fields = dataset.data?.fields.map((f) => f.name) ?? []
   const dimensions = [...fields, ...AXIS_DIMENSIONS].map((d) => ({ value: d, label: fieldLabel(d) }))
@@ -57,8 +58,14 @@ export const HeatmapTab = ({ state, condition, update, onOpenPicker, onAxisEleme
   }, [rows, cols, onAxisElements])
 
   const unit = unitLabel(state.unit)
-  const ownRow = clausesOfField(condition.ast, state.row).length > 0
-  const ownCol = clausesOfField(condition.ast, state.col).length > 0
+  const excluded = data !== undefined && data.population_q !== data.q
+
+  /** Open the record list narrowed to a cell: the population of the table plus the cell's row and column clauses. */
+  const openCell = async (clauses: Clause[]) => {
+    if (!data) return
+    const q = await condition.narrowed(data.population_q, clauses)
+    await navigate(`/w${workspaceSearch({ ...state, q, tab: "samples", page: 1 })}`)
+  }
   const max = Math.max(1, ...(data?.cells ?? []).map((c) => c.count))
   const cellByKey = new Map((data?.cells ?? []).map((c) => [`${c.row}\t${c.col}`, c]))
 
@@ -264,48 +271,52 @@ export const HeatmapTab = ({ state, condition, update, onOpenPicker, onAxisEleme
               onChange={(color: HeatmapColor) => update({ color })}
             />
           </span>
-          {state.selfExclusion && (ownRow || ownCol) && (
+          {excluded && (
             <Tag kind="warn">
               Not filtered by {fieldLabel(state.row)}
-              {state.row !== state.col && ownCol ? ` or ${fieldLabel(state.col)}` : ""}
+              {state.row !== state.col ? ` or ${fieldLabel(state.col)}` : ""}
             </Tag>
           )}
         </div>
-        <div className="flex items-center gap-3.5">
-          {state.color === "count" ? (
-            <span className="inline-flex items-center gap-1.5">
-              0<span className="inline-block h-2.5 w-25 rounded-badge" style={{ background: gradient }} />
-              {formatCount(max)} <span>{unit}</span>
-            </span>
-          ) : (
-            <span className="inline-flex items-center gap-1.5">
-              <Swatch className="bg-under" /> r ≤ −4 <Swatch className="bg-under-soft" /> ≤ −2 <Swatch className="bg-brand-tint" /> ≥ 2 <Swatch className="bg-brand" /> ≥ 4
-            </span>
-          )}
-          <span className="inline-flex items-center gap-1.5">
-            <span className="inline-block h-3.5 w-5.5 rounded-badge border-gap border-dashed border-critical-fg bg-surface" />
-            Gap: 0 where ≥ 5 expected
+        <span className="flex shrink-0 gap-1.5 font-mono text-fs-micro">
+          <LinkButton mono tone="soft" onClick={exportTsv}>
+            Matrix TSV
+          </LinkButton>
+          <LinkButton mono tone="soft" onClick={exportSvg}>
+            SVG
+          </LinkButton>
+          <LinkButton mono tone="soft" onClick={exportPng}>
+            PNG
+          </LinkButton>
+        </span>
+      </div>
+      <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-fs-label text-ink-soft">
+        {state.color === "count" ? (
+          <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+            0<span className="inline-block h-2.5 w-25 rounded-badge" style={{ background: gradient }} />
+            {formatCount(max)} <span>{unit}</span>
           </span>
-          {state.color === "count" && (
-            <span className="inline-flex items-center gap-1.5">
+        ) : (
+          <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+            <Swatch className="bg-under" /> r ≤ −4 <Swatch className="bg-under-soft" /> ≤ −2 <Swatch className="bg-brand-tint" /> ≥ 2 <Swatch className="bg-brand" /> ≥ 4
+          </span>
+        )}
+        <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+          <span className="inline-block h-3.5 w-5.5 rounded-badge border-gap border-dashed border-critical-fg bg-surface" />
+          Gap: 0 where 5 or more are expected
+        </span>
+        {state.color === "count" && (
+          <>
+            <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
               <span className="inline-block h-3.5 w-5.5 rounded-badge border border-dashed border-under bg-surface" />
-              under (r ≤ −2)
-              <span className="inline-block h-3.5 w-5.5 rounded-badge border border-dashed border-brand bg-surface" />
-              over (r ≥ 2)
+              Under-represented (r ≤ −2)
             </span>
-          )}
-          <span className="flex gap-1.5 font-mono text-fs-micro">
-            <LinkButton mono tone="soft" onClick={exportTsv}>
-              Matrix TSV
-            </LinkButton>
-            <LinkButton mono tone="soft" onClick={exportSvg}>
-              SVG
-            </LinkButton>
-            <LinkButton mono tone="soft" onClick={exportPng}>
-              PNG
-            </LinkButton>
-          </span>
-        </div>
+            <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+              <span className="inline-block h-3.5 w-5.5 rounded-badge border border-dashed border-brand bg-surface" />
+              Over-represented (r ≥ 2)
+            </span>
+          </>
+        )}
       </div>
       <Card padding="none" flush>
         <div className="max-h-matrix-max overflow-auto">
@@ -348,28 +359,40 @@ export const HeatmapTab = ({ state, condition, update, onOpenPicker, onAxisEleme
                       const text = !cell ? "" : state.color === "residual" ? formatResidual(cell.residual) : cell.count === 0 ? (gap ? "0" : "·") : formatCount(cell.count)
                       const title = cell
                         ? `${row.label} × ${col.label}: ${formatCount(cell.count)} ${unit}` +
-                          (cell.expected !== null ? ` — expected ${cell.expected.toFixed(1)}, residual ${formatResidual(cell.residual)}` : "") +
+                          (cell.expected !== null ? `, expected ${cell.expected.toFixed(1)}, residual ${formatResidual(cell.residual)}` : "") +
                           (classification ? ` (${CLASS_LABEL[classification]})` : "")
                         : ""
+                      const empty = !cell || cell.count === 0
+                      const className = cn(
+                        "flex h-8 w-full min-w-heat-cell items-center justify-center rounded-badge border px-1.5 font-mono text-fs-label",
+                        gap && "border-gap border-dashed border-critical-fg font-semibold text-critical-fg",
+                        !gap && classification === "under" && state.color === "count" && "border-dashed border-under",
+                        !gap && classification === "over" && state.color === "count" && "border-dashed border-brand",
+                        !gap && !classification && "border-transparent",
+                        !gap && empty && "text-ink-soft",
+                        selected && "outline-2 outline-selection",
+                      )
+                      const cellStyleProps = {
+                        background: gap ? token("--color-surface") : style.background,
+                        color: gap ? undefined : style.dark ? token("--color-surface") : undefined,
+                      }
                       return (
                         <td key={col.value} className="p-0">
-                          <Clickable
-                            title={title}
-                            aria-pressed={selected}
-                            onClick={() => void condition.toggle([...row.clauses, ...col.clauses])}
-                            className={cn(
-                              "h-8 w-full min-w-heat-cell cursor-pointer rounded-badge border px-1.5 text-center font-mono text-fs-label hover:outline-2 hover:outline-selection",
-                              gap && "border-gap border-dashed border-critical-fg font-semibold text-critical-fg",
-                              !gap && classification === "under" && state.color === "count" && "border-dashed border-under",
-                              !gap && classification === "over" && state.color === "count" && "border-dashed border-brand",
-                              !gap && !classification && "border-transparent",
-                              !gap && cell && cell.count === 0 && "text-ink-soft",
-                              selected && "outline-2 outline-selection",
-                            )}
-                            style={{ background: gap ? token("--color-surface") : style.background, color: gap ? undefined : style.dark ? token("--color-surface") : undefined }}
-                          >
-                            {text}
-                          </Clickable>
+                          {empty ? (
+                            <div title={title} className={className} style={cellStyleProps}>
+                              {text}
+                            </div>
+                          ) : (
+                            <Clickable
+                              title={title}
+                              aria-label={`${row.label} × ${col.label}: ${text}. Open in Samples`}
+                              onClick={() => void openCell([...row.clauses, ...col.clauses])}
+                              className={cn(className, "cursor-pointer hover:outline-2 hover:outline-selection")}
+                              style={cellStyleProps}
+                            >
+                              {text}
+                            </Clickable>
+                          )}
                         </td>
                       )
                     })}
@@ -391,9 +414,9 @@ export const HeatmapTab = ({ state, condition, update, onOpenPicker, onAxisEleme
         </div>
       </Card>
       <div className="mt-2 text-fs-micro text-ink-soft">
-        Click a cell to add both its row and column term to the condition. Rows and columns overlap (multi-valued fields, child terms), so
-        marginal totals are not sums of the cells and may exceed the {unit} total. Cells with fewer than 5 expected {unit} are not
-        classified; gap, under-represented (r ≤ −2), and over-represented (r ≥ 2) use the adjusted standardized residual r.
+        A cell opens its records in Samples. Rows and columns overlap (multi-valued fields, child terms), so marginal totals are not sums
+        of the cells and may exceed the {unit} total. Cells with fewer than 5 expected {unit} are not classified. r is the adjusted
+        standardized residual.
       </div>
     </div>
   )

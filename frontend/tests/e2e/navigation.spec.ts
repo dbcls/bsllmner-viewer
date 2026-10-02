@@ -82,4 +82,45 @@ test.describe("workspace navigation", () => {
     await expect(viewTabs(page).getByRole("link", { name: "Projects" })).toHaveAttribute("aria-current", "page")
     await expect(page.getByRole("main").locator("tbody tr").first()).toBeVisible()
   })
+
+  test("the landing search finds a term in every field and opens the workspace with it", async ({ page }) => {
+    await page.goto("/")
+    await page.getByRole("textbox", { name: /Search terms/ }).fill("K562")
+    const hit = page.getByRole("button").filter({ hasText: "CVCL:0004" })
+    await expect(hit).toContainText("Cell line")
+    await expect(hit).toContainText("K-562")
+    await hit.click()
+    await expect(page).toHaveURL((url) => url.pathname === "/w")
+    await expectQ(page, 'cell_line:"CVCL:0004"')
+    await expect(conditionRegion(page).getByTitle("CVCL:0004")).toContainText("K-562")
+  })
+
+  test("a field on the landing page lists the terms of that field", async ({ page }) => {
+    await page.goto("/")
+    await page.getByRole("button", { name: "Browse Tissue terms" }).click()
+    await expect(page.getByRole("combobox", { name: "Field" })).toHaveValue("tissue")
+    const hit = page.getByRole("button").filter({ hasText: "UBERON:0002107" })
+    await expect(hit).toContainText("liver")
+    await page.getByRole("button", { name: "Clear search" }).click()
+    await expect(page.getByRole("combobox", { name: "Field" })).toHaveValue("*")
+    await expect(page.getByRole("button", { name: "Browse Tissue terms" })).toBeVisible()
+  })
+
+  test("a bar of the landing statistics opens the workspace with its clause", async ({ page }) => {
+    await page.goto("/")
+    await page.getByRole("button").filter({ hasText: "ATAC-seq" }).click()
+    await expect(page).toHaveURL((url) => url.pathname === "/w")
+    await expectQ(page, "library_strategy:ATAC-seq")
+  })
+
+  test("an example heatmap on the landing page opens the heatmap with its axes", async ({ page }) => {
+    await page.goto("/")
+    await page.getByRole("link", { name: "Disease × Tissue" }).click()
+    await expectParam(page, "tab", "heatmap")
+    await expectParam(page, "row", "disease")
+    await expectParam(page, "col", "tissue")
+    await expectParam(page, "unit", "bioproject")
+    await expect(page.getByRole("combobox", { name: "Row dimension" })).toHaveValue("disease")
+    await expect(page.getByRole("combobox", { name: "Column dimension" })).toHaveValue("tissue")
+  })
 })

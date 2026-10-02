@@ -13,6 +13,7 @@ import duckdb
 import orjson
 
 from bsllmner_viewer.dsl.fields import FieldSet
+from bsllmner_viewer.store.schema import SCHEMA_VERSION
 from bsllmner_viewer.store.version import DatasetVersion, read_version
 
 STORE_ENV = "BSLLMNER_VIEWER_STORE"
@@ -35,6 +36,7 @@ class Store:
         threads = os.environ.get("BSLLMNER_VIEWER_THREADS")
         if threads:
             self._con.execute(f"SET threads = {int(threads)}")
+        _require_current_schema(self._con, path)
         self.version: DatasetVersion = read_version(self._con)
         self.version_digest: str = hashlib.sha256(
             orjson.dumps(self.version.model_dump(), option=orjson.OPT_SORT_KEYS)
@@ -64,6 +66,18 @@ class Store:
 
     def close(self) -> None:
         self._con.close()
+
+
+def _require_current_schema(con: duckdb.DuckDBPyConnection, path: Path) -> None:
+    """Stop when the store was written with another version of the store schema than the one this code reads."""
+    row = con.execute("SELECT value FROM store_meta WHERE key = 'schema_version'").fetchone()
+    found = None if row is None else int(orjson.loads(row[0]))
+    if found != SCHEMA_VERSION:
+        con.close()
+        raise RuntimeError(
+            f"{path} has store schema version {found}, and this api reads version {SCHEMA_VERSION}; "
+            "write a new store with the refresh operation of the build"
+        )
 
 
 def store_path_from_env() -> Path:

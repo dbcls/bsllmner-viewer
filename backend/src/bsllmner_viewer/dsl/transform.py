@@ -113,3 +113,24 @@ def select_element(ast: Node | None, clauses: Iterable[FieldClause]) -> Node | N
     for c in clause_list:
         ast = add_clause(ast, c)
     return ast
+
+
+def narrow(ast: Node | None, clauses: Iterable[FieldClause]) -> Node | None:
+    """Add each clause as a top-level conjunct. A clause that already is a top-level conjunct is not repeated."""
+    items = list(conjuncts(ast))
+    for clause in clauses:
+        if not any(isinstance(item, FieldClause) and _same_clause(item, clause) for item in items):
+            items.append(clause)
+    return from_conjuncts(items)
+
+
+def named_values(ast: Node | None, field: str) -> list[str]:
+    """Values of the top-level clauses and clause disjunctions on a field without NOT, in document order."""
+    values: list[str] = []
+    for conj in conjuncts(ast):
+        if not _is_positive_clause_group(conj, field):
+            continue
+        for clause in _group_clauses(conj):
+            if clause.value_kind in ("word", "phrase") and isinstance(clause.value, str) and clause.value not in values:
+                values.append(clause.value)
+    return values

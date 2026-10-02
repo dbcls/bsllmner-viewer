@@ -94,8 +94,9 @@ A full build of runs `R1..Rn` and a full build of `R1..Rk` followed by an append
 
 Before publication, build verifies the new store:
 
-- every entry of every run result is either stored or superseded by the BioSample selection, and
-- the population is not empty.
+- every entry of every run result is either stored or superseded by the BioSample selection,
+- the population is not empty, and
+- the BioSample–BioProject relations and the experiment–run relations are not empty.
 
 Publication switches the api to a verified store file (see [architecture.md](architecture.md)).
 

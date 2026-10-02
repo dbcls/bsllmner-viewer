@@ -9,7 +9,7 @@ from bsllmner_viewer.api.deps import StoreDep, parse_condition
 from bsllmner_viewer.api.schemas import ConditionResponse, ParseResponse, SelectRequest, SerializeRequest
 from bsllmner_viewer.dsl.ast import normalize
 from bsllmner_viewer.dsl.serde import ast_to_json, json_to_ast
-from bsllmner_viewer.dsl.transform import select_element
+from bsllmner_viewer.dsl.transform import narrow, select_element
 from bsllmner_viewer.dsl.validator import validate
 
 router = APIRouter(tags=["dsl"])
@@ -43,17 +43,18 @@ def serialize_dsl(store: StoreDep, body: SerializeRequest) -> ConditionResponse:
 @router.post(
     "/dsl/select",
     response_model=ConditionResponse,
-    summary="Toggle the clauses of an aggregation element in a condition",
+    summary="Apply the clauses of an aggregation element to a condition",
     description=(
-        "Adds each clause to the condition: joined with OR into the top-level clause group of the same field when "
-        "one exists, otherwise as a new AND conjunct. When every clause of the element is already present, "
-        "the clauses are removed instead."
+        "In `toggle` mode, adds each clause to the condition: joined with OR into the top-level clause group of the "
+        "same field when one exists, otherwise as a new AND conjunct. When every clause is already present, the "
+        "clauses are removed instead. In `narrow` mode, adds each clause as a new AND conjunct; with the population "
+        "of an aggregation as `q`, the result matches the records counted by the element."
     ),
 )
 def select_dsl(store: StoreDep, body: SelectRequest) -> ConditionResponse:
     ast = parse_condition(store, body.q)
     clauses = [to_field_clause(c) for c in body.clauses]
-    result = select_element(ast, clauses)
+    result = narrow(ast, clauses) if body.mode == "narrow" else select_element(ast, clauses)
     if result is not None:
         result = normalize(result)
         validate(result, store.field_set)

@@ -104,6 +104,82 @@ def test_crosstab_cells_and_margins_match_record_counts(client: TestClient, ast:
         assert cell["count"] == expected, cell
 
 
+def _narrow(client: TestClient, q: str | None, clauses: list[dict[str, str]]) -> str | None:
+    body = client.post("/api/dsl/select", json={"q": q, "clauses": clauses, "mode": "narrow"}).json()
+    return None if body["q"] is None else str(body["q"])
+
+
+@settings(max_examples=25)
+@given(conditions, st.sampled_from(UNITS), st.booleans())
+def test_narrowing_to_a_cell_matches_the_count_of_the_cell(
+    client: TestClient, ast: Node | None, unit: str, excl: bool
+) -> None:
+    body = client.get(
+        "/api/crosstab",
+        params={
+            "row": "disease",
+            "col": "library_strategy",
+            "unit": unit,
+            "q": _q(ast) or "",
+            "limit": 3,
+            "self_exclusion": str(excl).lower(),
+        },
+    ).json()
+    rows = {r["value"]: r for r in body["rows"]}
+    cols = {c["value"]: c for c in body["cols"]}
+    for cell in body["cells"][:6]:
+        clauses = [*rows[cell["row"]]["clauses"], *cols[cell["col"]]["clauses"]]
+        assert cell["count"] == _count(client, _narrow(client, body["population_q"], clauses), unit), cell
+
+
+@settings(max_examples=25)
+@given(conditions, st.sampled_from(UNITS), st.booleans(), st.sampled_from([None, "disease", "library_strategy"]))
+def test_trend_points_match_record_counts(
+    client: TestClient, ast: Node | None, unit: str, excl: bool, field: str | None
+) -> None:
+    params = {"unit": unit, "q": _q(ast) or "", "self_exclusion": str(excl).lower(), "limit": 2}
+    if field:
+        params["field"] = field
+    body = client.get("/api/trend", params=params).json()
+    assert body["years"] == sorted(set(body["years"]))
+    assert [p["year"] for p in body["total"]] == body["years"]
+    for point in body["total"][:3]:
+        assert point["count"] == _count(client, _and(body["total_population_q"], point["clauses"]), unit), point
+    for series in body["series"]:
+        assert [p["year"] for p in series["points"]] == body["years"]
+        for point in series["points"][:2]:
+            assert point["count"] == _count(client, _narrow(client, body["population_q"], point["clauses"]), unit)
+
+
+@settings(max_examples=30)
+@given(conditions, st.sampled_from(["cell_line", "disease", "tissue", "drug", "library_strategy", "organism_id"]))
+def test_default_elements_contain_every_value_the_condition_names(
+    client: TestClient, ast: Node | None, dim: str
+) -> None:
+    body = client.get("/api/distribution", params={"field": dim, "q": _q(ast) or "", "limit": 1}).json()
+    tree = None if ast is None else client.get("/api/dsl/parse", params={"q": _q(ast)}).json()["ast"]
+    conjuncts = [] if tree is None else tree["rules"] if tree.get("op") == "AND" else [tree]
+    named = set()
+    for conj in conjuncts:
+        leaves = conj["rules"] if conj.get("op") == "OR" else [conj]
+        if all("rules" not in leaf and leaf.get("field") == dim for leaf in leaves):
+            named |= {leaf["value"] for leaf in leaves if "value" in leaf}
+    assert named <= {e["value"] for e in body["elements"]}
+
+
+@settings(max_examples=20)
+@given(conditions, st.sampled_from(["", "cancer", "c", "MONDO", "liver", "dex", "CVCL:0031"]), st.sampled_from(UNITS))
+def test_term_hits_match_record_counts_in_the_population_of_their_field(
+    client: TestClient, ast: Node | None, query: str, unit: str
+) -> None:
+    body = client.get("/api/terms", params={"query": query, "q": _q(ast) or "", "unit": unit, "limit": 6}).json()
+    for hit in body["terms"]:
+        single = client.get(
+            "/api/terms", params={"field": hit["field"], "query": hit["term_id"], "q": _q(ast) or "", "unit": unit}
+        ).json()
+        assert hit["count"] == _count(client, _and(single["population_q"], hit["clauses"]), unit), hit
+
+
 @settings(max_examples=20)
 @given(conditions, st.sampled_from(UNITS))
 def test_status_group_matches_the_union_of_its_statuses(client: TestClient, ast: Node | None, unit: str) -> None:

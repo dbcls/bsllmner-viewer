@@ -27,6 +27,7 @@ export const Layout = ({ children }: { children: ReactNode }) => (
       <meta charSet="utf-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1" />
       <title>bsllmner-viewer</title>
+      <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
       <Meta />
       <Links />
     </head>

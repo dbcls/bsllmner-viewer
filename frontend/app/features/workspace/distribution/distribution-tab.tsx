@@ -39,19 +39,32 @@ export const DistributionTab = ({ state, condition, onExpandedStatus, onExpanded
   const ordered = [...FIELD_ORDER.filter((f) => names.has(f)), ...fields.map((f) => f.name).filter((f) => !FIELD_ORDER.includes(f))]
   const ontologies = new Map(fields.map((f) => [f.name, f.ontologies.map(ontologyLabel).join(" / ")]))
   return (
-    <div className="grid grid-cols-3 gap-3.5">
-      {[...ordered, ...EXTRA_DIMENSIONS].map((field) => (
-        <DistributionCard
-          key={field}
-          field={field}
-          isAnnotation={names.has(field)}
-          ontology={ontologies.get(field) ?? extraOntology(field)}
-          state={state}
-          condition={condition}
-          onExpandedStatus={onExpandedStatus}
-          onExpanded={onExpanded}
-        />
-      ))}
+    <div>
+      <div className="mb-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-fs-label text-ink-soft">
+        <span className="inline-flex items-center gap-1.5">
+          <span className="inline-block h-2 w-5.5 rounded-badge bg-brand" />
+          Exact match
+        </span>
+        <span className="inline-flex items-center gap-1.5">
+          <span className="inline-block h-2 w-5.5 rounded-badge bg-brand-light" />
+          LLM selected
+        </span>
+        <span>Each card shows the terms assigned to the most BioSamples. Counts include child terms.</span>
+      </div>
+      <div className="grid grid-cols-3 gap-3.5">
+        {[...ordered, ...EXTRA_DIMENSIONS].map((field) => (
+          <DistributionCard
+            key={field}
+            field={field}
+            isAnnotation={names.has(field)}
+            ontology={ontologies.get(field) ?? extraOntology(field)}
+            state={state}
+            condition={condition}
+            onExpandedStatus={onExpandedStatus}
+            onExpanded={onExpanded}
+          />
+        ))}
+      </div>
     </div>
   )
 }
@@ -83,18 +96,11 @@ const DistributionCard = ({ field, isAnnotation, ontology, state, condition, onE
     limit: 10,
     expandedStatus: state.expandedStatus,
   })
-  const own = clausesOfField(condition.ast, field)
-  const ownCondition = own.length > 0
+  const ownCondition = clausesOfField(condition.ast, field).length > 0
   const data = distribution.data
+  const unfiltered = data !== undefined && data.population_q !== data.q
   const shown = data?.elements ?? []
-  // Values in the condition that are outside the top elements are fetched by name so that every selected value has a bar.
-  const missing = data ? own.map((c) => c.value).filter((v): v is string => v !== undefined && !shown.some((e) => e.value === v)) : []
-  const extra = useDistribution(
-    { field, q: state.q, unit: state.unit, selfExclusion: state.selfExclusion, elements: missing.join(",") },
-    missing.length > 0,
-  )
-  const merged = missing.length > 0 && extra.data ? [...shown, ...extra.data.elements.filter((e) => missing.includes(e.value))] : shown
-  const elements = field === "date_created" ? [...merged].reverse() : [...merged].sort((a, b) => b.count - a.count)
+  const elements = field === "date_created" ? [...shown].reverse() : shown
   const max = Math.max(1, ...elements.map((e) => e.count))
   const unit = unitLabel(state.unit)
 
@@ -125,7 +131,7 @@ const DistributionCard = ({ field, isAnnotation, ontology, state, condition, onE
         <div className="min-w-0">
           <span className="font-semibold">{fieldLabel(field)}</span>
           <span className="ml-1 text-fs-micro text-ink-soft">{ontology}</span>
-          {ownCondition && state.selfExclusion && (
+          {unfiltered && (
             <span className="ml-1.5">
               <Tag kind="warn">Not filtered by {fieldLabel(field)}</Tag>
             </span>
@@ -161,10 +167,7 @@ const DistributionCard = ({ field, isAnnotation, ontology, state, condition, onE
         ))}
         {data && elements.length === 0 && <div className="py-3 text-fs-label text-ink-soft">No values in this population.</div>}
       </div>
-      <div className="mt-2 flex justify-between gap-2 text-fs-micro text-ink-soft">
-        <span>{isAnnotation ? "Bar shading: dark purple = Exact match · light purple = LLM selected" : ""}</span>
-        <span>Bars overlap; sums may exceed {unit} total.</span>
-      </div>
+
     </Card>
   )
 }

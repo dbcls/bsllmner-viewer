@@ -24,7 +24,9 @@ from bsllmner_viewer.api.schemas import (
     TrendSeries,
     Unit,
 )
+from bsllmner_viewer.dsl.ast import Node
 from bsllmner_viewer.dsl.fields import STATUS_GROUPS, STATUS_SUFFIX, FieldDef
+from bsllmner_viewer.dsl.transform import named_values
 
 router = APIRouter(tags=["aggregations"])
 
@@ -37,13 +39,28 @@ LimitParam = Annotated[int, Query(ge=1, le=200, description="Number of elements 
 MAX_ELEMENTS = 500
 
 
-def _elements(cur, dim: FieldDef, named: str | None, pop, limit: int, expanded: bool) -> list[str]:  # type: ignore[no-untyped-def]
+NAMED_BY_CONDITION: frozenset[str] = frozenset({"term", "assay", "organism"})
+
+
+def _elements(
+    cur: duckdb.DuckDBPyConnection,
+    dim: FieldDef,
+    named: str | None,
+    ast: Node | None,
+    pop: Population,
+    limit: int,
+    expanded: bool,
+) -> list[str]:
+    """The named elements, or the default elements followed by the elements that the condition names."""
     elements = split_csv(named)
     if len(elements) > MAX_ELEMENTS:
         raise ApiError("too-many-elements", "Too many elements", 400, f"at most {MAX_ELEMENTS} elements per dimension")
     if elements:
         return elements
-    return default_elements(cur, dim, pop.cte(), pop.params, limit, expanded)
+    chosen = default_elements(cur, dim, pop.cte(), pop.params, limit, expanded)
+    if dim.kind in NAMED_BY_CONDITION:
+        chosen.extend(value for value in named_values(ast, dim.name) if value not in chosen)
+    return chosen
 
 
 def _organisms(store: StoreDep) -> dict[int, str | None]:
@@ -63,9 +80,9 @@ def _organisms(store: StoreDep) -> dict[int, str | None]:
     response_model=DistributionResponse,
     summary="Counts per element of one dimension",
     description=(
-        "Elements default to the terms most often annotated directly, ordered by their count with descendants. "
-        "For an annotation field the response also carries the status composition of the field, computed without "
-        "the conjuncts on the field's term and status dimensions."
+        "Elements default to the terms most often annotated directly, followed by the elements that the condition "
+        "names, ordered by their count with descendants. For an annotation field the response also carries the "
+        "status composition of the field, computed without the conjuncts on the field's term and status dimensions."
     ),
 )
 def get_distribution(
@@ -87,7 +104,7 @@ def get_distribution(
     pop_ast = aggregation_population(ast, [dim.name], self_exclusion)
     pop = population(pop_ast, store.field_set)
     with store.cursor() as cur:
-        chosen = _elements(cur, dim, elements, pop, limit, expanded_status)
+        chosen = _elements(cur, dim, elements, ast, pop, limit, expanded_status)
         total = aggregate.population_total(cur, pop, unit)
         counts = aggregate.element_counts(cur, pop, dim, chosen, unit)
         if not split_csv(elements) and dim.kind in ("term", "assay", "organism"):
@@ -169,8 +186,8 @@ def get_crosstab(
     pop_ast = aggregation_population(ast, [row_dim.name, col_dim.name], self_exclusion)
     pop = population(pop_ast, store.field_set)
     with store.cursor() as cur:
-        rows_chosen = _elements(cur, row_dim, row_elements, pop, limit, False)
-        cols_chosen = _elements(cur, col_dim, col_elements, pop, limit, False)
+        rows_chosen = _elements(cur, row_dim, row_elements, ast, pop, limit, False)
+        cols_chosen = _elements(cur, col_dim, col_elements, ast, pop, limit, False)
         result = aggregate.crosstab(cur, pop, row_dim, rows_chosen, col_dim, cols_chosen, unit)
         row_labels = labels_for(cur, row_dim, rows_chosen, _organisms(store))
         col_labels = labels_for(cur, col_dim, cols_chosen, _organisms(store))
@@ -242,10 +259,19 @@ def _axis_elements(
     return out
 
 
-@router.get("/trend", response_model=TrendResponse, summary="Counts per element and BioSample creation year")
+@router.get(
+    "/trend",
+    response_model=TrendResponse,
+    summary="Counts of the condition per BioSample creation year",
+    description=(
+        "`total` counts the condition per year, computed without the conjuncts on `date_created`. "
+        "When `field` is given, `series` counts each element of that dimension per year, computed without the "
+        "conjuncts on that dimension as well."
+    ),
+)
 def get_trend(
     store: StoreDep,
-    field: str,
+    field: Annotated[str | None, Query(description="Dimension of the series; omitted means no series")] = None,
     q: QParam = None,
     unit: UnitParam = "biosample",
     self_exclusion: SelfExclusionParam = True,
@@ -254,39 +280,49 @@ def get_trend(
     ] = None,
     limit: LimitParam = 5,
 ) -> TrendResponse:
-    dim = dimension(store.field_set, field)
-    if dim.kind == "date":
+    date_dim = dimension(store.field_set, "date_created")
+    dim = None if field is None else dimension(store.field_set, field)
+    if dim is not None and dim.kind == "date":
         raise ApiError("invalid-dimension", "Invalid dimension", 400, "the trend dimension cannot be date_created")
     ast = parse_condition(store, q)
-    pop_ast = aggregation_population(ast, [dim.name, "date_created"], self_exclusion)
-    pop = population(pop_ast, store.field_set)
+    total_ast = aggregation_population(ast, [date_dim.name], self_exclusion)
+    total_pop = population(total_ast, store.field_set)
+    series_ast = total_ast if dim is None else aggregation_population(ast, [dim.name, date_dim.name], self_exclusion)
+    series: list[TrendSeries] = []
     with store.cursor() as cur:
-        chosen = _elements(cur, dim, elements, pop, limit, False)
-        years, counts = aggregate.trend(cur, pop, dim, chosen, unit)
-        labels = labels_for(cur, dim, chosen, _organisms(store))
-    series = [
-        TrendSeries(
-            value=e,
-            label=labels.get(e, e),
-            clauses=clauses_for(dim, e),
-            points=[
-                TrendPoint(
-                    year=y,
-                    count=counts.get((e, y), 0),
-                    clauses=[*clauses_for(dim, e), *clauses_for(dimension(store.field_set, "date_created"), str(y))],
+        total_counts = aggregate.trend_total(cur, total_pop, unit)
+        years = sorted(total_counts)
+        if dim is not None:
+            pop = population(series_ast, store.field_set)
+            chosen = _elements(cur, dim, elements, ast, pop, limit, False)
+            series_years, counts = aggregate.trend(cur, pop, dim, chosen, unit)
+            years = sorted({*years, *series_years})
+            labels = labels_for(cur, dim, chosen, _organisms(store))
+            series = [
+                TrendSeries(
+                    value=e,
+                    label=labels.get(e, e),
+                    clauses=clauses_for(dim, e),
+                    points=[
+                        TrendPoint(
+                            year=y,
+                            count=counts.get((e, y), 0),
+                            clauses=[*clauses_for(dim, e), *clauses_for(date_dim, str(y))],
+                        )
+                        for y in years
+                    ],
                 )
-                for y in years
-            ],
-        )
-        for e in chosen
-    ]
+                for e in chosen
+            ]
     return TrendResponse(
         dataset_version=version_ref(store),
         q=q_of(ast),
-        population_q=q_of(pop_ast),
-        field=dim.name,
         unit=unit,
         self_exclusion=self_exclusion,
         years=years,
+        total=[TrendPoint(year=y, count=total_counts.get(y, 0), clauses=clauses_for(date_dim, str(y))) for y in years],
+        total_population_q=q_of(total_ast),
+        field=None if dim is None else dim.name,
+        population_q=q_of(series_ast),
         series=series,
     )

@@ -52,7 +52,7 @@ export const SamplesTab = ({ state, onRows, onPage, search }: SamplesTabProps) =
                 {[state.rows === "experiment" ? "Experiment" : "BioSample", "Title", "Organism", "Assay", "BioProject", "Year", ...fields.map(fieldLabel), "Links"].map((column) => (
                   <th
                     key={column}
-                    className="border-b border-border-soft px-2.5 py-2 text-left text-fs-micro font-semibold tracking-tag whitespace-nowrap text-ink-soft uppercase"
+                    className="border-b border-border-soft px-2.5 py-2 text-left text-fs-label font-semibold whitespace-nowrap text-ink-soft"
                   >
                     {column}
                   </th>
