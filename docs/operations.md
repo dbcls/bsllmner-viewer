@@ -81,7 +81,7 @@ docker compose run --rm --no-deps api uv run bsllmner-viewer-build info --store 
 The api opens the store named by `BSLLMNER_VIEWER_STORE` when it starts and keeps it open read-only. Publication is a file switch:
 
 1. Build and verify the new store file next to the current one.
-2. Point the api at the new file: replace the `current.duckdb` symlink (or change `BSLLMNER_VIEWER_STORE_FILE`) and restart the api container.
+2. Point the api at the new file: replace the `current.duckdb` symlink (or change `BSLLMNER_VIEWER_STORE_FILE`) and restart the api container. nginx in the web container looks up the address of the api again every 10 seconds, so the web container does not need a restart.
 3. Keep the previous file until the new one has been checked in the UI; reverting is the same switch in the other direction.
 
 A store file that is being served is never modified. Old files can be deleted once no api process refers to them.
@@ -90,15 +90,19 @@ A store records the version of the store schema that it was written with, and th
 
 ## Deployment
 
-`deploy/compose.yml` runs two containers: `api` (the FastAPI server) and `web` (nginx serving the built frontend and proxying `/api/` to the api). It works with `docker compose` and `podman compose`.
+`deploy/compose.yml` runs two containers: `api` (the FastAPI server) and `web` (nginx, which serves the built frontend and proxies `/api` to the api). The web container serves the frontend built for the same origin, so the frontend needs no configuration: the browser calls `/api` on the host that served the page.
+
+Copy `deploy/.env.example` to `deploy/.env` and set the variables. Every compose command reads `deploy/.env` automatically, and git ignores it. Then build the images and start the containers:
 
 ```
 cd deploy
-BSLLMNER_VIEWER_STORE_DIR=/path/to/stores BSLLMNER_VIEWER_STORE_FILE=current.duckdb BSLLMNER_VIEWER_PORT=20081 \
-  podman compose up -d --build
+BSLLMNER_VIEWER_COMMIT=$(git rev-parse --short HEAD) podman-compose -p bsllmner-viewer build
+podman-compose -p bsllmner-viewer up -d
 ```
 
-Every compose command for this stack (`ps`, `logs`, `down`, and the restart after a publication) needs the same variables; a `deploy/.env` file with them is read automatically and is ignored by git.
+- Give the project name with `-p` to every command (`ps`, `logs`, `restart`, and `down` too). Without it, podman-compose names the project after the directory, `deploy`. The commands are the same with `docker compose`.
+- `up -d` does not rebuild an image that exists. After you update the code, run `build` before `up -d`.
+- Containers restart when they fail, but a rootless podman does not start them again after the host reboots. After a reboot, run `up -d`.
 
 | Variable | Meaning |
 |---|---|
@@ -107,5 +111,19 @@ Every compose command for this stack (`ps`, `logs`, `down`, and the restart afte
 | `BSLLMNER_VIEWER_PORT` | Host port of the web container (default 20081) |
 | `BSLLMNER_VIEWER_API_WORKERS` | uvicorn worker processes (default 2); each opens the store |
 | `BSLLMNER_VIEWER_THREADS` | DuckDB threads per worker (default 8) |
+| `BSLLMNER_VIEWER_NOINDEX` | `true` for a deployment that search engines must not index, such as a staging deployment (default `false`) |
+| `BSLLMNER_VIEWER_COMMIT` | Commit that the images record. The footer of the frontend and the version in `/api/service-info` show it. Only the build reads it, so give it on the command that builds the images, not in `deploy/.env`. If it is not set, then no commit is shown |
 
-The web container (`frontend/Dockerfile.web`, nginx configured by `frontend/nginx.conf`) serves the frontend built for the same origin, so no frontend configuration is needed: the browser calls `/api/` on the host that served the page. Health is available at `/health`.
+### Health
+
+`GET /api/service-info` reports `"store": "ok"` while the api can query the store. The health check of the api container calls it, and `podman ps` shows the container as unhealthy when the check fails. An external monitor should check the same URL on the public host.
+
+Logs go to the container logs: `podman logs bsllmner-viewer_api_1` for the api requests and `podman logs bsllmner-viewer_web_1` for the nginx access log.
+
+### Crawlers
+
+The web container serves `/robots.txt` and `/llms.txt`.
+
+- `/llms.txt` describes the site and the API in Markdown, for programs such as LLM agents.
+- If `BSLLMNER_VIEWER_NOINDEX` is `true`, then `/robots.txt` allows only the API and `/llms.txt`, and every response has the header `X-Robots-Tag: noindex`. The API stays open to programs that follow robots.txt.
+- Otherwise, `/robots.txt` disallows `/entries` with parameters and the exports. Their combinations are endless, and each of them is a query.

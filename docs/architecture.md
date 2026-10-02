@@ -14,7 +14,7 @@ bsllmner-viewer consists of four components: **build** produces a store, the **s
 |---|---|---|
 | build | Validating inputs, ingesting runs and reference data, deriving query-ready data, and verifying the resulting store | Serving data |
 | store | A single DuckDB file representing one version of one dataset | Changing after publication |
-| api | Opening the store read-only, parsing and evaluating the condition DSL, and returning records, aggregations, and entry details | Writing to the store |
+| api | Opening the store read-only, parsing and evaluating the condition DSL, and returning entries, aggregations, and exports | Writing to the store |
 | frontend | Composing conditions and displaying results returned by the api | Counting records or evaluating conditions |
 
 ## Repository layout

@@ -50,8 +50,8 @@ export const TrendTab = ({ state, condition, onSplit }: TrendTabProps) => {
   const unit = unitLabel(state.unit)
   const totalLabel = state.q ? "Condition" : "All records"
 
-  const yearUnfiltered = data !== undefined && data.total_population_q !== data.q
-  const splitUnfiltered = data !== undefined && split !== null && data.population_q !== data.total_population_q
+  const yearUnfiltered = data !== undefined && data.totalPopulationQ !== data.q
+  const splitUnfiltered = data !== undefined && split !== null && data.populationQ !== data.totalPopulationQ
   const splitOptions = trendFields(fields).map((f) => ({ value: f, label: fieldLabel(f) }))
   const seriesColors = [
     token("--color-series-1"),
@@ -67,8 +67,8 @@ export const TrendTab = ({ state, condition, onSplit }: TrendTabProps) => {
   /** Open the record list narrowed to one element and year: the population of the series plus the point's clauses. */
   const openPoint = async (clauses: Clause[]) => {
     if (!data) return
-    const q = await condition.narrowed(data.population_q, clauses)
-    await navigate(`/w${workspaceSearch({ ...state, q, tab: "samples", page: 1 })}`)
+    const q = await condition.narrowed(data.populationQ, clauses)
+    await navigate(`/entries${workspaceSearch({ ...state, q, tab: "samples", page: 1 })}`)
   }
 
   const exportTsv = () =>

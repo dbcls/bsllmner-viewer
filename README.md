@@ -9,8 +9,8 @@ bsllmner-mk2 extracts biological entities (cell line, cell type, tissue, disease
 - **Structured queries** over ontology terms, with descendant expansion over the ontology DAG, combined with assay, organism, submission date, and BioProject conditions
 - **Aggregations** of matching records as distributions, cross-tabulations, and yearly trends, counted by BioSample, Experiment, or BioProject
 - **Annotation status** that distinguishes terms mapped by exact match, terms selected by the LLM, values without an adopted term, and fields without an extracted value
-- **Export** of matching records as TSV / JSON and as BioSample, Experiment, Run, and BioProject accession lists
-- **One condition language** shared by the UI, its URLs, and the API, so every result shown in the UI can be reproduced through the API
+- **Export** of matching BioSamples and experiments as TSV / NDJSON and as BioSample, Experiment, Run, and BioProject accession lists
+- **One condition language** shared by the UI, its URLs, and the API, so every result shown in the UI can be reproduced through the API. The API follows the conventions of the DDBJ Search API
 
 ```
  manifest ---+
@@ -23,9 +23,9 @@ bsllmner-mk2 extracts biological entities (cell line, cell type, tissue, disease
 - [docs/architecture.md](docs/architecture.md) — Components, their responsibilities, and invariants that span them
 - [docs/data-model.md](docs/data-model.md) — Datasets, records, entities, annotation status, and counting semantics
 - [docs/build.md](docs/build.md) — Build inputs, validation, operations, and dataset version information
-- [docs/api.md](docs/api.md) — Condition DSL, correspondence between API queries and UI views, and compatibility policy
+- [docs/api.md](docs/api.md) — API conventions, condition DSL, entries, aggregation semantics, correspondence between API queries and UI views, and compatibility policy
 - [docs/development.md](docs/development.md) — Running the containers, tests, and checks
-- [docs/operations.md](docs/operations.md) — Building, updating, publishing, and deploying a dataset
+- [docs/operations.md](docs/operations.md) — Building, updating, publishing, and deploying a dataset, health monitoring, and crawler settings
 
 ## License
 

@@ -16,7 +16,7 @@ export const useCondition = (q: string | null, update: (patch: Patch) => void) =
   const toggle = useCallback(
     async (clauses: Clause[]) => {
       const result = await select.mutateAsync({ q, clauses })
-      update({ q: result.q })
+      update({ q: result.dsl })
       return result
     },
     [q, select, update],
@@ -27,17 +27,17 @@ export const useCondition = (q: string | null, update: (patch: Patch) => void) =
       const present = clausesOfField(ast, field)
       let current = q
       if (present.length) {
-        current = (await select.mutateAsync({ q: current, clauses: present })).q
+        current = (await select.mutateAsync({ q: current, clauses: present })).dsl
       }
       const result = await select.mutateAsync({ q: current, clauses: [clause] })
-      update({ q: result.q })
+      update({ q: result.dsl })
     },
     [ast, q, select, update],
   )
 
   /** The condition that matches the records an element counts: the element's clauses added by AND to its population. */
   const narrowed = useCallback(
-    async (populationQ: string | null, clauses: Clause[]) => (await select.mutateAsync({ q: populationQ, clauses, mode: "narrow" })).q,
+    async (populationQ: string | null, clauses: Clause[]) => (await select.mutateAsync({ q: populationQ, clauses, mode: "narrow" })).dsl,
     [select],
   )
 

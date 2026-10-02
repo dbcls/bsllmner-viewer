@@ -20,6 +20,7 @@ import {
 
 import { queryClient } from "~/lib/query-client"
 import { ShellLayout } from "~/shell"
+import { Card, PageHeading } from "~/ui"
 
 export const Layout = ({ children }: { children: ReactNode }) => (
   <html lang="en">
@@ -56,8 +57,10 @@ const ErrorBoundaryContent = () => {
     : "Something went wrong."
 
   return (
-    <section className="mx-auto max-w-content-max px-page-gutter py-section-lg">
-      <h1 className="text-fs-h1 font-semibold text-ink">{message}</h1>
+    <section className="mx-auto w-full max-w-content-max px-page-gutter py-8">
+      <Card padding="lg">
+        <PageHeading rule="edge">{message}</PageHeading>
+      </Card>
     </section>
   )
 }

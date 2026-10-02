@@ -5,17 +5,21 @@ from __future__ import annotations
 from typing import Any, Literal, NotRequired, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field, SerializerFunctionWrapHandler, model_serializer
+from pydantic.alias_generators import to_camel
 
 ClauseJson = TypedDict(
     "ClauseJson", {"field": str, "value": NotRequired[str], "from": NotRequired[str], "to": NotRequired[str]}
 )
 
-type Unit = Literal["biosample", "experiment", "bioproject"]
-type RecordUnit = Literal["biosample", "experiment"]
+type Unit = Literal["biosample", "sra-experiment", "bioproject"]
+type EntryType = Literal["biosample", "sra-experiment"]
+type AccessionType = Literal["biosample", "sra-experiment", "sra-run", "bioproject"]
 
 
 class ApiModel(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    """Base of every model of the api: camelCase JSON properties, accepted by field name as well."""
+
+    model_config = ConfigDict(extra="forbid", alias_generator=to_camel, validate_by_name=True, serialize_by_alias=True)
 
 
 class DatasetVersionRef(ApiModel):
@@ -34,8 +38,6 @@ class Clause(ApiModel):
     value: str | None = None
     from_: str | None = Field(default=None, alias="from")
     to: str | None = None
-
-    model_config = ConfigDict(extra="forbid", populate_by_name=True, serialize_by_alias=True)
 
     @model_serializer(mode="wrap")
     def _omit_unused(self, handler: SerializerFunctionWrapHandler) -> ClauseJson:
@@ -70,13 +72,18 @@ class DatasetResponse(ApiModel):
     dsl_fields: list[DslFieldDescription]
     statuses: dict[str, list[str]] = Field(description="Status groups and the statuses under them")
     totals: Totals
-    organisms: list[Organism]
+    organisms: list[DatasetOrganism]
 
 
 class Organism(ApiModel):
-    organism_id: int
+    """An organism as the NCBI Taxonomy ID and the name."""
+
+    identifier: str = Field(description="NCBI Taxonomy ID")
     name: str | None
-    n_biosample: int
+
+
+class DatasetOrganism(Organism):
+    biosample_count: int
 
 
 class ParseResponse(ApiModel):
@@ -104,7 +111,7 @@ class SelectRequest(ApiModel):
 
 class ConditionResponse(ApiModel):
     dataset_version: DatasetVersionRef
-    q: str | None
+    dsl: str | None = Field(description="The condition string")
     ast: dict[str, Any] | None
     labels: dict[str, str] = Field(description="Display labels of the term IDs and organism IDs used in the condition")
 
@@ -128,7 +135,7 @@ class DistributionResponse(ApiModel):
     population_q: str | None = Field(description="The condition the counts were computed from")
     field: str
     unit: Unit
-    self_exclusion: bool
+    facet_self_exclude: bool
     total: int = Field(description="Count of the population in the unit")
     elements: list[TermElement | Element]
     status: list[Element] | None = Field(default=None, description="Status counts for annotation fields")
@@ -151,7 +158,7 @@ class CrosstabResponse(ApiModel):
     row_field: str
     col_field: str
     unit: Unit
-    self_exclusion: bool
+    facet_self_exclude: bool
     total: int
     rows: list[TermElement | Element]
     cols: list[TermElement | Element]
@@ -175,7 +182,7 @@ class TrendResponse(ApiModel):
     dataset_version: DatasetVersionRef
     q: str | None
     unit: Unit
-    self_exclusion: bool
+    facet_self_exclude: bool
     years: list[int]
     total: list[TrendPoint] = Field(description="Counts of the condition per year")
     total_population_q: str | None = Field(description="The condition the counts of `total` were computed from")
@@ -197,11 +204,18 @@ class Composition(ApiModel):
     segments: list[CompositionSegment]
 
 
+class Pagination(ApiModel):
+    page: int
+    per_page: int
+    total: int
+    has_next: bool
+
+
 class Project(ApiModel):
-    bioproject: str
+    identifier: str = Field(description="BioProject accession")
     title: str | None
-    n_biosample: int
-    n_experiment: int
+    biosample_count: int
+    experiment_count: int
     assays: list[str]
     clauses: list[Clause]
     composition: list[Composition]
@@ -211,13 +225,11 @@ class ProjectsResponse(ApiModel):
     dataset_version: DatasetVersionRef
     q: str | None
     population_q: str | None
-    self_exclusion: bool
-    total: int
-    page: int
-    per_page: int
+    facet_self_exclude: bool
     sort: str
     composition_fields: list[str]
-    projects: list[Project]
+    pagination: Pagination
+    items: list[Project]
 
 
 class AnnotationValue(ApiModel):
@@ -227,13 +239,13 @@ class AnnotationValue(ApiModel):
     label: str | None
 
 
-class RecordRow(ApiModel):
+class EntryItem(ApiModel):
+    identifier: str = Field(description="BioSample accession for `biosample` rows, experiment accession otherwise")
+    type: EntryType
     biosample: str
-    experiment: str | None = Field(description="Set when rows are experiments")
     experiments: list[str] = Field(description="Experiments of the BioSample in the matching records")
     title: str | None
-    organism_id: int | None
-    organism_name: str | None
+    organism: Organism | None
     library_strategy: list[str]
     bioprojects: list[str]
     date_created: str | None
@@ -241,14 +253,12 @@ class RecordRow(ApiModel):
     annotations: dict[str, list[AnnotationValue]]
 
 
-class RecordsResponse(ApiModel):
+class EntriesResponse(ApiModel):
     dataset_version: DatasetVersionRef
     q: str | None
-    unit: RecordUnit
-    total: int
-    page: int
-    per_page: int
-    records: list[RecordRow]
+    type: EntryType
+    pagination: Pagination
+    items: list[EntryItem]
 
 
 class Evidence(ApiModel):
@@ -289,10 +299,10 @@ class Attribute(ApiModel):
 
 class EntryResponse(ApiModel):
     dataset_version: DatasetVersionRef
-    accession: str
+    identifier: str = Field(description="BioSample accession")
+    type: Literal["biosample"]
     title: str | None
-    organism_id: int | None
-    organism_name: str | None
+    organism: Organism | None
     date_created: str | None
     date_modified: str | None
     run: str
@@ -308,7 +318,7 @@ class TermHit(ApiModel):
     label: str | None
     ontology: str
     path: list[str] = Field(description="Labels of the ancestors along one path from a root, nearest last")
-    n_descendants: int = Field(description="Descendant terms annotated in the population")
+    descendant_count: int = Field(description="Descendant terms annotated in the population")
     count: int
     clauses: list[Clause]
 
@@ -331,3 +341,10 @@ class TermChildrenResponse(ApiModel):
     population_q: str | None
     unit: Unit
     children: list[TermElement]
+
+
+class ServiceInfoResponse(ApiModel):
+    name: str
+    version: str = Field(description="Package version, followed by `+<commit>` when the build records a commit")
+    description: str
+    store: Literal["ok", "unavailable"]

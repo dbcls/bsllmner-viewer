@@ -1,13 +1,13 @@
 import { expect, test } from "@playwright/test"
 
-import { addTermButton, conditionPanel, conditionRegion, expectQ, termPicker, workspaceUrl } from "./helpers"
+import { addTermButton, choose, conditionPanel, conditionRegion, expectChosen, expectQ, termPicker, workspaceUrl } from "./helpers"
 
 const BREAST_CANCER = "MONDO:0007254"
 const CANCER = "MONDO:0004992"
 
 test.describe("condition", () => {
   test("adding a term from the picker puts it in the URL, the condition bar, and the panel", async ({ page }) => {
-    await page.goto("/w")
+    await page.goto("/entries")
     await addTermButton(page, "Disease").click()
     const picker = termPicker(page)
     await expect(picker).toBeVisible()
@@ -42,7 +42,7 @@ test.describe("condition", () => {
   })
 
   test("the query editor applies a typed condition in its canonical form and reports a syntax error", async ({ page }) => {
-    await page.goto("/w")
+    await page.goto("/entries")
     const region = conditionRegion(page)
     await region.getByRole("radio", { name: "Query" }).click()
     const editor = region.getByRole("textbox", { name: "Condition" })
@@ -57,7 +57,7 @@ test.describe("condition", () => {
   })
 
   test("the created-year range replaces the previous range instead of joining it", async ({ page }) => {
-    await page.goto("/w")
+    await page.goto("/entries")
     const panel = conditionPanel(page)
     await panel.getByRole("textbox", { name: "From year" }).fill("2015")
     await panel.getByRole("textbox", { name: "To year" }).fill("2016")
@@ -71,7 +71,7 @@ test.describe("condition", () => {
   })
 
   test("a text match is added on Enter as a contains clause", async ({ page }) => {
-    await page.goto("/w")
+    await page.goto("/entries")
     const title = conditionPanel(page).getByRole("textbox", { name: "Title contains" })
     await title.fill("run1")
     await title.press("Enter")
@@ -111,10 +111,10 @@ test.describe("condition", () => {
   test("the status buttons show the status condition of the field that has one", async ({ page }) => {
     await page.goto(workspaceUrl({ q: "tissue_status:no_value" }))
     const panel = conditionPanel(page)
-    await expect(panel.getByRole("combobox", { name: "Status field" })).toHaveValue("tissue")
+    await expectChosen(panel.getByRole("combobox", { name: "Status field" }), "Tissue")
     await expect(panel.getByRole("button", { name: "No value" })).toHaveAttribute("aria-pressed", "true")
     await expect(panel.getByRole("button", { name: "Mapped", exact: true })).toHaveAttribute("aria-pressed", "false")
-    await panel.getByRole("combobox", { name: "Status field" }).selectOption("disease")
+    await choose(panel.getByRole("combobox", { name: "Status field" }), "Disease")
     await expect(panel.getByRole("button", { name: "No value" })).toHaveAttribute("aria-pressed", "false")
     await panel.getByRole("button", { name: "Unmapped" }).click()
     await expectQ(page, "tissue_status:no_value AND disease_status:unmapped")
@@ -140,10 +140,10 @@ test.describe("condition", () => {
   })
 
   test("the picker searches every field and adds the chosen term under its own field", async ({ page }) => {
-    await page.goto("/w")
+    await page.goto("/entries")
     await addTermButton(page, "Tissue").click()
     const picker = termPicker(page)
-    await picker.getByRole("combobox", { name: "Field", exact: true }).selectOption("*")
+    await choose(picker.getByRole("combobox", { name: "Field", exact: true }), "All fields")
     await picker.getByRole("textbox", { name: "Search terms" }).fill("breast cancer")
     const hit = picker.getByRole("button").filter({ hasText: BREAST_CANCER })
     await expect(hit).toContainText("Disease")

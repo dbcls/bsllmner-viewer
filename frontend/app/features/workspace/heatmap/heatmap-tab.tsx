@@ -9,7 +9,7 @@ import { downloadPngMarkup, downloadSvgMarkup, downloadTsv } from "~/lib/export"
 import { formatCount, formatResidual } from "~/lib/format"
 import { fieldLabel, unitLabel } from "~/lib/labels"
 import { MATRIX_PRESETS } from "~/lib/presets"
-import { Card, Clickable, cn, LinkButton, Segmented, Select, Tag } from "~/ui"
+import { Card, CardFooter, CardHeader, Clickable, cn, LinkButton, Segmented, Select, Tag } from "~/ui"
 
 import { type HeatmapColor, type Patch, workspaceSearch, type WorkspaceState } from "../state"
 import type { Condition } from "../use-condition"
@@ -58,13 +58,13 @@ export const HeatmapTab = ({ state, condition, update, onOpenPicker, onAxisEleme
   }, [rows, cols, onAxisElements])
 
   const unit = unitLabel(state.unit)
-  const excluded = data !== undefined && data.population_q !== data.q
+  const excluded = data !== undefined && data.populationQ !== data.q
 
   /** Open the record list narrowed to a cell: the population of the table plus the cell's row and column clauses. */
   const openCell = async (clauses: Clause[]) => {
     if (!data) return
-    const q = await condition.narrowed(data.population_q, clauses)
-    await navigate(`/w${workspaceSearch({ ...state, q, tab: "samples", page: 1 })}`)
+    const q = await condition.narrowed(data.populationQ, clauses)
+    await navigate(`/entries${workspaceSearch({ ...state, q, tab: "samples", page: 1 })}`)
   }
   const max = Math.max(1, ...(data?.cells ?? []).map((c) => c.count))
   const cellByKey = new Map((data?.cells ?? []).map((c) => [`${c.row}\t${c.col}`, c]))
@@ -109,10 +109,10 @@ export const HeatmapTab = ({ state, condition, update, onOpenPicker, onAxisEleme
         params: {
           query: {
             field: dimension,
-            term_id: value,
+            termId: value,
             ...(state.q ? { q: state.q } : {}),
             unit: state.unit,
-            self_exclusion: state.selfExclusion,
+            facetSelfExclude: state.selfExclusion,
           },
         },
       }),
@@ -136,10 +136,10 @@ export const HeatmapTab = ({ state, condition, update, onOpenPicker, onAxisEleme
         continue
       }
       const hits = unwrap(
-        await api.GET("/api/terms", { params: { query: { field: dimension, query: line, limit: 5 } } }),
+        await api.GET("/api/terms", { params: { query: { field: dimension, query: line, facetSelfExclude: true, limit: 5 } } }),
       ).terms
       const exact = hits.find((h) => (h.label ?? "").toLowerCase() === line.toLowerCase()) ?? hits[0]
-      if (exact) found.push(exact.term_id)
+      if (exact) found.push(exact.termId)
     }
     const unique = [...new Set(found)]
     if (unique.length === 0) {
@@ -235,90 +235,92 @@ export const HeatmapTab = ({ state, condition, update, onOpenPicker, onAxisEleme
           />
         ))}
       </div>
-      <div className="mb-2 flex items-center justify-between text-fs-label text-ink-soft">
-        <div className="flex items-center gap-2">
-          <span>Preset</span>
-          <Select
-            size="sm"
-            placeholder="Choose…"
-            options={MATRIX_PRESETS.map((p) => ({ value: p.id, label: p.title }))}
-            value=""
-            onChange={(id) => {
-              const preset = MATRIX_PRESETS.find((p) => p.id === id)
-              if (!preset) return
-              setExpansions({ row: {}, col: {} })
-              update({ row: preset.state.row ?? state.row, col: preset.state.col ?? state.col, rowTerms: null, colTerms: null, unit: preset.state.unit ?? state.unit })
-            }}
-            aria-label="Preset"
-          />
-          <LinkButton
-            onClick={() => {
-              setExpansions((prev) => ({ row: prev.col, col: prev.row }))
-              update({ row: state.col, col: state.row, rowTerms: state.colTerms, colTerms: state.rowTerms })
-            }}
-          >
-            ⇄ Swap axes
-          </LinkButton>
-          <span className="inline-flex items-center gap-1.5">
-            Color
-            <Segmented
-              ariaLabel="Cell color"
-              options={[
-                { value: "count", label: "Count" },
-                { value: "residual", label: "Residual" },
-              ]}
-              value={state.color}
-              onChange={(color: HeatmapColor) => update({ color })}
-            />
-          </span>
-          {excluded && (
-            <Tag kind="warn">
-              Not filtered by {fieldLabel(state.row)}
-              {state.row !== state.col ? ` or ${fieldLabel(state.col)}` : ""}
-            </Tag>
-          )}
-        </div>
-        <span className="flex shrink-0 gap-1.5 font-mono text-fs-micro">
-          <LinkButton mono tone="soft" onClick={exportTsv}>
-            Matrix TSV
-          </LinkButton>
-          <LinkButton mono tone="soft" onClick={exportSvg}>
-            SVG
-          </LinkButton>
-          <LinkButton mono tone="soft" onClick={exportPng}>
-            PNG
-          </LinkButton>
-        </span>
-      </div>
-      <div className="mb-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-fs-label text-ink-soft">
-        {state.color === "count" ? (
-          <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-            0<span className="inline-block h-2.5 w-25 rounded-badge" style={{ background: gradient }} />
-            {formatCount(max)} <span>{unit}</span>
-          </span>
-        ) : (
-          <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-            <Swatch className="bg-under" /> r ≤ −4 <Swatch className="bg-under-soft" /> ≤ −2 <Swatch className="bg-brand-tint" /> ≥ 2 <Swatch className="bg-brand" /> ≥ 4
-          </span>
-        )}
-        <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-          <span className="inline-block h-3.5 w-5.5 rounded-badge border-gap border-dashed border-critical-fg bg-surface" />
-          Gap: 0 where 5 or more are expected
-        </span>
-        {state.color === "count" && (
-          <>
-            <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-              <span className="inline-block h-3.5 w-5.5 rounded-badge border border-dashed border-under bg-surface" />
-              Under-represented (r ≤ −2)
-            </span>
-            <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-              <span className="inline-block h-3.5 w-5.5 rounded-badge border border-dashed border-brand bg-surface" />
-              Over-represented (r ≥ 2)
-            </span>
-          </>
-        )}
-      </div>
       <Card padding="none" flush>
+        <CardHeader>
+          <div className="flex w-full items-center justify-between">
+            <div className="flex items-center gap-2">
+              <span>Preset</span>
+              <Select
+                size="sm"
+                placeholder="Choose…"
+                options={MATRIX_PRESETS.map((p) => ({ value: p.id, label: p.title }))}
+                value=""
+                onChange={(id) => {
+                  const preset = MATRIX_PRESETS.find((p) => p.id === id)
+                  if (!preset) return
+                  setExpansions({ row: {}, col: {} })
+                  update({ row: preset.state.row ?? state.row, col: preset.state.col ?? state.col, rowTerms: null, colTerms: null, unit: preset.state.unit ?? state.unit })
+                }}
+                aria-label="Preset"
+              />
+              <LinkButton
+                onClick={() => {
+                  setExpansions((prev) => ({ row: prev.col, col: prev.row }))
+                  update({ row: state.col, col: state.row, rowTerms: state.colTerms, colTerms: state.rowTerms })
+                }}
+              >
+                ⇄ Swap axes
+              </LinkButton>
+              <span className="inline-flex items-center gap-1.5">
+                Color
+                <Segmented
+                  ariaLabel="Cell color"
+                  options={[
+                    { value: "count", label: "Count" },
+                    { value: "residual", label: "Residual" },
+                  ]}
+                  value={state.color}
+                  onChange={(color: HeatmapColor) => update({ color })}
+                />
+              </span>
+              {excluded && (
+                <Tag kind="warn">
+                  Not filtered by {fieldLabel(state.row)}
+                  {state.row !== state.col ? ` or ${fieldLabel(state.col)}` : ""}
+                </Tag>
+              )}
+            </div>
+            <span className="flex shrink-0 gap-1.5 font-mono text-fs-micro">
+              <LinkButton mono tone="soft" onClick={exportTsv}>
+                Matrix TSV
+              </LinkButton>
+              <LinkButton mono tone="soft" onClick={exportSvg}>
+                SVG
+              </LinkButton>
+              <LinkButton mono tone="soft" onClick={exportPng}>
+                PNG
+              </LinkButton>
+            </span>
+          </div>
+          <div className="flex w-full flex-wrap items-center gap-x-4 gap-y-1">
+            {state.color === "count" ? (
+              <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                0<span className="inline-block h-2.5 w-25 rounded-badge" style={{ background: gradient }} />
+                {formatCount(max)} <span>{unit}</span>
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                <Swatch className="bg-under" /> r ≤ −4 <Swatch className="bg-under-soft" /> ≤ −2 <Swatch className="bg-brand-tint" /> ≥ 2 <Swatch className="bg-brand" /> ≥ 4
+              </span>
+            )}
+            <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+              <span className="inline-block h-3.5 w-5.5 rounded-badge border-gap border-dashed border-critical-fg bg-surface" />
+              Gap: 0 where 5 or more are expected
+            </span>
+            {state.color === "count" && (
+              <>
+                <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                  <span className="inline-block h-3.5 w-5.5 rounded-badge border border-dashed border-under bg-surface" />
+                  Under-represented (r ≤ −2)
+                </span>
+                <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                  <span className="inline-block h-3.5 w-5.5 rounded-badge border border-dashed border-brand bg-surface" />
+                  Over-represented (r ≥ 2)
+                </span>
+              </>
+            )}
+          </div>
+        </CardHeader>
         <div className="max-h-matrix-max overflow-auto">
           <table className="min-w-full border-separate border-spacing-0.5 text-fs-label">
             <thead>
@@ -412,12 +414,14 @@ export const HeatmapTab = ({ state, condition, update, onOpenPicker, onAxisEleme
             </tbody>
           </table>
         </div>
+        <CardFooter>
+          <span className="text-fs-micro">
+            A cell opens its records in Samples. Rows and columns overlap (multi-valued fields, child terms), so marginal totals are not sums
+            of the cells and may exceed the {unit} total. Cells with fewer than 5 expected {unit} are not classified. r is the adjusted
+            standardized residual.
+          </span>
+        </CardFooter>
       </Card>
-      <div className="mt-2 text-fs-micro text-ink-soft">
-        A cell opens its records in Samples. Rows and columns overlap (multi-valued fields, child terms), so marginal totals are not sums
-        of the cells and may exceed the {unit} total. Cells with fewer than 5 expected {unit} are not classified. r is the adjusted
-        standardized residual.
-      </div>
     </div>
   )
 }

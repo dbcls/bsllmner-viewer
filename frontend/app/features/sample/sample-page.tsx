@@ -8,6 +8,7 @@ import { fieldLabel, statusInfo } from "~/lib/labels"
 import { Caption, Card, cn, ExternalLink, StatusPill, Tag } from "~/ui"
 
 import { evidenceContext, segmentText } from "./evidence"
+import { backHref, bioprojectHref, termHref } from "./links"
 
 type SamplePageProps = {
   accession: string
@@ -18,17 +19,10 @@ type EntryAnnotation = EntryResponse["annotations"][number]
 type EntryExperiment = EntryResponse["experiments"][number]
 type EntryBioProject = EntryResponse["bioprojects"][number]
 
-const termHref = (field: string, termId: string): string => {
-  const params = new URLSearchParams()
-  params.set("q", `${field}:"${termId}"`)
-  return `/w?${params.toString()}`
-}
-
 /** BioSample detail: original attributes traced against the annotations extracted from them. */
 export const SamplePage = ({ accession }: SamplePageProps) => {
   const [searchParams] = useSearchParams()
   const from = searchParams.get("from")
-  const backHref = from ? `/w${from}` : "/w"
   const entry = useEntry(accession)
   const [highlighted, setHighlighted] = useState<string | null>(null)
 
@@ -36,45 +30,54 @@ export const SamplePage = ({ accession }: SamplePageProps) => {
     const notFound = entry.error instanceof ApiError && entry.error.problem.status === 404
     return (
       <div className="mx-auto w-full max-w-content-max px-page-gutter py-5">
-        <BackLink href={backHref} />
-        <div className="mt-3.5 font-mono text-fs-h1 font-semibold tracking-h1 text-ink">{accession}</div>
-        <div className="mt-1.5 text-fs-body-sm text-ink-soft">
-          {notFound ? `BioSample ${accession} is not in the dataset.` : entry.isError ? "Something went wrong loading this BioSample." : "Loading…"}
+        <BackLink href={backHref(from)} />
+        <div className="mt-3">
+          <Card>
+            <Caption>BioSample</Caption>
+            <div className="mt-0.5 font-mono text-fs-h1 font-semibold tracking-h1 text-ink">{accession}</div>
+            <div className="mt-1.5 text-fs-body-sm text-ink-soft">
+              {notFound ? `BioSample ${accession} is not in the dataset.` : entry.isError ? "Something went wrong loading this BioSample." : "Loading…"}
+            </div>
+          </Card>
         </div>
       </div>
     )
   }
 
   const data = entry.data
-  const ncbi = data.accession.startsWith("SAMN") || data.accession.startsWith("SAME")
+  const ncbi = data.identifier.startsWith("SAMN") || data.identifier.startsWith("SAME")
 
   return (
     <div className="mx-auto w-full max-w-content-max px-page-gutter py-5">
-      <BackLink href={backHref} />
-      <div className="mt-3.5 mb-5 flex items-start justify-between gap-6">
-        <div>
-          <Caption>BioSample</Caption>
-          <div className="mt-0.5 font-mono text-fs-h1 font-semibold tracking-h1 text-ink">{data.accession}</div>
-          {data.title && <div className="mt-1.5 text-fs-h2 text-ink">{data.title}</div>}
-          <div className="mt-1.5 flex gap-3.5 text-fs-body-sm text-ink-soft">
-            {data.organism_name && <span className="italic">{data.organism_name}</span>}
-            {data.date_created && (
-              <span>
-                Created <span className="font-mono">{data.date_created.slice(0, 10)}</span>
-              </span>
-            )}
+      <BackLink href={backHref(from)} />
+      <div className="mt-3 mb-4">
+        <Card>
+          <div className="flex items-start justify-between gap-6">
+            <div>
+              <Caption>BioSample</Caption>
+              <div className="mt-0.5 font-mono text-fs-h1 font-semibold tracking-h1 text-ink">{data.identifier}</div>
+              {data.title && <div className="mt-1.5 text-fs-h2 text-ink">{data.title}</div>}
+              <div className="mt-1.5 flex gap-3.5 text-fs-body-sm text-ink-soft">
+                {data.organism?.name && <span className="italic">{data.organism?.name}</span>}
+                {data.dateCreated && (
+                  <span>
+                    Created <span className="font-mono">{data.dateCreated.slice(0, 10)}</span>
+                  </span>
+                )}
+              </div>
+            </div>
+            <div className="flex shrink-0 gap-2">
+              <ExternalLink kind="button" href={`https://ddbj.nig.ac.jp/search/entry/biosample/${data.identifier}`}>
+                DDBJ Search
+              </ExternalLink>
+              {ncbi && (
+                <ExternalLink kind="button" href={`https://www.ncbi.nlm.nih.gov/biosample/${data.identifier}`}>
+                  NCBI BioSample
+                </ExternalLink>
+              )}
+            </div>
           </div>
-        </div>
-        <div className="flex shrink-0 gap-2">
-          <ExternalLink kind="button" href={`https://ddbj.nig.ac.jp/search/entry/biosample/${data.accession}`}>
-            DDBJ Search ↗
-          </ExternalLink>
-          {ncbi && (
-            <ExternalLink kind="button" href={`https://www.ncbi.nlm.nih.gov/biosample/${data.accession}`}>
-              NCBI BioSample ↗
-            </ExternalLink>
-          )}
-        </div>
+        </Card>
       </div>
       <div className="grid grid-cols-[2fr_3fr] items-start gap-4">
         <OriginalAttributes entry={data} highlighted={highlighted} />
@@ -125,9 +128,9 @@ const AttributeRowView = ({
   annotations: EntryAnnotation[]
   highlighted: string | null
 }) => {
-  const evidences = annotations.flatMap((annotation) => annotation.evidence.filter((evidence) => evidence.attribute_index === row.index))
+  const evidences = annotations.flatMap((annotation) => annotation.evidence.filter((evidence) => evidence.attributeIndex === row.index))
   const fields = new Set(
-    annotations.filter((annotation) => annotation.evidence.some((evidence) => evidence.attribute_index === row.index)).map((a) => a.field),
+    annotations.filter((annotation) => annotation.evidence.some((evidence) => evidence.attributeIndex === row.index)).map((a) => a.field),
   )
   const isHighlighted = highlighted !== null && fields.has(highlighted)
   const segments = segmentText(row.value, evidences)
@@ -186,7 +189,7 @@ const Annotations = ({ entry, highlighted, onHighlight }: AnnotationsProps) => (
 )
 
 const evidenceSource = (entry: EntryResponse, evidence: Evidence): string =>
-  evidence.attribute_index === -1 ? (entry.title ?? "") : (entry.attributes[evidence.attribute_index]?.value ?? "")
+  evidence.attributeIndex === -1 ? (entry.title ?? "") : (entry.attributes[evidence.attributeIndex]?.value ?? "")
 
 const AnnotationRow = ({
   entry,
@@ -212,13 +215,13 @@ const AnnotationRow = ({
       <span className="text-ink-mid">{fieldLabel(annotation.field)}</span>
       <span className="flex min-w-0 flex-wrap items-center gap-1.5">
         <span className={cn("italic", annotation.value ? "text-ink" : "text-ink-soft")}>{annotation.value ?? "—"}</span>
-        {annotation.term_id && (
+        {annotation.termId && (
           <>
             <span className="text-ink-soft">→</span>
-            <Link to={termHref(annotation.field, annotation.term_id)} className="text-brand no-underline hover:text-brand-deep">
+            <Link to={termHref(annotation.field, annotation.termId)} className="text-brand no-underline hover:text-brand-deep">
               {annotation.label}
             </Link>
-            <span className="font-mono text-fs-micro text-ink-soft">{annotation.term_id}</span>
+            <span className="font-mono text-fs-micro text-ink-soft">{annotation.termId}</span>
           </>
         )}
       </span>
@@ -246,7 +249,7 @@ const AnnotationRow = ({
 
 const ExperimentsCard = ({ experiments }: { experiments: EntryExperiment[] }) => (
   <Card>
-    <div className="mb-2 font-semibold">Experiments</div>
+    <div className="mb-2 font-semibold">SRA Experiments</div>
     <table className="w-full border-collapse text-fs-body-sm">
       <thead>
         <tr>
@@ -268,24 +271,24 @@ const ExperimentsCard = ({ experiments }: { experiments: EntryExperiment[] }) =>
         {experiments.map((experiment) => (
           <tr
             key={experiment.accession}
-            title={experiment.in_population ? undefined : "Not in the population (assay outside the target assays)"}
+            title={experiment.inPopulation ? undefined : "Not in the population (assay outside the target assays)"}
           >
             <td className="border-b border-brand-soft px-2 py-1.5 font-mono text-fs-label">{experiment.accession}</td>
             <td className="border-b border-brand-soft px-2 py-1.5">
-              {experiment.library_strategy &&
-                (experiment.in_population ? (
-                  <Tag>{experiment.library_strategy}</Tag>
+              {experiment.libraryStrategy &&
+                (experiment.inPopulation ? (
+                  <Tag>{experiment.libraryStrategy}</Tag>
                 ) : (
-                  <span className="text-fs-label text-ink-soft">{experiment.library_strategy}</span>
+                  <span className="text-fs-label text-ink-soft">{experiment.libraryStrategy}</span>
                 ))}
             </td>
             <td className="border-b border-brand-soft px-2 py-1.5 text-right font-mono text-fs-label">{experiment.runs.length}</td>
             <td className="border-b border-brand-soft px-2 py-1.5 text-fs-label">
-              <ExternalLink href={`https://ddbj.nig.ac.jp/search/entry/sra-experiment/${experiment.accession}`}>DDBJ ↗</ExternalLink>
-              {experiment.chip_atlas.length > 0 && (
+              <ExternalLink href={`https://ddbj.nig.ac.jp/search/entry/sra-experiment/${experiment.accession}`}>DDBJ</ExternalLink>
+              {experiment.chipAtlas.length > 0 && (
                 <>
                   {" · "}
-                  <ExternalLink href={`https://chip-atlas.org/view?id=${experiment.accession}`}>ChIP-Atlas ↗</ExternalLink>
+                  <ExternalLink href={`https://chip-atlas.org/view?id=${experiment.accession}`}>ChIP-Atlas</ExternalLink>
                 </>
               )}
             </td>
@@ -302,7 +305,7 @@ const BioProjectsCard = ({ bioprojects }: { bioprojects: EntryBioProject[] }) =>
     {bioprojects.length === 0 && <div className="text-fs-body-sm text-ink-soft">No BioProject on record.</div>}
     {bioprojects.map((bioproject, index) => (
       <div key={bioproject.accession} className={index > 0 ? "mt-3" : undefined}>
-        <Link to={`/w?q=bioproject:${bioproject.accession}`} className="font-mono text-fs-body-sm text-brand no-underline hover:text-brand-deep">
+        <Link to={bioprojectHref(bioproject.accession)} className="font-mono text-fs-body-sm text-brand no-underline hover:text-brand-deep">
           {bioproject.accession}
         </Link>
         <div className="mt-1 text-fs-body-sm text-ink-mid">{bioproject.title}</div>

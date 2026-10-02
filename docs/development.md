@@ -13,7 +13,7 @@ docker compose up
 ```
 
 - `.env` sets `BSLLMNER_VIEWER_DATA_DIR`, the directory mounted at `/data` in both containers (manifests, inputs, reference data, and store files), and `BSLLMNER_VIEWER_STORE`, the store file the api opens. `.env.example` points at the synthetic store, which the second command builds from generated data in a few seconds.
-- The api serves `http://localhost:8000`. Its OpenAPI document is at `/api/openapi.json` and the interactive documentation at `/api/docs`.
+- The api serves `http://localhost:8000`. Swagger UI is at `/api`, and the OpenAPI document is at `/api/openapi.json`.
 - The frontend dev server serves `http://localhost:5173` and calls the api through the Vite proxy.
 - To serve a store built from real runs (see [operations.md](operations.md)), point `BSLLMNER_VIEWER_STORE` at it and recreate the api container: `docker compose up -d --force-recreate api`.
 - The dev server occasionally serves an empty module after a file changes on the bind mount (the browser then reports a missing export). `docker compose restart frontend` clears it.

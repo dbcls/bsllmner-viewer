@@ -7,9 +7,9 @@ const term = fc.stringMatching(/^[A-Z]{2,5}:[0-9]{3,7}$/)
 const state: fc.Arbitrary<WorkspaceState> = fc.record({
   q: fc.option(fc.stringMatching(/^[a-z_]+:"?[A-Za-z0-9:.-]+"?( AND [a-z_]+:[A-Za-z0-9]+)*$/), { nil: null }),
   tab: fc.constantFrom(...TABS),
-  unit: fc.constantFrom("biosample", "experiment", "bioproject"),
+  unit: fc.constantFrom("biosample", "sra-experiment", "bioproject"),
   selfExclusion: fc.boolean(),
-  rows: fc.constantFrom("biosample", "experiment"),
+  rows: fc.constantFrom("biosample", "sra-experiment"),
   page: fc.integer({ min: 1, max: 9999 }),
   row: fc.constantFrom("cell_line", "disease", "library_strategy"),
   col: fc.constantFrom("tissue", "drug", "date_created"),
@@ -40,7 +40,7 @@ describe("workspace state in the URL", () => {
     const params = new URLSearchParams({ tab, unit, page })
     const parsed = readState(params)
     expect(TABS).toContain(parsed.tab)
-    expect(["biosample", "experiment", "bioproject"]).toContain(parsed.unit)
+    expect(["biosample", "sra-experiment", "bioproject"]).toContain(parsed.unit)
     expect(parsed.page).toBeGreaterThanOrEqual(1)
   })
 })

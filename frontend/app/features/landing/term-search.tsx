@@ -4,10 +4,10 @@ import { useNavigate } from "react-router"
 import { selectElement, useDataset, useDistribution, useTerms } from "~/lib/api/queries"
 import type { TermHit } from "~/lib/api/types"
 import { formatCount } from "~/lib/format"
-import { fieldLabel, unitLabel } from "~/lib/labels"
+import { fieldLabel } from "~/lib/labels"
 import { termDetail } from "~/lib/terms"
 import { workspaceSearch } from "~/lib/workspace-state"
-import { Card, Clickable, LinkButton, Select, TermRow, TextInput } from "~/ui"
+import { ACTION_ICON, Button, Card, CardHeader, Clickable, Icon, Select, TermRow, TextInput } from "~/ui"
 
 /** The field choice that searches every annotation field. */
 const ALL_FIELDS = "*"
@@ -20,6 +20,12 @@ const useDebounced = (value: string, delay: number): string => {
     return () => clearTimeout(timer)
   }, [value, delay])
   return debounced
+}
+
+/** The name of the result list: the terms of one field or of every field, and the text they match. */
+const resultTitle = (field: string | null, query: string): string => {
+  const terms = field ? `${field} terms` : "Terms"
+  return query ? `${terms} matching “${query}”` : terms
 }
 
 /** Search terms across the annotation fields, or browse one field, and open the workspace with the chosen term. */
@@ -39,9 +45,14 @@ export const TermSearch = () => {
   )
   const options = [{ value: ALL_FIELDS, label: "All fields" }, ...fields.map((f) => ({ value: f, label: fieldLabel(f) }))]
 
+  const clear = () => {
+    setField(ALL_FIELDS)
+    setQuery("")
+  }
+
   const open = async (hit: TermHit) => {
     const condition = await selectElement({ q: null, clauses: hit.clauses })
-    await navigate(`/w${workspaceSearch({ q: condition.q })}`)
+    await navigate(`/entries${workspaceSearch({ q: condition.dsl })}`)
   }
 
   return (
@@ -51,23 +62,33 @@ export const TermSearch = () => {
         <TextInput
           value={query}
           onChange={setQuery}
+          icon={ACTION_ICON.search}
           placeholder="liver, TP53, MCF-7"
           aria-label="Search terms by label, synonym, or ID"
           block
         />
       </div>
       {active ? (
-        <div className="mt-2">
+        <div className="mt-3">
           <Card padding="none" flush>
+            <CardHeader>
+              <span>
+                <span className="font-semibold text-ink">{resultTitle(everyField ? null : fieldLabel(field), debounced)}</span> · BioSamples with
+                the term
+              </span>
+              <Button kind="secondary" size="sm" onClick={clear}>
+                <Icon name={ACTION_ICON.clear} />
+                Clear search
+              </Button>
+            </CardHeader>
             <div className="max-h-picker-list overflow-auto">
               {(terms.data?.terms ?? []).map((hit) => (
                 <TermRow
-                  key={`${hit.field}:${hit.term_id}`}
-                  label={hit.label ?? hit.term_id}
-                  id={hit.term_id}
+                  key={`${hit.field}:${hit.termId}`}
+                  label={hit.label ?? hit.termId}
+                  id={hit.termId}
                   detail={termDetail(hit)}
                   count={formatCount(hit.count)}
-                  unit={unitLabel("biosample")}
                   {...(everyField ? { field: fieldLabel(hit.field) } : {})}
                   onClick={() => void open(hit)}
                 />
@@ -78,17 +99,6 @@ export const TermSearch = () => {
               {!terms.data && <div className="px-6 py-6 text-center text-fs-body-sm text-ink-soft">Searching…</div>}
             </div>
           </Card>
-          <div className="mt-1.5 text-right">
-            <LinkButton
-              tone="soft"
-              onClick={() => {
-                setField(ALL_FIELDS)
-                setQuery("")
-              }}
-            >
-              Clear search
-            </LinkButton>
-          </div>
         </div>
       ) : (
         <div className="mt-3">

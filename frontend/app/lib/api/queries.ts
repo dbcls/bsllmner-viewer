@@ -8,12 +8,12 @@ import type {
   CrosstabResponse,
   DatasetResponse,
   DistributionResponse,
+  EntriesResponse,
   EntryResponse,
+  EntryType,
   ParseResponse,
   ProjectSort,
   ProjectsResponse,
-  RecordsResponse,
-  RecordUnit,
   TermChildrenResponse,
   TermsResponse,
   TrendResponse,
@@ -79,10 +79,10 @@ export const useDistribution = (params: DistributionParams, enabled = true) =>
               field: params.field,
               q: q(params.q),
               unit: params.unit,
-              self_exclusion: params.selfExclusion,
+              facetSelfExclude: params.selfExclusion,
               elements: params.elements,
               limit: params.limit,
-              expanded_status: params.expandedStatus,
+              expandedStatus: params.expandedStatus,
             }),
           },
         }),
@@ -114,9 +114,9 @@ export const useCrosstab = (params: CrosstabParams, enabled = true) =>
               col: params.col,
               q: q(params.q),
               unit: params.unit,
-              self_exclusion: params.selfExclusion,
-              row_elements: params.rowElements,
-              col_elements: params.colElements,
+              facetSelfExclude: params.selfExclusion,
+              rowElements: params.rowElements,
+              colElements: params.colElements,
               limit: params.limit,
             }),
           },
@@ -146,7 +146,7 @@ export const useTrend = (params: TrendParams, enabled = true) =>
               field: params.field,
               q: q(params.q),
               unit: params.unit,
-              self_exclusion: params.selfExclusion,
+              facetSelfExclude: params.selfExclusion,
               elements: params.elements,
               limit: params.limit,
             }),
@@ -175,11 +175,11 @@ export const useProjects = (params: ProjectsParams, enabled = true) =>
           params: {
             query: defined({
               q: q(params.q),
-              self_exclusion: params.selfExclusion,
+              facetSelfExclude: params.selfExclusion,
               sort: params.sort,
               page: params.page,
-              per_page: params.perPage,
-              composition_fields: params.compositionFields,
+              perPage: params.perPage,
+              compositionFields: params.compositionFields,
             }),
           },
         }),
@@ -188,20 +188,23 @@ export const useProjects = (params: ProjectsParams, enabled = true) =>
     placeholderData: (previous) => previous,
   })
 
-export type RecordsParams = {
+export type EntriesParams = {
   q: string | null
-  unit: RecordUnit
+  type: EntryType
   page: number
   perPage: number
 }
 
-export const useRecords = (params: RecordsParams, enabled = true) =>
+export const useEntries = (params: EntriesParams, enabled = true) =>
   useQuery({
-    queryKey: ["records", params],
-    queryFn: async (): Promise<RecordsResponse> =>
+    queryKey: ["entries", params],
+    queryFn: async (): Promise<EntriesResponse> =>
       unwrap(
-        await api.GET("/api/records", {
-          params: { query: defined({ q: q(params.q), unit: params.unit, page: params.page, per_page: params.perPage }) },
+        await api.GET("/api/entries/{type}", {
+          params: {
+            path: { type: params.type },
+            query: defined({ q: q(params.q), page: params.page, perPage: params.perPage }),
+          },
         }),
       ),
     enabled,
@@ -212,7 +215,7 @@ export const useEntry = (accession: string) =>
   useQuery({
     queryKey: ["entry", accession],
     queryFn: async (): Promise<EntryResponse> =>
-      unwrap(await api.GET("/api/entries/{accession}", { params: { path: { accession } } })),
+      unwrap(await api.GET("/api/entries/biosample/{accession}", { params: { path: { accession } } })),
     retry: false,
   })
 
@@ -237,7 +240,7 @@ export const useTerms = (params: TermsParams, enabled = true) =>
               query: params.query,
               q: q(params.q),
               unit: params.unit,
-              self_exclusion: params.selfExclusion,
+              facetSelfExclude: params.selfExclusion,
               limit: params.limit,
             }),
           },
@@ -264,10 +267,10 @@ export const useTermChildren = (params: TermChildrenParams, enabled = true) =>
           params: {
             query: defined({
               field: params.field,
-              term_id: params.termId,
+              termId: params.termId,
               q: q(params.q),
               unit: params.unit,
-              self_exclusion: params.selfExclusion,
+              facetSelfExclude: params.selfExclusion,
             }),
           },
         }),

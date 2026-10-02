@@ -20,14 +20,14 @@ type TabsProps = {
 }
 
 export const Tabs = ({ state, onUnit, onSelfExclusion }: TabsProps) => (
-  <div className="mb-3.5 flex items-end justify-between border-b border-border-soft">
+  <div className="flex items-end justify-between border-b border-border-soft bg-surface px-workspace-gutter">
     <nav className="flex gap-0.5" aria-label="Views">
       {TABS.map((tab) => {
         const active = tab === state.tab
         return (
           <Link
             key={tab}
-            to={`/w${workspaceSearch({ ...state, tab, page: 1 })}`}
+            to={`/entries${workspaceSearch({ ...state, tab, page: 1 })}`}
             aria-current={active ? "page" : undefined}
             className={cn(
               "-mb-px border-b-2 px-3.5 pt-3 pb-2.5 text-fs-body no-underline hover:text-brand-deep",
@@ -47,7 +47,7 @@ export const Tabs = ({ state, onUnit, onSelfExclusion }: TabsProps) => (
             ariaLabel="Counting unit"
             options={[
               { value: "biosample", label: "BioSamples" },
-              { value: "experiment", label: "Experiments" },
+              { value: "sra-experiment", label: "SRA Experiments" },
               { value: "bioproject", label: "BioProjects" },
             ]}
             value={state.unit}

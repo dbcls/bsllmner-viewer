@@ -88,7 +88,7 @@
   --text-fs-meta:    12px;
   --text-fs-micro:   11px;
   --text-fs-badge:   10px;
-  --text-fs-brand:   16px;
+  --text-fs-brand:   18px;  /* the wordmark in the header */
   --text-fs-total:   24px;
 
   /* === Tracking =========================================================== */
@@ -98,6 +98,7 @@
   --tracking-tag:     0.04em;
   --tracking-label:   0.06em;
   --tracking-eyebrow: 0.1em;
+  --tracking-brand:   0.03em;  /* the wordmark in the header */
 
   /* === Leading ============================================================ */
   --leading-tight:   1.2;
@@ -129,6 +130,7 @@
   --spacing-projects-min: 1180px;
   --spacing-picker-list:  420px;
   --spacing-menu:         280px;
+  --spacing-listbox:      320px;  /* tallest open list of a Select before it scrolls */
 
   /* === Border widths ===================================================== */
   --border-width-gap: 1.5px;  /* dashed frame of a gap cell */

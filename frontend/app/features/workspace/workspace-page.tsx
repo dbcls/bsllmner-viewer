@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useLocation } from "react-router"
 
-import { useDataset, useRecords } from "~/lib/api/queries"
+import { useDataset, useEntries } from "~/lib/api/queries"
 import type { Clause, TermHit } from "~/lib/api/types"
 import { copyText } from "~/lib/export"
 import { fieldLabel } from "~/lib/labels"
@@ -33,7 +33,7 @@ export const WorkspacePage = () => {
   const [apiOpen, setApiOpen] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const records = useRecords({ q: state.q, unit: "biosample", page: 1, perPage: 1 })
+  const records = useEntries({ q: state.q, type: "biosample", page: 1, perPage: 1 })
   const axisElements = useRef<Record<AxisSide, string[]>>({ row: [], col: [] })
   const onAxisElements = useCallback((side: AxisSide, values: string[]) => {
     axisElements.current[side] = values
@@ -62,7 +62,7 @@ export const WorkspacePage = () => {
       return
     }
     const current = axisTerms(mode) ?? axisElements.current[mode as AxisSide]
-    const next = current.includes(hit.term_id) ? current.filter((t) => t !== hit.term_id) : [...current, hit.term_id]
+    const next = current.includes(hit.termId) ? current.filter((t) => t !== hit.termId) : [...current, hit.termId]
     setAxisTerms(mode, next)
   }
 
@@ -72,7 +72,7 @@ export const WorkspacePage = () => {
   }
 
   const isPicked = (mode: PickerMode, _field: string, hit: TermHit) =>
-    mode === "condition" ? condition.isSelected(hit.clauses) : (axisTerms(mode) ?? axisElements.current[mode as AxisSide]).includes(hit.term_id)
+    mode === "condition" ? condition.isSelected(hit.clauses) : (axisTerms(mode) ?? axisElements.current[mode as AxisSide]).includes(hit.termId)
 
   const share = async () => {
     const ok = await copyText(window.location.href)
@@ -87,37 +87,39 @@ export const WorkspacePage = () => {
         onShare={() => void share()}
         onExport={() => setExportOpen((open) => !open)}
         onApi={() => setApiOpen(true)}
-        exportMenu={<ExportMenu open={exportOpen} onClose={() => setExportOpen(false)} q={state.q} totalRecords={records.data?.total} />}
+        exportMenu={<ExportMenu open={exportOpen} onClose={() => setExportOpen(false)} q={state.q} totalRecords={records.data?.pagination.total} />}
       />
       <div className="flex min-h-0 flex-1 items-stretch">
         <ConditionPanel q={state.q} condition={condition} onAddTerm={(field) => setPicker({ field, mode: "condition" })} />
-        <main className="min-w-0 flex-1 px-workspace-gutter pb-10">
+        <main className="min-w-0 flex-1 pb-10">
           <Tabs state={state} onUnit={(unit) => update({ unit })} onSelfExclusion={() => update({ selfExclusion: !state.selfExclusion })} />
-          {state.tab === "samples" && (
-            <SamplesTab state={state} onRows={(rows) => update({ rows, page: 1 })} onPage={(page) => update({ page })} search={location.search} />
-          )}
-          {state.tab === "distribution" && (
-            <DistributionTab
-              state={state}
-              condition={condition}
-              onExpandedStatus={() => update({ expandedStatus: !state.expandedStatus })}
-              onExpanded={(expanded) => update({ expanded })}
-            />
-          )}
-          {state.tab === "heatmap" && (
-            <HeatmapTab
-              state={state}
-              condition={condition}
-              update={update}
-              onOpenPicker={(side, field) => setPicker({ field, mode: side })}
-              onAxisElements={onAxisElements}
-              onToast={showToast}
-            />
-          )}
-          {state.tab === "trend" && (
-            <TrendTab state={state} condition={condition} onSplit={(field) => update({ trendField: field, trendTerms: null })} />
-          )}
-          {state.tab === "projects" && <ProjectsTab state={state} condition={condition} onPage={(page) => update({ page })} />}
+          <div className="px-workspace-gutter pt-4">
+            {state.tab === "samples" && (
+              <SamplesTab state={state} onRows={(rows) => update({ rows, page: 1 })} onPage={(page) => update({ page })} search={location.search} />
+            )}
+            {state.tab === "distribution" && (
+              <DistributionTab
+                state={state}
+                condition={condition}
+                onExpandedStatus={() => update({ expandedStatus: !state.expandedStatus })}
+                onExpanded={(expanded) => update({ expanded })}
+              />
+            )}
+            {state.tab === "heatmap" && (
+              <HeatmapTab
+                state={state}
+                condition={condition}
+                update={update}
+                onOpenPicker={(side, field) => setPicker({ field, mode: side })}
+                onAxisElements={onAxisElements}
+                onToast={showToast}
+              />
+            )}
+            {state.tab === "trend" && (
+              <TrendTab state={state} condition={condition} onSplit={(field) => update({ trendField: field, trendTerms: null })} />
+            )}
+            {state.tab === "projects" && <ProjectsTab state={state} condition={condition} onPage={(page) => update({ page })} />}
+          </div>
         </main>
       </div>
       <TermPicker

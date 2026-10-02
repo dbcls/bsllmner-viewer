@@ -7,7 +7,7 @@ from typing import Annotated
 from fastapi import APIRouter, Query
 
 from bsllmner_viewer.api.common import aggregation_population, q_of, version_ref
-from bsllmner_viewer.api.deps import QParam, StoreDep, parse_condition
+from bsllmner_viewer.api.deps import FacetSelfExcludeParam, QParam, StoreDep, parse_condition
 from bsllmner_viewer.api.problems import ApiError
 from bsllmner_viewer.api.queries import terms as tq
 from bsllmner_viewer.api.queries.aggregate import element_counts
@@ -15,22 +15,23 @@ from bsllmner_viewer.api.queries.core import population
 from bsllmner_viewer.api.queries.dimensions import clauses_for, dimension
 from bsllmner_viewer.api.schemas import TermChildrenResponse, TermElement, TermHit, TermsResponse, Unit
 
-router = APIRouter(tags=["terms"])
+router = APIRouter(tags=["Terms"])
 
 
 def _term_dimension(store: StoreDep, field: str):  # type: ignore[no-untyped-def]
     dim = dimension(store.field_set, field)
     if dim.kind != "term":
-        raise ApiError("invalid-dimension", "Invalid dimension", 400, f"{field!r} is not an annotation field")
+        raise ApiError("invalid-dimension", 400, f"{field!r} is not an annotation field")
     return dim
 
 
 @router.get(
     "/terms",
+    operation_id="searchTerms",
     response_model=TermsResponse,
     summary="Search the terms annotated in a field, or in every annotation field",
     description=(
-        "Each hit is counted in the population of its own field: with self-exclusion, the condition without the "
+        "Each hit is counted in the population of its own field: with `facetSelfExclude`, the condition without the "
         "conjuncts on that field."
     ),
 )
@@ -42,14 +43,14 @@ def search_terms(
     ] = "",
     q: QParam = None,
     unit: Annotated[Unit, Query()] = "biosample",
-    self_exclusion: Annotated[bool, Query()] = True,
+    facet_self_exclude: FacetSelfExcludeParam = False,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
 ) -> TermsResponse:
     names = [f.name for f in store.fields] if field is None else [field]
     dims = [_term_dimension(store, name) for name in names]
     by_field = {dim.name: dim for dim in dims}
     ast = parse_condition(store, q)
-    populations = {name: aggregation_population(ast, [name], self_exclusion) for name in by_field}
+    populations = {name: aggregation_population(ast, [name], facet_self_exclude) for name in by_field}
     counts: dict[tuple[str, str], int] = {}
     descendants: dict[tuple[str, str], int] = {}
     with store.cursor() as cur:
@@ -76,7 +77,7 @@ def search_terms(
                 label=label,
                 ontology=ontology,
                 path=paths.get(t, []),
-                n_descendants=descendants.get((f, t), 0),
+                descendant_count=descendants.get((f, t), 0),
                 count=counts.get((f, t), 0),
                 clauses=clauses_for(by_field[f], t),
             )
@@ -86,19 +87,22 @@ def search_terms(
 
 
 @router.get(
-    "/terms/children", response_model=TermChildrenResponse, summary="Child terms of a term annotated in a field"
+    "/terms/children",
+    operation_id="listTermChildren",
+    response_model=TermChildrenResponse,
+    summary="Child terms of a term annotated in a field",
 )
 def term_children(
     store: StoreDep,
     field: str,
-    term_id: str,
+    term_id: Annotated[str, Query(alias="termId")],
     q: QParam = None,
     unit: Annotated[Unit, Query()] = "biosample",
-    self_exclusion: Annotated[bool, Query()] = True,
+    facet_self_exclude: FacetSelfExcludeParam = False,
 ) -> TermChildrenResponse:
     dim = _term_dimension(store, field)
     ast = parse_condition(store, q)
-    pop_ast = aggregation_population(ast, [dim.name], self_exclusion)
+    pop_ast = aggregation_population(ast, [dim.name], facet_self_exclude)
     pop = population(pop_ast, store.field_set)
     assert dim.annotation_field is not None
     with store.cursor() as cur:

@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from typing import Any
+
+from pydantic.alias_generators import to_camel
+
 from bsllmner_viewer.api.schemas import Clause, DatasetVersionRef
 from bsllmner_viewer.api.store import Store
 from bsllmner_viewer.dsl.ast import FieldClause, Node, Range, clause, leaves, normalize, range_clause
@@ -19,13 +23,22 @@ def version_ref(store: Store) -> DatasetVersionRef:
     )
 
 
+def camelize_keys(value: Any) -> Any:
+    """The value with the keys of every nested object converted to camelCase."""
+    if isinstance(value, dict):
+        return {to_camel(str(k)): camelize_keys(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [camelize_keys(v) for v in value]
+    return value
+
+
 def q_of(ast: Node | None) -> str | None:
     """The canonical condition string: nested same-op groups flattened, values bare when they can be."""
     return None if ast is None else serialize(normalize(ast))
 
 
-def aggregation_population(ast: Node | None, dimensions: list[str], self_exclusion: bool) -> Node | None:
-    return exclude_dimensions(ast, dimensions) if self_exclusion else ast
+def aggregation_population(ast: Node | None, dimensions: list[str], facet_self_exclude: bool) -> Node | None:
+    return exclude_dimensions(ast, dimensions) if facet_self_exclude else ast
 
 
 def to_field_clause(item: Clause) -> FieldClause:

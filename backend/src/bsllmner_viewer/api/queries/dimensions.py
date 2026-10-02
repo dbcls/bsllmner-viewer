@@ -25,7 +25,7 @@ class Membership:
 def dimension(fields: FieldSet, name: str) -> FieldDef:
     field = fields.get(name)
     if field is None or field.kind not in DIMENSION_KINDS:
-        raise ApiError("invalid-dimension", "Invalid dimension", 400, f"{name!r} is not an aggregation dimension")
+        raise ApiError("invalid-dimension", 400, f"{name!r} is not an aggregation dimension")
     return field
 
 
@@ -46,7 +46,7 @@ def membership(dim: FieldDef, elements: list[str]) -> Membership:
         for element in elements:
             statuses = expand_status(element)
             if not statuses:
-                raise ApiError("invalid-element", "Invalid element", 400, f"unknown status {element!r}")
+                raise ApiError("invalid-element", 400, f"unknown status {element!r}")
             marks = ", ".join("?" for _ in statuses)
             parts.append(
                 "SELECT p.biosample, p.experiment, ? AS element FROM pop p "
@@ -123,9 +123,7 @@ def _int(value: str, what: str) -> int:
     try:
         return int(value)
     except ValueError as e:
-        raise ApiError(
-            "invalid-element", "Invalid element", 400, f"{what} element must be an integer: {value!r}"
-        ) from e
+        raise ApiError("invalid-element", 400, f"{what} element must be an integer: {value!r}") from e
 
 
 def labels_for(

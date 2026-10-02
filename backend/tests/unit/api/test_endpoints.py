@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import orjson
 from fastapi.testclient import TestClient
 
 from tests.synthetic import Synthetic
@@ -7,24 +8,28 @@ from tests.synthetic import Synthetic
 
 def test_dataset_reports_version_fields_and_totals(client: TestClient) -> None:
     body = client.get("/api/dataset").json()
-    assert body["dataset_version"]["name"] == "synthetic"
-    assert len(body["dataset_version"]["digest"]) == 16
+    assert body["datasetVersion"]["name"] == "synthetic"
+    assert len(body["datasetVersion"]["digest"]) == 16
     assert [f["name"] for f in body["fields"]] == ["cell_line", "disease", "tissue", "drug", "chip_antigen"]
     assert body["fields"][1]["ontologies"] == ["MONDO"]
     assert body["totals"]["record"] > 0
     assert list(body["statuses"]) == ["mapped", "unmapped", "no_value"]
-    assert {o["organism_id"] for o in body["organisms"]} <= {9606, 10090}
+    assert {o["identifier"] for o in body["organisms"]} <= {"9606", "10090"}
+    assert all(set(o) == {"identifier", "name", "biosampleCount"} for o in body["organisms"])
+    assert "createdAt" in body["version"]
+    assert "reference_snapshots" not in body["version"]
+    assert "referenceSnapshots" in body["version"]
 
 
 def test_every_response_carries_the_same_dataset_version(client: TestClient) -> None:
-    ref = client.get("/api/dataset").json()["dataset_version"]
+    ref = client.get("/api/dataset").json()["datasetVersion"]
     for path in (
         "/api/distribution?field=disease",
-        "/api/records",
+        "/api/entries/biosample",
         "/api/projects",
         "/api/dsl/parse?q=disease_status:mapped",
     ):
-        assert client.get(path).json()["dataset_version"] == ref
+        assert client.get(path).json()["datasetVersion"] == ref
 
 
 def test_parse_returns_ast_and_normalized_q(client: TestClient) -> None:
@@ -49,7 +54,8 @@ def test_serialize_accepts_a_parse_result(client: TestClient) -> None:
         "/api/dsl/parse", params={"q": "date_created:[2015-01-01 TO 2020-12-31] AND NOT title:tumor"}
     ).json()
     body = client.post("/api/dsl/serialize", json={"ast": parsed["ast"]}).json()
-    assert body["q"] == parsed["q"]
+    assert body["dsl"] == parsed["q"]
+    assert "q" not in body
     assert body["ast"] == parsed["ast"]
 
 
@@ -60,15 +66,15 @@ def test_select_builds_the_documented_condition(client: TestClient) -> None:
         {"field": "library_strategy", "value": "ATAC-seq"},
         {"field": "disease", "value": "B"},
     ):
-        q = client.post("/api/dsl/select", json={"q": q, "clauses": [clause]}).json()["q"]
+        q = client.post("/api/dsl/select", json={"q": q, "clauses": [clause]}).json()["dsl"]
     assert q == "(disease:A OR disease:B) AND library_strategy:ATAC-seq"
     removed = client.post("/api/dsl/select", json={"q": q, "clauses": [{"field": "disease", "value": "A"}]}).json()
-    assert removed["q"] == "disease:B AND library_strategy:ATAC-seq"
+    assert removed["dsl"] == "disease:B AND library_strategy:ATAC-seq"
     year = client.post(
         "/api/dsl/select",
         json={"q": None, "clauses": [{"field": "date_created", "from": "2020-01-01", "to": "2020-12-31"}]},
     ).json()
-    assert year["q"] == "date_created:[2020-01-01 TO 2020-12-31]"
+    assert year["dsl"] == "date_created:[2020-01-01 TO 2020-12-31]"
 
 
 def test_invalid_conditions_are_problem_documents(client: TestClient) -> None:
@@ -77,66 +83,75 @@ def test_invalid_conditions_are_problem_documents(client: TestClient) -> None:
         ("nope:x", "unknown-field"),
         ("disease:(", "unexpected-token"),
     ):
-        response = client.get("/api/records", params={"q": q})
+        response = client.get("/api/entries/biosample", params={"q": q})
         assert response.status_code == 400, q
         assert response.headers["content-type"].startswith("application/problem+json")
         body = response.json()
-        assert body["type"] == f"/problems/{slug}"
+        assert body["type"] == f"https://ddbj.nig.ac.jp/problems/{slug}"
+        assert body["title"] == "Bad Request"
         assert body["status"] == 400
-        assert body["instance"] == "/api/records"
+        assert body["instance"] == "/api/entries/biosample"
 
 
 def test_invalid_ast_is_a_problem_document(client: TestClient) -> None:
     response = client.post("/api/dsl/serialize", json={"ast": {"op": "XOR"}})
     assert response.status_code == 400
-    assert response.json()["type"] == "/problems/invalid-ast"
+    assert response.json()["type"] == "https://ddbj.nig.ac.jp/problems/invalid-ast"
 
 
 def test_invalid_query_parameters_are_problem_documents(client: TestClient) -> None:
-    response = client.get("/api/records", params={"page": 0})
+    response = client.get("/api/entries/biosample", params={"page": 0})
     assert response.status_code == 422
     assert response.headers["content-type"].startswith("application/problem+json")
-    assert client.get("/api/distribution", params={"field": "title"}).json()["type"] == "/problems/invalid-dimension"
+    assert response.json()["type"] == "about:blank"
+    assert response.json()["title"] == "Unprocessable Entity"
+    invalid = client.get("/api/distribution", params={"field": "title"}).json()
+    assert invalid["type"] == "https://ddbj.nig.ac.jp/problems/invalid-dimension"
 
 
 def test_distribution_returns_elements_with_clauses_and_status(client: TestClient) -> None:
     body = client.get("/api/distribution", params={"field": "disease", "unit": "biosample"}).json()
     assert body["field"] == "disease"
-    assert body["population_q"] is None
+    assert body["populationQ"] is None
     assert body["total"] > 0
     assert 0 < len(body["elements"]) <= 10
     first = body["elements"][0]
     assert first["clauses"] == [{"field": "disease", "value": first["value"]}]
-    assert first["count"] >= first["count_exact"] + 0
+    assert first["count"] >= first["countExact"] + 0
     assert {s["value"] for s in body["status"]} == {"mapped", "unmapped", "no_value"}
-    expanded = client.get("/api/distribution", params={"field": "disease", "expanded_status": "true"}).json()
+    expanded = client.get("/api/distribution", params={"field": "disease", "expandedStatus": "true"}).json()
     assert len(expanded["status"]) == 6
 
 
 def test_distribution_self_exclusion_drops_own_conjunct(client: TestClient) -> None:
     q = 'disease:"MONDO:0007254" AND library_strategy:RNA-Seq'
-    on = client.get("/api/distribution", params={"field": "disease", "q": q}).json()
-    off = client.get("/api/distribution", params={"field": "disease", "q": q, "self_exclusion": "false"}).json()
-    assert on["population_q"] == "library_strategy:RNA-Seq"
-    assert off["population_q"] == q
-    assert on["status_population_q"] == "library_strategy:RNA-Seq"
+    on = client.get("/api/distribution", params={"field": "disease", "q": q, "facetSelfExclude": "true"}).json()
+    off = client.get("/api/distribution", params={"field": "disease", "q": q}).json()
+    assert on["facetSelfExclude"] is True
+    assert off["facetSelfExclude"] is False
+    assert on["populationQ"] == "library_strategy:RNA-Seq"
+    assert off["populationQ"] == q
+    assert on["statusPopulationQ"] == "library_strategy:RNA-Seq"
 
 
 def test_redundant_parentheses_do_not_change_the_population(client: TestClient) -> None:
     flat = 'disease:"MONDO:0007254" AND title:run1 AND disease:"MONDO:0005061"'
     nested = 'disease:"MONDO:0007254" AND (title:run1 AND disease:"MONDO:0005061")'
     for path, params in (
-        ("/api/distribution", {"field": "disease"}),
-        ("/api/crosstab", {"row": "disease", "col": "library_strategy"}),
-        ("/api/trend", {"field": "disease"}),
+        ("/api/distribution", {"field": "disease", "facetSelfExclude": "true"}),
+        ("/api/crosstab", {"row": "disease", "col": "library_strategy", "facetSelfExclude": "true"}),
+        ("/api/trend", {"field": "disease", "facetSelfExclude": "true"}),
     ):
         a = client.get(path, params={**params, "q": flat}).json()
         b = client.get(path, params={**params, "q": nested}).json()
         assert a["q"] == b["q"] == flat
-        assert a["population_q"] == b["population_q"] == "title:run1", path
-    assert client.get("/api/trend", params={"q": nested}).json()["total_population_q"] == flat
+        assert a["populationQ"] == b["populationQ"] == "title:run1", path
+    trend = client.get("/api/trend", params={"q": nested, "facetSelfExclude": "true"}).json()
+    assert trend["totalPopulationQ"] == flat
     clause = {"field": "title", "value": "run1"}
-    selected = [client.post("/api/dsl/select", json={"q": q, "clauses": [clause]}).json()["q"] for q in (flat, nested)]
+    selected = [
+        client.post("/api/dsl/select", json={"q": q, "clauses": [clause]}).json()["dsl"] for q in (flat, nested)
+    ]
     assert selected[0] == selected[1] == 'disease:"MONDO:0007254" AND disease:"MONDO:0005061"'
 
 
@@ -149,7 +164,7 @@ def test_distribution_year_elements_carry_range_clauses(client: TestClient) -> N
 
 
 def test_crosstab_returns_cells_with_expected_counts(client: TestClient) -> None:
-    body = client.get("/api/crosstab", params={"row": "disease", "col": "library_strategy", "unit": "biosample"}).json()
+    body = client.get("/api/crosstab", params={"row": "disease", "col": "library_strategy"}).json()
     assert body["rows"]
     assert body["cols"]
     assert len(body["cells"]) == len(body["rows"]) * len(body["cols"])
@@ -161,7 +176,7 @@ def test_crosstab_returns_cells_with_expected_counts(client: TestClient) -> None
 
 
 def test_trend_returns_points_per_year(client: TestClient) -> None:
-    body = client.get("/api/trend", params={"field": "tissue", "unit": "experiment", "limit": 2}).json()
+    body = client.get("/api/trend", params={"field": "tissue", "unit": "sra-experiment", "limit": 2}).json()
     assert body["years"] == sorted(body["years"])
     assert body["field"] == "tissue"
     assert len(body["series"]) <= 2
@@ -175,52 +190,60 @@ def test_trend_without_a_field_counts_the_condition_per_year(client: TestClient)
     body = client.get("/api/trend").json()
     assert body["field"] is None
     assert body["series"] == []
-    assert body["total_population_q"] is None
-    assert body["population_q"] is None
+    assert body["totalPopulationQ"] is None
+    assert body["populationQ"] is None
     assert [p["year"] for p in body["total"]] == body["years"]
     assert all(p["count"] > 0 for p in body["total"])
     point = body["total"][0]
     assert point["clauses"] == [
         {"field": "date_created", "from": f"{point['year']}-01-01", "to": f"{point['year']}-12-31"}
     ]
-    assert sum(p["count"] for p in body["total"]) == client.get("/api/records").json()["total"]
+    assert sum(p["count"] for p in body["total"]) == client.get("/api/entries/biosample").json()["pagination"]["total"]
 
 
 def test_trend_populations_exclude_the_year_and_the_series_dimension(client: TestClient) -> None:
     q = 'disease:"MONDO:0007254" AND library_strategy:RNA-Seq AND date_created:[2015-01-01 TO 2016-12-31]'
-    on = client.get("/api/trend", params={"q": q, "field": "disease"}).json()
-    assert on["total_population_q"] == 'disease:"MONDO:0007254" AND library_strategy:RNA-Seq'
-    assert on["population_q"] == "library_strategy:RNA-Seq"
+    on = client.get("/api/trend", params={"q": q, "field": "disease", "facetSelfExclude": "true"}).json()
+    assert on["totalPopulationQ"] == 'disease:"MONDO:0007254" AND library_strategy:RNA-Seq'
+    assert on["populationQ"] == "library_strategy:RNA-Seq"
     assert "MONDO:0007254" in [s["value"] for s in on["series"]]
-    off = client.get("/api/trend", params={"q": q, "field": "disease", "self_exclusion": "false"}).json()
-    assert off["total_population_q"] == off["population_q"] == q
+    off = client.get("/api/trend", params={"q": q, "field": "disease"}).json()
+    assert off["totalPopulationQ"] == off["populationQ"] == q
     assert all(2015 <= y <= 2016 for y in off["years"])
 
 
 def test_trend_rejects_the_year_as_its_dimension(client: TestClient) -> None:
     response = client.get("/api/trend", params={"field": "date_created"})
     assert response.status_code == 400
-    assert response.json()["type"] == "/problems/invalid-dimension"
+    assert response.json()["type"] == "https://ddbj.nig.ac.jp/problems/invalid-dimension"
 
 
 def test_select_narrow_builds_the_documented_condition(client: TestClient) -> None:
     table = client.get(
-        "/api/crosstab", params={"row": "cell_line", "col": "library_strategy", "q": "library_strategy:ChIP-Seq"}
+        "/api/crosstab",
+        params={
+            "row": "cell_line",
+            "col": "library_strategy",
+            "q": "library_strategy:ChIP-Seq",
+            "facetSelfExclude": "true",
+        },
     ).json()
-    assert table["population_q"] is None
+    assert table["populationQ"] is None
     cell = [{"field": "cell_line", "value": "A"}, {"field": "library_strategy", "value": "RNA-Seq"}]
     narrowed = client.post(
-        "/api/dsl/select", json={"q": table["population_q"], "clauses": cell, "mode": "narrow"}
+        "/api/dsl/select", json={"q": table["populationQ"], "clauses": cell, "mode": "narrow"}
     ).json()
-    assert narrowed["q"] == "cell_line:A AND library_strategy:RNA-Seq"
-    again = client.post("/api/dsl/select", json={"q": narrowed["q"], "clauses": cell, "mode": "narrow"}).json()
-    assert again["q"] == narrowed["q"]
+    assert narrowed["dsl"] == "cell_line:A AND library_strategy:RNA-Seq"
+    again = client.post("/api/dsl/select", json={"q": narrowed["dsl"], "clauses": cell, "mode": "narrow"}).json()
+    assert again["dsl"] == narrowed["dsl"]
     kept = client.post(
         "/api/dsl/select",
         json={"q": "(cell_line:A OR cell_line:B) AND title:x", "clauses": cell[:1], "mode": "narrow"},
     ).json()
-    assert kept["q"] == "(cell_line:A OR cell_line:B) AND title:x AND cell_line:A"
-    assert client.post("/api/dsl/select", json={"q": None, "clauses": cell, "mode": "other"}).status_code == 422
+    assert kept["dsl"] == "(cell_line:A OR cell_line:B) AND title:x AND cell_line:A"
+    invalid = client.post("/api/dsl/select", json={"q": None, "clauses": cell, "mode": "other"})
+    assert invalid.status_code == 400
+    assert invalid.json()["type"] == "https://ddbj.nig.ac.jp/problems/invalid-ast"
 
 
 def _two_disease_terms(client: TestClient) -> tuple[str, str]:
@@ -234,15 +257,27 @@ def test_default_elements_include_the_terms_the_condition_names(client: TestClie
     top, other = _two_disease_terms(client)
     plain = client.get("/api/distribution", params={"field": "disease", "limit": 1}).json()
     assert [e["value"] for e in plain["elements"]] == [top]
-    named = client.get("/api/distribution", params={"field": "disease", "limit": 1, "q": f'disease:"{other}"'}).json()
+    named = client.get(
+        "/api/distribution",
+        params={"field": "disease", "limit": 1, "q": f'disease:"{other}"', "facetSelfExclude": "true"},
+    ).json()
     assert {e["value"] for e in named["elements"]} == {top, other}
     counts = [e["count"] for e in named["elements"]]
     assert counts == sorted(counts, reverse=True)
     table = client.get(
-        "/api/crosstab", params={"row": "disease", "col": "library_strategy", "limit": 1, "q": f'disease:"{other}"'}
+        "/api/crosstab",
+        params={
+            "row": "disease",
+            "col": "library_strategy",
+            "limit": 1,
+            "q": f'disease:"{other}"',
+            "facetSelfExclude": "true",
+        },
     ).json()
     assert {r["value"] for r in table["rows"]} == {top, other}
-    trend = client.get("/api/trend", params={"field": "disease", "limit": 1, "q": f'disease:"{other}"'}).json()
+    trend = client.get(
+        "/api/trend", params={"field": "disease", "limit": 1, "q": f'disease:"{other}"', "facetSelfExclude": "true"}
+    ).json()
     assert {s["value"] for s in trend["series"]} == {top, other}
 
 
@@ -266,62 +301,81 @@ def test_default_elements_include_an_unannotated_term_with_a_zero_count(client: 
 
 
 def test_projects_lists_bioprojects_with_composition(client: TestClient) -> None:
-    body = client.get("/api/projects", params={"composition_fields": "disease,drug", "per_page": 5}).json()
-    assert body["total"] > 0
-    assert len(body["projects"]) <= 5
-    project = body["projects"][0]
-    assert project["clauses"] == [{"field": "bioproject", "value": project["bioproject"]}]
+    body = client.get("/api/projects", params={"compositionFields": "disease,drug", "perPage": 5}).json()
+    assert body["pagination"]["total"] > 0
+    assert body["pagination"]["perPage"] == 5
+    assert len(body["items"]) <= 5
+    assert body["sort"] == "biosampleCount:desc"
+    project = body["items"][0]
+    assert project["clauses"] == [{"field": "bioproject", "value": project["identifier"]}]
     assert [c["field"] for c in project["composition"]] == ["disease", "drug"]
     assert all(sum(s["count"] for s in c["segments"]) == c["total"] for c in project["composition"])
-    assert all(c["total"] == project["n_biosample"] for c in project["composition"])
-    by_experiment = client.get("/api/projects", params={"sort": "experiment"}).json()["projects"]
-    assert [p["n_experiment"] for p in by_experiment] == sorted(
-        (p["n_experiment"] for p in by_experiment), reverse=True
-    )
+    assert all(c["total"] == project["biosampleCount"] for c in project["composition"])
+    by_experiment = client.get("/api/projects", params={"sort": "experimentCount:desc"}).json()["items"]
+    counts = [p["experimentCount"] for p in by_experiment]
+    assert counts == sorted(counts, reverse=True)
+    by_identifier = client.get("/api/projects", params={"sort": "identifier:asc"}).json()["items"]
+    identifiers = [p["identifier"] for p in by_identifier]
+    assert identifiers == sorted(identifiers)
+    assert client.get("/api/projects", params={"sort": "biosample"}).status_code == 422
 
 
-def test_records_pages_are_disjoint_and_cover_the_total(client: TestClient) -> None:
-    first = client.get("/api/records", params={"per_page": 7, "page": 1}).json()
-    second = client.get("/api/records", params={"per_page": 7, "page": 2}).json()
-    assert len(first["records"]) == 7
-    assert {r["biosample"] for r in first["records"]}.isdisjoint({r["biosample"] for r in second["records"]})
-    by_experiment = client.get("/api/records", params={"unit": "experiment", "per_page": 200}).json()
-    assert by_experiment["total"] == len(by_experiment["records"])
-    assert all(r["experiment"] and r["experiments"] == [r["experiment"]] for r in by_experiment["records"])
+def test_entries_pages_are_disjoint_and_cover_the_total(client: TestClient) -> None:
+    first = client.get("/api/entries/biosample", params={"perPage": 7, "page": 1}).json()
+    second = client.get("/api/entries/biosample", params={"perPage": 7, "page": 2}).json()
+    assert len(first["items"]) == 7
+    assert {r["biosample"] for r in first["items"]}.isdisjoint({r["biosample"] for r in second["items"]})
+    by_experiment = client.get("/api/entries/sra-experiment", params={"perPage": 100}).json()
+    assert by_experiment["type"] == "sra-experiment"
+    assert by_experiment["pagination"]["total"] > 0
+    items = by_experiment["items"]
+    assert len(items) == min(100, by_experiment["pagination"]["total"])
+    assert all(r["type"] == "sra-experiment" and r["experiments"] == [r["identifier"]] for r in items)
 
 
-def test_records_rows_carry_annotations_for_every_field(client: TestClient) -> None:
-    row = client.get("/api/records", params={"per_page": 1}).json()["records"][0]
+def test_entries_rows_carry_annotations_for_every_field(client: TestClient) -> None:
+    row = client.get("/api/entries/biosample", params={"perPage": 1}).json()["items"][0]
+    assert row["type"] == "biosample"
+    assert row["identifier"] == row["biosample"]
     assert list(row["annotations"]) == ["cell_line", "disease", "tissue", "drug", "chip_antigen"]
     assert all(a["status"] for values in row["annotations"].values() for a in values)
+    assert row["organism"] is None or set(row["organism"]) == {"identifier", "name"}
+    assert all(
+        set(a) == {"value", "status", "termId", "label"} for values in row["annotations"].values() for a in values
+    )
 
 
 def test_entry_returns_attributes_annotations_and_evidence(client: TestClient, synthetic: Synthetic) -> None:
     accession = synthetic.accessions[0]
-    body = client.get(f"/api/entries/{accession}").json()
-    assert body["accession"] == accession
+    body = client.get(f"/api/entries/biosample/{accession}").json()
+    assert body["identifier"] == accession
+    assert body["type"] == "biosample"
+    assert "accession" not in body
     assert body["attributes"][0]["name"] == "sample_name"
     assert [a["field"] for a in body["annotations"][:5]] == ["cell_line", "disease", "tissue", "drug", "chip_antigen"]
     for annotation in body["annotations"]:
         if annotation["value"]:
             assert annotation["evidence"], annotation
             evidence = annotation["evidence"][0]
-            if evidence["attribute_index"] >= 0:
-                attribute = body["attributes"][evidence["attribute_index"]]
+            if evidence["attributeIndex"] >= 0:
+                attribute = body["attributes"][evidence["attributeIndex"]]
                 assert attribute["name"] == evidence["attribute"]
                 assert attribute["value"][evidence["start"] : evidence["end"]].lower() == annotation["value"].lower()
     assert {e["accession"] for e in body["experiments"]} == {srx for srx, _ in synthetic.truth.experiments[accession]}
-    assert client.get("/api/entries/SAMN_NONE").status_code == 404
+    missing = client.get("/api/entries/biosample/SAMN_NONE")
+    assert missing.status_code == 404
+    assert missing.json()["type"] == "about:blank"
+    assert missing.json()["title"] == "Not Found"
 
 
 def test_terms_search_matches_label_synonym_and_id(client: TestClient) -> None:
     for query in ("breast", "mammary", "MONDO:0007254"):
         hits = client.get("/api/terms", params={"field": "disease", "query": query}).json()["terms"]
-        assert any(h["term_id"] == "MONDO:0007254" for h in hits), query
+        assert any(h["termId"] == "MONDO:0007254" for h in hits), query
     hit = next(
         h
         for h in client.get("/api/terms", params={"field": "disease", "query": "breast carcinoma"}).json()["terms"]
-        if h["term_id"] == "MONDO:0004989"
+        if h["termId"] == "MONDO:0004989"
     )
     assert hit["path"][-1] == "breast cancer"
     assert hit["clauses"] == [{"field": "disease", "value": "MONDO:0004989"}]
@@ -332,13 +386,13 @@ def test_terms_search_without_a_field_searches_every_annotation_field(client: Te
     fields = {f["name"] for f in client.get("/api/dataset").json()["fields"]}
     body = client.get("/api/terms", params={"query": "breast"}).json()
     assert body["field"] is None
-    assert body["population_q"] is None
-    assert ("disease", "MONDO:0007254") in {(h["field"], h["term_id"]) for h in body["terms"]}
+    assert body["populationQ"] is None
+    assert ("disease", "MONDO:0007254") in {(h["field"], h["termId"]) for h in body["terms"]}
     assert all(
-        h["field"] in fields and h["clauses"] == [{"field": h["field"], "value": h["term_id"]}] for h in body["terms"]
+        h["field"] in fields and h["clauses"] == [{"field": h["field"], "value": h["termId"]}] for h in body["terms"]
     )
     by_synonym = client.get("/api/terms", params={"query": "K562"}).json()["terms"]
-    assert [(h["field"], h["term_id"]) for h in by_synonym] == [("cell_line", "CVCL:0004")]
+    assert [(h["field"], h["termId"]) for h in by_synonym] == [("cell_line", "CVCL:0004")]
     by_id = client.get("/api/terms", params={"query": "ncbigene:10664"}).json()["terms"]
     assert [(h["field"], h["label"]) for h in by_id] == [("chip_antigen", "CTCF")]
 
@@ -347,7 +401,7 @@ def test_terms_search_without_a_query_lists_terms_of_several_fields_within_the_l
     body = client.get("/api/terms", params={"limit": 8}).json()
     assert len(body["terms"]) == 8
     assert len({h["field"] for h in body["terms"]}) > 1
-    assert len({(h["field"], h["term_id"]) for h in body["terms"]}) == 8
+    assert len({(h["field"], h["termId"]) for h in body["terms"]}) == 8
     assert client.get("/api/terms", params={"query": "no such term text"}).json()["terms"] == []
 
 
@@ -360,40 +414,70 @@ def test_terms_search_counts_each_hit_without_the_conjuncts_on_its_own_field(cli
     q = 'disease:"MONDO:0005061" AND library_strategy:RNA-Seq'
     hit = next(
         h
-        for h in client.get("/api/terms", params={"query": "breast cancer", "q": q}).json()["terms"]
-        if (h["field"], h["term_id"]) == ("disease", "MONDO:0007254")
+        for h in client.get("/api/terms", params={"query": "breast cancer", "q": q, "facetSelfExclude": "true"}).json()[
+            "terms"
+        ]
+        if (h["field"], h["termId"]) == ("disease", "MONDO:0007254")
     )
-    expected = client.get("/api/records", params={"q": 'library_strategy:RNA-Seq AND disease:"MONDO:0007254"'}).json()[
-        "total"
-    ]
+    expected = client.get(
+        "/api/entries/biosample", params={"q": 'library_strategy:RNA-Seq AND disease:"MONDO:0007254"'}
+    ).json()["pagination"]["total"]
     assert hit["count"] == expected
 
 
 def test_terms_children_lists_annotated_children(client: TestClient) -> None:
-    body = client.get("/api/terms/children", params={"field": "disease", "term_id": "MONDO:0004992"}).json()
+    body = client.get("/api/terms/children", params={"field": "disease", "termId": "MONDO:0004992"}).json()
     ids = {c["value"] for c in body["children"]}
     assert ids <= {"MONDO:0007254", "MONDO:0005061"}
     assert all(c["count"] > 0 for c in body["children"])
 
 
 def test_export_accessions_lists_one_per_line(client: TestClient) -> None:
-    text = client.get("/api/export/accessions", params={"kind": "biosample"}).text
+    text = client.get("/api/export/accessions/biosample").text
     lines = text.splitlines()
     assert lines[0].startswith("# bsllmner-viewer biosample accessions")
-    total = client.get("/api/records").json()["total"]
+    total = client.get("/api/entries/biosample").json()["pagination"]["total"]
     assert len(lines) - 1 == total
     assert len(set(lines[1:])) == total
-    runs = client.get("/api/export/accessions", params={"kind": "run"}).text.splitlines()[1:]
+    runs = client.get("/api/export/accessions/sra-run").text.splitlines()[1:]
     assert all(r.startswith("SRR") for r in runs)
+    experiments = client.get("/api/export/accessions/sra-experiment").text.splitlines()[1:]
+    assert len(experiments) == client.get("/api/entries/sra-experiment").json()["pagination"]["total"]
 
 
-def test_export_records_tsv_and_json(client: TestClient) -> None:
-    tsv = client.get("/api/export/records", params={"format": "tsv", "q": "library_strategy:RNA-Seq"}).text.splitlines()
-    total = client.get("/api/records", params={"q": "library_strategy:RNA-Seq"}).json()["total"]
-    assert tsv[0].split("\t")[:2] == ["biosample", "experiment"]
+def test_export_accessions_with_an_unknown_type_is_not_found(client: TestClient) -> None:
+    for kind in ("experiment", "run", "nope"):
+        response = client.get(f"/api/export/accessions/{kind}")
+        assert response.status_code == 404, kind
+        assert response.json()["type"] == "about:blank"
+
+
+def test_export_entries_tsv_and_ndjson(client: TestClient) -> None:
+    q = "library_strategy:RNA-Seq"
+    tsv_response = client.get("/api/export/entries/biosample", params={"format": "tsv", "q": q})
+    assert tsv_response.headers["content-type"].startswith("text/tab-separated-values")
+    tsv = tsv_response.text.splitlines()
+    total = client.get("/api/entries/biosample", params={"q": q}).json()["pagination"]["total"]
+    assert tsv[0].split("\t")[:3] == ["identifier", "type", "biosample"]
+    assert "libraryStrategy" in tsv[0].split("\t")
     assert len(tsv) - 1 == total
-    jsonl = client.get(
-        "/api/export/records", params={"format": "json", "q": "library_strategy:RNA-Seq"}
-    ).text.splitlines()
-    assert '"dataset_version"' in jsonl[0]
-    assert len(jsonl) - 1 == total
+    assert {len(line.split("\t")) for line in tsv} == {len(tsv[0].split("\t"))}
+    response = client.get("/api/export/entries/biosample", params={"format": "ndjson", "q": q})
+    assert response.headers["content-type"].startswith("application/x-ndjson")
+    lines = [orjson.loads(line) for line in response.text.splitlines()]
+    assert len(lines) == total
+    listed = client.get("/api/entries/biosample", params={"q": q, "perPage": 100}).json()["items"]
+    assert lines[: len(listed)] == listed
+
+
+def test_export_entries_of_experiments_has_one_line_per_experiment(client: TestClient) -> None:
+    lines = [
+        orjson.loads(line)
+        for line in client.get("/api/export/entries/sra-experiment", params={"format": "ndjson"}).text.splitlines()
+    ]
+    assert lines
+    assert all(line["type"] == "sra-experiment" and line["experiments"] == [line["identifier"]] for line in lines)
+
+
+def test_export_entries_rejects_the_former_json_format(client: TestClient) -> None:
+    assert client.get("/api/export/entries/biosample", params={"format": "json"}).status_code == 422

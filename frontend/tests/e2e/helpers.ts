@@ -18,7 +18,7 @@ export const expectParam = async (page: Page, name: string, value: string | null
 /** The workspace URL for a condition and view parameters, encoded as the app writes them. */
 export const workspaceUrl = (params: Record<string, string>): string => {
   const search = new URLSearchParams(params).toString()
-  return search ? `/w?${search}` : "/w"
+  return search ? `/entries?${search}` : "/entries"
 }
 
 export const conditionRegion = (page: Page): Locator => page.getByRole("region", { name: "Condition" })
@@ -43,3 +43,14 @@ export const cell = (page: Page, row: string, col: string): Locator => page.getB
 /** The header row of one axis card of the heatmap. */
 export const axisHeader = (page: Page, side: "Row" | "Column"): Locator =>
   page.getByRole("main").locator("div").filter({ has: page.getByRole("combobox", { name: `${side} dimension` }) }).last()
+
+/** Checks the label that a Select shows for its chosen option. The labels of the other options are in the button but hidden. */
+export const expectChosen = async (combobox: Locator, label: string): Promise<void> => {
+  await expect(combobox).toHaveText(label, { useInnerText: true })
+}
+
+/** Opens a Select and chooses the option with the given label. */
+export const choose = async (combobox: Locator, label: string): Promise<void> => {
+  await combobox.click()
+  await combobox.page().getByRole("listbox").getByRole("option", { name: label, exact: true }).click()
+}

@@ -65,7 +65,7 @@ export const AxisCard = ({
               title={element.value}
               onRemove={() => onRemove(element.value)}
               leading={
-                "has_children" in element && (element.has_children || expanded.has(element.value)) ? (
+                "hasChildren" in element && (element.hasChildren || expanded.has(element.value)) ? (
                   <Clickable
                     onClick={() => onToggleExpand(element.value)}
                     aria-label={expanded.has(element.value) ? "Collapse child terms" : "Expand child terms"}

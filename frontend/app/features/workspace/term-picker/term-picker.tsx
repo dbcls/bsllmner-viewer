@@ -5,7 +5,7 @@ import type { Clause, TermHit, Unit } from "~/lib/api/types"
 import { formatCount } from "~/lib/format"
 import { fieldLabel, unitLabel } from "~/lib/labels"
 import { termDetail } from "~/lib/terms"
-import { LinkButton, Modal, Select, TermRow, TextInput } from "~/ui"
+import { ACTION_ICON, LinkButton, Modal, Select, TermRow, TextInput } from "~/ui"
 
 export type PickerMode = "condition" | "row" | "col"
 
@@ -67,6 +67,7 @@ export const TermPicker = ({ request, onClose, fields, dimensions, q, unit, self
         <TextInput
           value={query}
           onChange={setQuery}
+          icon={ACTION_ICON.search}
           placeholder="Search label, synonym, or ID…"
           aria-label="Search terms"
           block
@@ -87,12 +88,11 @@ export const TermPicker = ({ request, onClose, fields, dimensions, q, unit, self
             const selected = isSelected(mode, hit.field, hit)
             return (
               <TermRow
-                key={`${hit.field}:${hit.term_id}`}
-                label={hit.label ?? hit.term_id}
-                id={hit.term_id}
+                key={`${hit.field}:${hit.termId}`}
+                label={hit.label ?? hit.termId}
+                id={hit.termId}
                 detail={termDetail(hit)}
                 count={formatCount(hit.count)}
-                unit={unitLabel(unit)}
                 {...(everyField ? { field: fieldLabel(hit.field) } : {})}
                 {...(selected ? { note: mode === "condition" ? "✓ in condition" : "✓ in axis" } : {})}
                 selected={selected}
@@ -107,7 +107,10 @@ export const TermPicker = ({ request, onClose, fields, dimensions, q, unit, self
         )}
       </div>
       <div className="flex justify-between border-t border-border-soft px-3.5 py-2 text-fs-micro text-ink-soft">
-        <span>Each count excludes the condition on the term's own field. A term condition also matches its descendant terms.</span>
+        <span>
+          Counts are {unitLabel(unit)}. Each count excludes the condition on the term's own field. A term condition also matches its
+          descendant terms.
+        </span>
         <LinkButton onClick={onClose}>Close (Esc)</LinkButton>
       </div>
     </Modal>

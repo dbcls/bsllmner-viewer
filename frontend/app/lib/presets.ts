@@ -3,6 +3,8 @@ import type { WorkspaceState } from "./workspace-state"
 export type Preset = {
   id: string
   title: string
+  /** What the opened view lets the reader see, in one line. */
+  description?: string
   state: Partial<WorkspaceState>
 }
 
@@ -10,27 +12,31 @@ export const MATRIX_PRESETS: Preset[] = [
   {
     id: "disease-tissue",
     title: "Disease × Tissue",
+    description: "Which tissues are sampled for each disease, and which pairs no project covers.",
     state: { tab: "heatmap", row: "disease", col: "tissue", unit: "bioproject" },
   },
   {
     id: "cell-line-antigen",
     title: "Cell line × ChIP antigen",
+    description: "Which factors have been profiled by ChIP-Seq in each human cell line.",
     state: {
       tab: "heatmap",
       row: "cell_line",
       col: "chip_antigen",
       q: "library_strategy:ChIP-Seq AND organism_id:9606",
-      unit: "experiment",
+      unit: "sra-experiment",
     },
   },
   {
     id: "cell-line-assay",
     title: "Cell line × Assay",
+    description: "Independent projects per cell line and assay. Find lines with RNA-Seq but no ATAC-seq.",
     state: { tab: "heatmap", row: "cell_line", col: "library_strategy", q: "organism_id:9606", unit: "bioproject" },
   },
   {
     id: "disease-assay",
     title: "Disease × Assay",
+    description: "Independent projects per disease and assay. Find diseases that an assay does not cover.",
     state: { tab: "heatmap", row: "disease", col: "library_strategy", unit: "bioproject" },
   },
 ]

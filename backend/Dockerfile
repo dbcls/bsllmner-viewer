@@ -15,5 +15,10 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 COPY . .
 RUN --mount=type=cache,target=/root/.cache/uv uv sync
 
+# The commit that /api/service-info reports. The RUN between ARG and ENV makes podman build the ENV layer again when the value changes.
+ARG BSLLMNER_VIEWER_COMMIT=
+RUN true
+ENV BSLLMNER_VIEWER_COMMIT=${BSLLMNER_VIEWER_COMMIT}
+
 EXPOSE 8000
 CMD ["uv", "run", "uvicorn", "bsllmner_viewer.api.app:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]

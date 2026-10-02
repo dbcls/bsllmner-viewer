@@ -12,7 +12,7 @@ export interface paths {
             cookie?: never;
         };
         /** Version information, fields, and population totals */
-        get: operations["get_dataset_api_dataset_get"];
+        get: operations["getDataset"];
         put?: never;
         post?: never;
         delete?: never;
@@ -29,7 +29,7 @@ export interface paths {
             cookie?: never;
         };
         /** Parse a condition string into an AST */
-        get: operations["parse_dsl_api_dsl_parse_get"];
+        get: operations["parseCondition"];
         put?: never;
         post?: never;
         delete?: never;
@@ -48,7 +48,7 @@ export interface paths {
         get?: never;
         put?: never;
         /** Serialize an AST into a condition string */
-        post: operations["serialize_dsl_api_dsl_serialize_post"];
+        post: operations["serializeCondition"];
         delete?: never;
         options?: never;
         head?: never;
@@ -68,22 +68,22 @@ export interface paths {
          * Apply the clauses of an aggregation element to a condition
          * @description In `toggle` mode, adds each clause to the condition: joined with OR into the top-level clause group of the same field when one exists, otherwise as a new AND conjunct. When every clause is already present, the clauses are removed instead. In `narrow` mode, adds each clause as a new AND conjunct; with the population of an aggregation as `q`, the result matches the records counted by the element.
          */
-        post: operations["select_dsl_api_dsl_select_post"];
+        post: operations["selectElement"];
         delete?: never;
         options?: never;
         head?: never;
         patch?: never;
         trace?: never;
     };
-    "/api/records": {
+    "/api/entries/{type}": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Matching records as BioSample or experiment rows */
-        get: operations["get_records_api_records_get"];
+        /** Matching records as BioSample or experiment entries */
+        get: operations["listEntries"];
         put?: never;
         post?: never;
         delete?: never;
@@ -92,7 +92,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/entries/{accession}": {
+    "/api/entries/biosample/{accession}": {
         parameters: {
             query?: never;
             header?: never;
@@ -100,7 +100,7 @@ export interface paths {
             cookie?: never;
         };
         /** A BioSample with its annotations and evidence */
-        get: operations["get_entry_api_entries__accession__get"];
+        get: operations["getEntry"];
         put?: never;
         post?: never;
         delete?: never;
@@ -120,7 +120,7 @@ export interface paths {
          * Counts per element of one dimension
          * @description Elements default to the terms most often annotated directly, followed by the elements that the condition names, ordered by their count with descendants. For an annotation field the response also carries the status composition of the field, computed without the conjuncts on the field's term and status dimensions.
          */
-        get: operations["get_distribution_api_distribution_get"];
+        get: operations["getDistribution"];
         put?: never;
         post?: never;
         delete?: never;
@@ -137,7 +137,7 @@ export interface paths {
             cookie?: never;
         };
         /** Counts per cell of two dimensions with expected counts */
-        get: operations["get_crosstab_api_crosstab_get"];
+        get: operations["getCrosstab"];
         put?: never;
         post?: never;
         delete?: never;
@@ -157,7 +157,7 @@ export interface paths {
          * Counts of the condition per BioSample creation year
          * @description `total` counts the condition per year, computed without the conjuncts on `date_created`. When `field` is given, `series` counts each element of that dimension per year, computed without the conjuncts on that dimension as well.
          */
-        get: operations["get_trend_api_trend_get"];
+        get: operations["getTrend"];
         put?: never;
         post?: never;
         delete?: never;
@@ -174,7 +174,7 @@ export interface paths {
             cookie?: never;
         };
         /** BioProjects of the matching records */
-        get: operations["get_projects_api_projects_get"];
+        get: operations["listProjects"];
         put?: never;
         post?: never;
         delete?: never;
@@ -192,9 +192,9 @@ export interface paths {
         };
         /**
          * Search the terms annotated in a field, or in every annotation field
-         * @description Each hit is counted in the population of its own field: with self-exclusion, the condition without the conjuncts on that field.
+         * @description Each hit is counted in the population of its own field: with `facetSelfExclude`, the condition without the conjuncts on that field.
          */
-        get: operations["search_terms_api_terms_get"];
+        get: operations["searchTerms"];
         put?: never;
         post?: never;
         delete?: never;
@@ -211,7 +211,7 @@ export interface paths {
             cookie?: never;
         };
         /** Child terms of a term annotated in a field */
-        get: operations["term_children_api_terms_children_get"];
+        get: operations["listTermChildren"];
         put?: never;
         post?: never;
         delete?: never;
@@ -220,7 +220,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/export/accessions": {
+    "/api/export/accessions/{type}": {
         parameters: {
             query?: never;
             header?: never;
@@ -228,7 +228,7 @@ export interface paths {
             cookie?: never;
         };
         /** Accession list of the matching records, one per line */
-        get: operations["export_accessions_api_export_accessions_get"];
+        get: operations["exportAccessions"];
         put?: never;
         post?: never;
         delete?: never;
@@ -237,15 +237,35 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/export/records": {
+    "/api/export/entries/{type}": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Matching records as TSV or JSON lines */
-        get: operations["export_records_api_export_records_get"];
+        /** Matching entries as TSV or newline-delimited JSON */
+        get: operations["exportEntries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/service-info": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get service information
+         * @description The name, the version, and the state of the store. Returns 200 whether or not the store is available; `store` reports the actual state. Intended for health monitoring.
+         */
+        get: operations["getServiceInfo"];
         put?: never;
         post?: never;
         delete?: never;
@@ -264,8 +284,8 @@ export interface components {
             value: string | null;
             /** Status */
             status: string;
-            /** Term Id */
-            term_id: string | null;
+            /** Termid */
+            termId: string | null;
             /** Label */
             label: string | null;
         };
@@ -275,8 +295,8 @@ export interface components {
             name: string;
             /** Value */
             value: string;
-            /** Harmonized Name */
-            harmonized_name: string | null;
+            /** Harmonizedname */
+            harmonizedName: string | null;
         };
         /** Cell */
         Cell: {
@@ -337,16 +357,19 @@ export interface components {
             kind: "term" | "other" | "unmapped" | "no_value";
             /** Label */
             label: string | null;
-            /** Term Id */
-            term_id: string | null;
+            /** Termid */
+            termId: string | null;
             /** Count */
             count: number;
         };
         /** ConditionResponse */
         ConditionResponse: {
-            dataset_version: components["schemas"]["DatasetVersionRef"];
-            /** Q */
-            q: string | null;
+            datasetVersion: components["schemas"]["DatasetVersionRef"];
+            /**
+             * Dsl
+             * @description The condition string
+             */
+            dsl: string | null;
             /** Ast */
             ast: {
                 [key: string]: unknown;
@@ -361,18 +384,18 @@ export interface components {
         };
         /** CrosstabResponse */
         CrosstabResponse: {
-            dataset_version: components["schemas"]["DatasetVersionRef"];
+            datasetVersion: components["schemas"]["DatasetVersionRef"];
             /** Q */
             q: string | null;
-            /** Population Q */
-            population_q: string | null;
-            /** Row Field */
-            row_field: string;
-            /** Col Field */
-            col_field: string;
+            /** Populationq */
+            populationQ: string | null;
+            /** Rowfield */
+            rowField: string;
+            /** Colfield */
+            colField: string;
             unit: components["schemas"]["Unit"];
-            /** Self Exclusion */
-            self_exclusion: boolean;
+            /** Facetselfexclude */
+            facetSelfExclude: boolean;
             /** Total */
             total: number;
             /** Rows */
@@ -382,9 +405,21 @@ export interface components {
             /** Cells */
             cells: components["schemas"]["Cell"][];
         };
+        /** DatasetOrganism */
+        DatasetOrganism: {
+            /**
+             * Identifier
+             * @description NCBI Taxonomy ID
+             */
+            identifier: string;
+            /** Name */
+            name: string | null;
+            /** Biosamplecount */
+            biosampleCount: number;
+        };
         /** DatasetResponse */
         DatasetResponse: {
-            dataset_version: components["schemas"]["DatasetVersionRef"];
+            datasetVersion: components["schemas"]["DatasetVersionRef"];
             /**
              * Version
              * @description Full dataset version information
@@ -392,12 +427,12 @@ export interface components {
             version: {
                 [key: string]: unknown;
             };
-            /** Target Assays */
-            target_assays: string[];
+            /** Targetassays */
+            targetAssays: string[];
             /** Fields */
             fields: components["schemas"]["FieldDescription"][];
-            /** Dsl Fields */
-            dsl_fields: components["schemas"]["DslFieldDescription"][];
+            /** Dslfields */
+            dslFields: components["schemas"]["DslFieldDescription"][];
             /**
              * Statuses
              * @description Status groups and the statuses under them
@@ -407,7 +442,7 @@ export interface components {
             };
             totals: components["schemas"]["Totals"];
             /** Organisms */
-            organisms: components["schemas"]["Organism"][];
+            organisms: components["schemas"]["DatasetOrganism"][];
         };
         /**
          * DatasetVersionRef
@@ -416,8 +451,8 @@ export interface components {
         DatasetVersionRef: {
             /** Name */
             name: string;
-            /** Created At */
-            created_at: string;
+            /** Createdat */
+            createdAt: string;
             /** Model */
             model: string;
             /**
@@ -428,19 +463,19 @@ export interface components {
         };
         /** DistributionResponse */
         DistributionResponse: {
-            dataset_version: components["schemas"]["DatasetVersionRef"];
+            datasetVersion: components["schemas"]["DatasetVersionRef"];
             /** Q */
             q: string | null;
             /**
-             * Population Q
+             * Populationq
              * @description The condition the counts were computed from
              */
-            population_q: string | null;
+            populationQ: string | null;
             /** Field */
             field: string;
             unit: components["schemas"]["Unit"];
-            /** Self Exclusion */
-            self_exclusion: boolean;
+            /** Facetselfexclude */
+            facetSelfExclude: boolean;
             /**
              * Total
              * @description Count of the population in the unit
@@ -453,8 +488,8 @@ export interface components {
              * @description Status counts for annotation fields
              */
             status?: components["schemas"]["Element"][] | null;
-            /** Status Population Q */
-            status_population_q?: string | null;
+            /** Statuspopulationq */
+            statusPopulationQ?: string | null;
         };
         /** DslFieldDescription */
         DslFieldDescription: {
@@ -476,6 +511,16 @@ export interface components {
             /** Count */
             count: number;
         };
+        /** EntriesResponse */
+        EntriesResponse: {
+            datasetVersion: components["schemas"]["DatasetVersionRef"];
+            /** Q */
+            q: string | null;
+            type: components["schemas"]["EntryType"];
+            pagination: components["schemas"]["Pagination"];
+            /** Items */
+            items: components["schemas"]["EntryItem"][];
+        };
         /** EntryAnnotation */
         EntryAnnotation: {
             /** Field */
@@ -484,8 +529,8 @@ export interface components {
             value: string | null;
             /** Status */
             status: string;
-            /** Term Id */
-            term_id: string | null;
+            /** Termid */
+            termId: string | null;
             /** Label */
             label: string | null;
             /** Evidence */
@@ -502,30 +547,69 @@ export interface components {
         EntryExperiment: {
             /** Accession */
             accession: string;
-            /** Library Strategy */
-            library_strategy: string | null;
-            /** In Population */
-            in_population: boolean;
+            /** Librarystrategy */
+            libraryStrategy: string | null;
+            /** Inpopulation */
+            inPopulation: boolean;
             /** Runs */
             runs: string[];
-            /** Chip Atlas */
-            chip_atlas: string[];
+            /** Chipatlas */
+            chipAtlas: string[];
+        };
+        /** EntryItem */
+        EntryItem: {
+            /**
+             * Identifier
+             * @description BioSample accession for `biosample` rows, experiment accession otherwise
+             */
+            identifier: string;
+            type: components["schemas"]["EntryType"];
+            /** Biosample */
+            biosample: string;
+            /**
+             * Experiments
+             * @description Experiments of the BioSample in the matching records
+             */
+            experiments: string[];
+            /** Title */
+            title: string | null;
+            organism: components["schemas"]["Organism"] | null;
+            /** Librarystrategy */
+            libraryStrategy: string[];
+            /** Bioprojects */
+            bioprojects: string[];
+            /** Datecreated */
+            dateCreated: string | null;
+            /**
+             * Chipatlas
+             * @description Genome assemblies under which ChIP-Atlas processed the experiments
+             */
+            chipAtlas: string[];
+            /** Annotations */
+            annotations: {
+                [key: string]: components["schemas"]["AnnotationValue"][];
+            };
         };
         /** EntryResponse */
         EntryResponse: {
-            dataset_version: components["schemas"]["DatasetVersionRef"];
-            /** Accession */
-            accession: string;
+            datasetVersion: components["schemas"]["DatasetVersionRef"];
+            /**
+             * Identifier
+             * @description BioSample accession
+             */
+            identifier: string;
+            /**
+             * Type
+             * @constant
+             */
+            type: "biosample";
             /** Title */
             title: string | null;
-            /** Organism Id */
-            organism_id: number | null;
-            /** Organism Name */
-            organism_name: string | null;
-            /** Date Created */
-            date_created: string | null;
-            /** Date Modified */
-            date_modified: string | null;
+            organism: components["schemas"]["Organism"] | null;
+            /** Datecreated */
+            dateCreated: string | null;
+            /** Datemodified */
+            dateModified: string | null;
             /** Run */
             run: string;
             /** Attributes */
@@ -537,6 +621,8 @@ export interface components {
             /** Bioprojects */
             bioprojects: components["schemas"]["EntryBioProject"][];
         };
+        /** @enum {string} */
+        EntryType: "biosample" | "sra-experiment";
         /** Evidence */
         Evidence: {
             /**
@@ -545,10 +631,10 @@ export interface components {
              */
             attribute: string;
             /**
-             * Attribute Index
+             * Attributeindex
              * @description Position in `attributes`, or -1 for the title
              */
-            attribute_index: number;
+            attributeIndex: number;
             /** Start */
             start: number;
             /** End */
@@ -560,28 +646,38 @@ export interface components {
         FieldDescription: {
             /** Name */
             name: string;
-            /** Multi Valued */
-            multi_valued: boolean;
+            /** Multivalued */
+            multiValued: boolean;
             /** Ontologies */
             ontologies: string[];
         };
-        /** HTTPValidationError */
-        HTTPValidationError: {
-            /** Detail */
-            detail?: components["schemas"]["ValidationError"][];
-        };
-        /** Organism */
+        /**
+         * Organism
+         * @description An organism as the NCBI Taxonomy ID and the name.
+         */
         Organism: {
-            /** Organism Id */
-            organism_id: number;
+            /**
+             * Identifier
+             * @description NCBI Taxonomy ID
+             */
+            identifier: string;
             /** Name */
             name: string | null;
-            /** N Biosample */
-            n_biosample: number;
+        };
+        /** Pagination */
+        Pagination: {
+            /** Page */
+            page: number;
+            /** Perpage */
+            perPage: number;
+            /** Total */
+            total: number;
+            /** Hasnext */
+            hasNext: boolean;
         };
         /** ParseResponse */
         ParseResponse: {
-            dataset_version: components["schemas"]["DatasetVersionRef"];
+            datasetVersion: components["schemas"]["DatasetVersionRef"];
             /** Q */
             q: string;
             /** Ast */
@@ -596,16 +692,54 @@ export interface components {
                 [key: string]: string;
             };
         };
+        /**
+         * ProblemDetails
+         * @description RFC 7807 problem details of an error response.
+         */
+        ProblemDetails: {
+            /**
+             * Type
+             * @description `about:blank`, or a URI that identifies an error specific to the api
+             */
+            type: string;
+            /**
+             * Title
+             * @description The HTTP status phrase
+             */
+            title: string;
+            /** Status */
+            status: number;
+            /** Detail */
+            detail: string;
+            /**
+             * Instance
+             * @description The path of the request
+             */
+            instance: string;
+            /**
+             * Timestamp
+             * @description ISO 8601 time in UTC
+             */
+            timestamp: string;
+            /**
+             * Requestid
+             * @description The value of the `X-Request-ID` header of the response
+             */
+            requestId: string;
+        };
         /** Project */
         Project: {
-            /** Bioproject */
-            bioproject: string;
+            /**
+             * Identifier
+             * @description BioProject accession
+             */
+            identifier: string;
             /** Title */
             title: string | null;
-            /** N Biosample */
-            n_biosample: number;
-            /** N Experiment */
-            n_experiment: number;
+            /** Biosamplecount */
+            biosampleCount: number;
+            /** Experimentcount */
+            experimentCount: number;
             /** Assays */
             assays: string[];
             /** Clauses */
@@ -614,81 +748,23 @@ export interface components {
             composition: components["schemas"]["Composition"][];
         };
         /** @enum {string} */
-        ProjectSort: "biosample" | "experiment" | "accession";
+        ProjectSort: "biosampleCount:desc" | "experimentCount:desc" | "identifier:asc";
         /** ProjectsResponse */
         ProjectsResponse: {
-            dataset_version: components["schemas"]["DatasetVersionRef"];
+            datasetVersion: components["schemas"]["DatasetVersionRef"];
             /** Q */
             q: string | null;
-            /** Population Q */
-            population_q: string | null;
-            /** Self Exclusion */
-            self_exclusion: boolean;
-            /** Total */
-            total: number;
-            /** Page */
-            page: number;
-            /** Per Page */
-            per_page: number;
+            /** Populationq */
+            populationQ: string | null;
+            /** Facetselfexclude */
+            facetSelfExclude: boolean;
             /** Sort */
             sort: string;
-            /** Composition Fields */
-            composition_fields: string[];
-            /** Projects */
-            projects: components["schemas"]["Project"][];
-        };
-        /** RecordRow */
-        RecordRow: {
-            /** Biosample */
-            biosample: string;
-            /**
-             * Experiment
-             * @description Set when rows are experiments
-             */
-            experiment: string | null;
-            /**
-             * Experiments
-             * @description Experiments of the BioSample in the matching records
-             */
-            experiments: string[];
-            /** Title */
-            title: string | null;
-            /** Organism Id */
-            organism_id: number | null;
-            /** Organism Name */
-            organism_name: string | null;
-            /** Library Strategy */
-            library_strategy: string[];
-            /** Bioprojects */
-            bioprojects: string[];
-            /** Date Created */
-            date_created: string | null;
-            /**
-             * Chip Atlas
-             * @description Genome assemblies under which ChIP-Atlas processed the experiments
-             */
-            chip_atlas: string[];
-            /** Annotations */
-            annotations: {
-                [key: string]: components["schemas"]["AnnotationValue"][];
-            };
-        };
-        /** @enum {string} */
-        RecordUnit: "biosample" | "experiment";
-        /** RecordsResponse */
-        RecordsResponse: {
-            dataset_version: components["schemas"]["DatasetVersionRef"];
-            /** Q */
-            q: string | null;
-            unit: components["schemas"]["RecordUnit"];
-            /** Total */
-            total: number;
-            /** Page */
-            page: number;
-            /** Per Page */
-            per_page: number;
-            /** Records */
-            records: components["schemas"]["RecordRow"][];
+            /** Compositionfields */
+            compositionFields: string[];
+            pagination: components["schemas"]["Pagination"];
+            /** Items */
+            items: components["schemas"]["Project"][];
         };
         /** SelectRequest */
         SelectRequest: {
@@ -711,15 +787,32 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** ServiceInfoResponse */
+        ServiceInfoResponse: {
+            /** Name */
+            name: string;
+            /**
+             * Version
+             * @description Package version, followed by `+<commit>` when the build records a commit
+             */
+            version: string;
+            /** Description */
+            description: string;
+            /**
+             * Store
+             * @enum {string}
+             */
+            store: "ok" | "unavailable";
+        };
         /** TermChildrenResponse */
         TermChildrenResponse: {
-            dataset_version: components["schemas"]["DatasetVersionRef"];
+            datasetVersion: components["schemas"]["DatasetVersionRef"];
             /** Field */
             field: string;
-            /** Term Id */
-            term_id: string;
-            /** Population Q */
-            population_q: string | null;
+            /** Termid */
+            termId: string;
+            /** Populationq */
+            populationQ: string | null;
             unit: components["schemas"]["Unit"];
             /** Children */
             children: components["schemas"]["TermElement"][];
@@ -734,19 +827,19 @@ export interface components {
             clauses: components["schemas"]["Clause-Output"][];
             /** Count */
             count: number;
-            /** Count Exact */
-            count_exact: number;
-            /** Count Selected */
-            count_selected: number;
-            /** Has Children */
-            has_children: boolean;
+            /** Countexact */
+            countExact: number;
+            /** Countselected */
+            countSelected: number;
+            /** Haschildren */
+            hasChildren: boolean;
         };
         /** TermHit */
         TermHit: {
             /** Field */
             field: string;
-            /** Term Id */
-            term_id: string;
+            /** Termid */
+            termId: string;
             /** Label */
             label: string | null;
             /** Ontology */
@@ -757,10 +850,10 @@ export interface components {
              */
             path: string[];
             /**
-             * N Descendants
+             * Descendantcount
              * @description Descendant terms annotated in the population
              */
-            n_descendants: number;
+            descendantCount: number;
             /** Count */
             count: number;
             /** Clauses */
@@ -768,7 +861,7 @@ export interface components {
         };
         /** TermsResponse */
         TermsResponse: {
-            dataset_version: components["schemas"]["DatasetVersionRef"];
+            datasetVersion: components["schemas"]["DatasetVersionRef"];
             /**
              * Field
              * @description The searched field, or null when every annotation field was searched
@@ -777,10 +870,10 @@ export interface components {
             /** Query */
             query: string;
             /**
-             * Population Q
+             * Populationq
              * @description The condition the counts were computed from, or null when every annotation field was searched
              */
-            population_q: string | null;
+            populationQ: string | null;
             unit: components["schemas"]["Unit"];
             /** Terms */
             terms: components["schemas"]["TermHit"][];
@@ -807,12 +900,12 @@ export interface components {
         };
         /** TrendResponse */
         TrendResponse: {
-            dataset_version: components["schemas"]["DatasetVersionRef"];
+            datasetVersion: components["schemas"]["DatasetVersionRef"];
             /** Q */
             q: string | null;
             unit: components["schemas"]["Unit"];
-            /** Self Exclusion */
-            self_exclusion: boolean;
+            /** Facetselfexclude */
+            facetSelfExclude: boolean;
             /** Years */
             years: number[];
             /**
@@ -821,20 +914,20 @@ export interface components {
              */
             total: components["schemas"]["TrendPoint"][];
             /**
-             * Total Population Q
+             * Totalpopulationq
              * @description The condition the counts of `total` were computed from
              */
-            total_population_q: string | null;
+            totalPopulationQ: string | null;
             /**
              * Field
              * @description The dimension of `series`, when the request names one
              */
             field: string | null;
             /**
-             * Population Q
+             * Populationq
              * @description The condition the counts of `series` were computed from
              */
-            population_q: string | null;
+            populationQ: string | null;
             /** Series */
             series: components["schemas"]["TrendSeries"][];
         };
@@ -850,20 +943,7 @@ export interface components {
             points: components["schemas"]["TrendPoint"][];
         };
         /** @enum {string} */
-        Unit: "biosample" | "experiment" | "bioproject";
-        /** ValidationError */
-        ValidationError: {
-            /** Location */
-            loc: (string | number)[];
-            /** Message */
-            msg: string;
-            /** Error Type */
-            type: string;
-            /** Input */
-            input?: unknown;
-            /** Context */
-            ctx?: Record<string, never>;
-        };
+        Unit: "biosample" | "sra-experiment" | "bioproject";
     };
     responses: never;
     parameters: never;
@@ -873,7 +953,7 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
-    get_dataset_api_dataset_get: {
+    getDataset: {
         parameters: {
             query?: never;
             header?: never;
@@ -891,9 +971,36 @@ export interface operations {
                     "application/json": components["schemas"]["DatasetResponse"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
         };
     };
-    parse_dsl_api_dsl_parse_get: {
+    parseCondition: {
         parameters: {
             query: {
                 q: string;
@@ -913,18 +1020,36 @@ export interface operations {
                     "application/json": components["schemas"]["ParseResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
         };
     };
-    serialize_dsl_api_dsl_serialize_post: {
+    serializeCondition: {
         parameters: {
             query?: never;
             header?: never;
@@ -946,18 +1071,36 @@ export interface operations {
                     "application/json": components["schemas"]["ConditionResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
         };
     };
-    select_dsl_api_dsl_select_post: {
+    selectElement: {
         parameters: {
             query?: never;
             header?: never;
@@ -979,29 +1122,47 @@ export interface operations {
                     "application/json": components["schemas"]["ConditionResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
         };
     };
-    get_records_api_records_get: {
+    listEntries: {
         parameters: {
             query?: {
                 /** @description Condition in the DSL. Omitted or empty means the whole population. */
                 q?: string | null;
-                /** @description Row unit */
-                unit?: components["schemas"]["RecordUnit"];
                 page?: number;
-                per_page?: number;
+                perPage?: number;
             };
             header?: never;
-            path?: never;
+            path: {
+                type: "biosample" | "sra-experiment";
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -1012,21 +1173,48 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["RecordsResponse"];
+                    "application/json": components["schemas"]["EntriesResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
         };
     };
-    get_entry_api_entries__accession__get: {
+    getEntry: {
         parameters: {
             query?: never;
             header?: never;
@@ -1046,18 +1234,45 @@ export interface operations {
                     "application/json": components["schemas"]["EntryResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
         };
     };
-    get_distribution_api_distribution_get: {
+    getDistribution: {
         parameters: {
             query: {
                 field: string;
@@ -1065,14 +1280,14 @@ export interface operations {
                 q?: string | null;
                 /** @description Counting unit */
                 unit?: components["schemas"]["Unit"];
-                /** @description Compute without the top-level conjuncts of q that are only on the aggregation's dimensions */
-                self_exclusion?: boolean;
+                /** @description Compute without the top-level conjuncts of `q` that are only on the dimensions of the aggregation */
+                facetSelfExclude?: boolean;
                 /** @description Comma-separated elements; omitted means the top elements */
                 elements?: string | null;
                 /** @description Number of elements when they are not named */
                 limit?: number;
                 /** @description For status dimensions, the six statuses instead of the three groups */
-                expanded_status?: boolean;
+                expandedStatus?: boolean;
             };
             header?: never;
             path?: never;
@@ -1089,18 +1304,36 @@ export interface operations {
                     "application/json": components["schemas"]["DistributionResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
         };
     };
-    get_crosstab_api_crosstab_get: {
+    getCrosstab: {
         parameters: {
             query: {
                 row: string;
@@ -1109,12 +1342,12 @@ export interface operations {
                 q?: string | null;
                 /** @description Counting unit */
                 unit?: components["schemas"]["Unit"];
-                /** @description Compute without the top-level conjuncts of q that are only on the aggregation's dimensions */
-                self_exclusion?: boolean;
+                /** @description Compute without the top-level conjuncts of `q` that are only on the dimensions of the aggregation */
+                facetSelfExclude?: boolean;
                 /** @description Comma-separated row elements; omitted means the top rows */
-                row_elements?: string | null;
+                rowElements?: string | null;
                 /** @description Comma-separated column elements; omitted means the top columns */
-                col_elements?: string | null;
+                colElements?: string | null;
                 /** @description Number of elements when they are not named */
                 limit?: number;
             };
@@ -1133,18 +1366,36 @@ export interface operations {
                     "application/json": components["schemas"]["CrosstabResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
         };
     };
-    get_trend_api_trend_get: {
+    getTrend: {
         parameters: {
             query?: {
                 /** @description Dimension of the series; omitted means no series */
@@ -1153,8 +1404,8 @@ export interface operations {
                 q?: string | null;
                 /** @description Counting unit */
                 unit?: components["schemas"]["Unit"];
-                /** @description Compute without the top-level conjuncts of q that are only on the aggregation's dimensions */
-                self_exclusion?: boolean;
+                /** @description Compute without the top-level conjuncts of `q` that are only on the dimensions of the aggregation */
+                facetSelfExclude?: boolean;
                 /** @description Comma-separated elements; omitted means the top elements */
                 elements?: string | null;
                 /** @description Number of elements when they are not named */
@@ -1175,29 +1426,47 @@ export interface operations {
                     "application/json": components["schemas"]["TrendResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
         };
     };
-    get_projects_api_projects_get: {
+    listProjects: {
         parameters: {
             query?: {
                 /** @description Condition in the DSL. Omitted or empty means the whole population. */
                 q?: string | null;
-                /** @description Ignore the bioproject clauses of q */
-                self_exclusion?: boolean;
+                /** @description Compute without the top-level conjuncts of `q` that are only on the dimensions of the aggregation */
+                facetSelfExclude?: boolean;
                 sort?: components["schemas"]["ProjectSort"];
                 page?: number;
-                per_page?: number;
+                perPage?: number;
                 /** @description Comma-separated annotation fields whose composition is returned */
-                composition_fields?: string | null;
+                compositionFields?: string | null;
             };
             header?: never;
             path?: never;
@@ -1214,18 +1483,36 @@ export interface operations {
                     "application/json": components["schemas"]["ProjectsResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
         };
     };
-    search_terms_api_terms_get: {
+    searchTerms: {
         parameters: {
             query?: {
                 /** @description Annotation field; omitted means every annotation field */
@@ -1235,7 +1522,8 @@ export interface operations {
                 /** @description Condition in the DSL. Omitted or empty means the whole population. */
                 q?: string | null;
                 unit?: components["schemas"]["Unit"];
-                self_exclusion?: boolean;
+                /** @description Compute without the top-level conjuncts of `q` that are only on the dimensions of the aggregation */
+                facetSelfExclude?: boolean;
                 limit?: number;
             };
             header?: never;
@@ -1253,26 +1541,45 @@ export interface operations {
                     "application/json": components["schemas"]["TermsResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
         };
     };
-    term_children_api_terms_children_get: {
+    listTermChildren: {
         parameters: {
             query: {
                 field: string;
-                term_id: string;
+                termId: string;
                 /** @description Condition in the DSL. Omitted or empty means the whole population. */
                 q?: string | null;
                 unit?: components["schemas"]["Unit"];
-                self_exclusion?: boolean;
+                /** @description Compute without the top-level conjuncts of `q` that are only on the dimensions of the aggregation */
+                facetSelfExclude?: boolean;
             };
             header?: never;
             path?: never;
@@ -1289,58 +1596,45 @@ export interface operations {
                     "application/json": components["schemas"]["TermChildrenResponse"];
                 };
             };
-            /** @description Validation Error */
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-        };
-    };
-    export_accessions_api_export_accessions_get: {
-        parameters: {
-            query: {
-                kind: "biosample" | "experiment" | "run" | "bioproject";
-                /** @description Condition in the DSL. Omitted or empty means the whole population. */
-                q?: string | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content?: never;
-            };
-            /** @description Validation Error */
-            422: {
+            /** @description Internal Server Error */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
         };
     };
-    export_records_api_export_records_get: {
+    exportAccessions: {
         parameters: {
             query?: {
                 /** @description Condition in the DSL. Omitted or empty means the whole population. */
                 q?: string | null;
-                unit?: components["schemas"]["RecordUnit"];
-                format?: "tsv" | "json";
             };
             header?: never;
-            path?: never;
+            path: {
+                type: "biosample" | "sra-experiment" | "sra-run" | "bioproject";
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -1352,13 +1646,147 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Validation Error */
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unprocessable Entity */
             422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    exportEntries: {
+        parameters: {
+            query?: {
+                /** @description Condition in the DSL. Omitted or empty means the whole population. */
+                q?: string | null;
+                format?: "tsv" | "ndjson";
+            };
+            header?: never;
+            path: {
+                type: "biosample" | "sra-experiment";
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    getServiceInfo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServiceInfoResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
         };

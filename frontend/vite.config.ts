@@ -10,6 +10,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const isTest = process.env.VITEST === "true"
 
 export default defineConfig({
+  define: {
+    __BSLLMNER_VIEWER_COMMIT__: JSON.stringify(process.env.BSLLMNER_VIEWER_COMMIT ?? ""),
+  },
   plugins: [
     tailwindcss(),
     ...(isTest ? [] : [reactRouter()]),

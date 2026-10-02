@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test"
 
-import { expectParam, expectQ, qOf, viewTabs, workspaceUrl } from "./helpers"
+import { choose, expectChosen, expectParam, expectQ, qOf, viewTabs, workspaceUrl } from "./helpers"
 
 const BREAST_CANCER = "MONDO:0007254"
 
@@ -8,7 +8,7 @@ test.describe("trend", () => {
   test("without a split, the trend draws only the line of the condition", async ({ page }) => {
     await page.goto(workspaceUrl({ tab: "trend" }))
     const main = page.getByRole("main")
-    await expect(page.getByRole("combobox", { name: "Split by" })).toHaveValue("")
+    await expectChosen(page.getByRole("combobox", { name: "Split by" }), "None")
     await expect(main.locator("svg polyline")).toHaveCount(1)
     await expect(main).toContainText("All records")
     await page.goto(workspaceUrl({ tab: "trend", q: `disease:"${BREAST_CANCER}"` }))
@@ -20,14 +20,14 @@ test.describe("trend", () => {
   test("splitting by a field adds one line per element and records the field in the URL", async ({ page }) => {
     await page.goto(workspaceUrl({ tab: "trend", q: `disease:"${BREAST_CANCER}"` }))
     const main = page.getByRole("main")
-    await page.getByRole("combobox", { name: "Split by" }).selectOption("disease")
+    await choose(page.getByRole("combobox", { name: "Split by" }), "Disease")
     await expectParam(page, "trend_field", "disease")
     await expect(main.locator(`svg g[data-series="${BREAST_CANCER}"] polyline`)).toHaveCount(1)
     await expect(main.locator("svg polyline").nth(1)).toBeVisible()
     await expect(main.getByText("Split lines are not filtered by Disease")).toBeVisible()
     await expect(main.getByText(BREAST_CANCER, { exact: true })).toBeVisible()
     await expect(main).toContainText("✓ in condition")
-    await page.getByRole("combobox", { name: "Split by" }).selectOption("")
+    await choose(page.getByRole("combobox", { name: "Split by" }), "None")
     await expectParam(page, "trend_field", null)
     await expect(main.locator("svg polyline")).toHaveCount(1)
   })

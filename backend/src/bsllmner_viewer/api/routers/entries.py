@@ -1,30 +1,70 @@
-"""BioSample entry detail."""
+"""Entry lists and the BioSample detail."""
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from typing import Annotated
 
-from bsllmner_viewer.api.common import version_ref
-from bsllmner_viewer.api.deps import StoreDep
-from bsllmner_viewer.api.problems import ApiError
+from fastapi import APIRouter, Query
+
+from bsllmner_viewer.api.common import q_of, version_ref
+from bsllmner_viewer.api.deps import QParam, StoreDep, parse_condition
+from bsllmner_viewer.api.problems import NOT_FOUND_RESPONSE, ApiError
+from bsllmner_viewer.api.queries import records as rq
+from bsllmner_viewer.api.queries.core import population
 from bsllmner_viewer.api.queries.evidence import STRING_MATCH, find_spans
-from bsllmner_viewer.api.queries.records import attributes_of
+from bsllmner_viewer.api.queries.records import attributes_of, organism_of
 from bsllmner_viewer.api.schemas import (
     Attribute,
+    EntriesResponse,
     EntryAnnotation,
     EntryBioProject,
     EntryExperiment,
     EntryResponse,
+    EntryType,
     Evidence,
+    Pagination,
 )
 
-router = APIRouter(tags=["entries"])
+router = APIRouter(tags=["Entries"])
 
 TITLE_ATTRIBUTE = "title"
 
 
 @router.get(
-    "/entries/{accession}", response_model=EntryResponse, summary="A BioSample with its annotations and evidence"
+    "/entries/{type}",
+    operation_id="listEntries",
+    responses=NOT_FOUND_RESPONSE,
+    response_model=EntriesResponse,
+    summary="Matching records as BioSample or experiment entries",
+)
+def list_entries(
+    store: StoreDep,
+    type: EntryType,
+    q: QParam = None,
+    page: Annotated[int, Query(ge=1)] = 1,
+    per_page: Annotated[int, Query(alias="perPage", ge=1, le=100)] = 25,
+) -> EntriesResponse:
+    ast = parse_condition(store, q)
+    pop = population(ast, store.field_set)
+    with store.cursor() as cur:
+        total = rq.count_records(cur, pop, type)
+        keys = rq.page_keys(cur, pop, type, page, per_page)
+        rows = rq.record_rows(cur, pop, keys, tuple(f.name for f in store.fields))
+    return EntriesResponse(
+        dataset_version=version_ref(store),
+        q=q_of(ast),
+        type=type,
+        pagination=Pagination(page=page, per_page=per_page, total=total, has_next=page * per_page < total),
+        items=rows,
+    )
+
+
+@router.get(
+    "/entries/biosample/{accession}",
+    operation_id="getEntry",
+    responses=NOT_FOUND_RESPONSE,
+    response_model=EntryResponse,
+    summary="A BioSample with its annotations and evidence",
 )
 def get_entry(store: StoreDep, accession: str) -> EntryResponse:
     with store.cursor() as cur:
@@ -34,7 +74,7 @@ def get_entry(store: StoreDep, accession: str) -> EntryResponse:
             [accession],
         ).fetchone()
         if row is None:
-            raise ApiError("not-found", "Not found", 404, f"BioSample {accession} is not in the dataset")
+            raise ApiError(None, 404, f"BioSample {accession} is not in the dataset")
         annotation_rows = cur.execute(
             "SELECT field, extracted_value, status, term_id, term_label FROM annotation WHERE biosample = ? "
             "ORDER BY field, value_index",
@@ -79,10 +119,10 @@ def get_entry(store: StoreDep, accession: str) -> EntryResponse:
         )
     return EntryResponse(
         dataset_version=version_ref(store),
-        accession=str(row[0]),
+        identifier=str(row[0]),
+        type="biosample",
         title=row[1],
-        organism_id=row[2],
-        organism_name=row[3],
+        organism=organism_of(row[2], row[3]),
         date_created=row[4].isoformat() if row[4] else None,
         date_modified=row[5].isoformat() if row[5] else None,
         run=str(row[7]),

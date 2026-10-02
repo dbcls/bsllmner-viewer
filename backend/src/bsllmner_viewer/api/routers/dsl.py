@@ -12,10 +12,15 @@ from bsllmner_viewer.dsl.serde import ast_to_json, json_to_ast
 from bsllmner_viewer.dsl.transform import narrow, select_element
 from bsllmner_viewer.dsl.validator import validate
 
-router = APIRouter(tags=["dsl"])
+router = APIRouter(tags=["Condition"])
 
 
-@router.get("/dsl/parse", response_model=ParseResponse, summary="Parse a condition string into an AST")
+@router.get(
+    "/dsl/parse",
+    operation_id="parseCondition",
+    response_model=ParseResponse,
+    summary="Parse a condition string into an AST",
+)
 def parse_dsl(store: StoreDep, q: str = Query(min_length=1)) -> ParseResponse:
     parsed = parse_condition(store, q)
     assert parsed is not None
@@ -28,13 +33,18 @@ def parse_dsl(store: StoreDep, q: str = Query(min_length=1)) -> ParseResponse:
     )
 
 
-@router.post("/dsl/serialize", response_model=ConditionResponse, summary="Serialize an AST into a condition string")
+@router.post(
+    "/dsl/serialize",
+    operation_id="serializeCondition",
+    response_model=ConditionResponse,
+    summary="Serialize an AST into a condition string",
+)
 def serialize_dsl(store: StoreDep, body: SerializeRequest) -> ConditionResponse:
     ast = normalize(json_to_ast(body.ast, store.field_set))
     validate(ast, store.field_set)
     return ConditionResponse(
         dataset_version=version_ref(store),
-        q=q_of(ast),
+        dsl=q_of(ast),
         ast=ast_to_json(ast, store.field_set),
         labels=condition_labels(store, ast),
     )
@@ -42,6 +52,7 @@ def serialize_dsl(store: StoreDep, body: SerializeRequest) -> ConditionResponse:
 
 @router.post(
     "/dsl/select",
+    operation_id="selectElement",
     response_model=ConditionResponse,
     summary="Apply the clauses of an aggregation element to a condition",
     description=(
@@ -60,7 +71,7 @@ def select_dsl(store: StoreDep, body: SelectRequest) -> ConditionResponse:
         validate(result, store.field_set)
     return ConditionResponse(
         dataset_version=version_ref(store),
-        q=q_of(result),
+        dsl=q_of(result),
         ast=None if result is None else ast_to_json(result, store.field_set),
         labels=condition_labels(store, result),
     )

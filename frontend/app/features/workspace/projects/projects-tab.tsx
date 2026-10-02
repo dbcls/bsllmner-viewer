@@ -5,7 +5,7 @@ import { useDataset, useProjects } from "~/lib/api/queries"
 import type { Composition, Project, ProjectSort } from "~/lib/api/types"
 import { formatCount } from "~/lib/format"
 import { fieldLabel } from "~/lib/labels"
-import { Card, cn, Pager, Segmented, Tag } from "~/ui"
+import { Card, CardFooter, CardHeader, cn, Pager, Segmented, Tag } from "~/ui"
 
 import { clausesOfField, leaves } from "../ast"
 import type { WorkspaceState } from "../state"
@@ -37,7 +37,7 @@ type ProjectsTabProps = {
 
 /** BioProjects matching the condition, with a composition summary of up to 3 annotation fields per project. */
 export const ProjectsTab = ({ state, condition, onPage }: ProjectsTabProps) => {
-  const [sort, setSort] = useState<ProjectSort>("biosample")
+  const [sort, setSort] = useState<ProjectSort>("biosampleCount:desc")
   const dataset = useDataset()
   const annotationFields = new Set((dataset.data?.fields ?? []).map((field) => field.name))
   const conditionFields = [
@@ -52,74 +52,72 @@ export const ProjectsTab = ({ state, condition, onPage }: ProjectsTabProps) => {
     perPage: PER_PAGE,
     compositionFields,
   })
-  const total = projects.data?.total ?? 0
+  const total = projects.data?.pagination.total ?? 0
   const pages = Math.max(1, Math.ceil(total / PER_PAGE))
-  const fields = projects.data?.composition_fields ?? compositionFields.split(",")
+  const fields = projects.data?.compositionFields ?? compositionFields.split(",")
   const bioprojectFiltered = state.selfExclusion && clausesOfField(condition.ast, "bioproject").length > 0
 
   return (
-    <div>
-      <div className="mb-2.5 flex items-center justify-between gap-4 text-fs-label text-ink-soft">
+    <Card padding="none" flush>
+      <CardHeader>
         <span className="inline-flex items-center gap-1.5">
           {projects.data ? `${formatCount(total)} BioProjects match · page ${state.page} of ${pages}` : "Counting…"}
           {bioprojectFiltered && <Tag kind="warn">Not filtered by BioProject</Tag>}
         </span>
-        <span>Term composition shows how consistently the samples of a project were annotated. A thin slice may be a mapping error.</span>
-      </div>
-      <div className="mb-2.5 flex justify-end">
-        <span className="inline-flex items-center gap-1.5 text-fs-label text-ink-soft">
+        <span className="inline-flex items-center gap-1.5">
           Sort by
           <Segmented
             ariaLabel="Sort by"
             options={[
-              { value: "biosample", label: "BioSamples" },
-              { value: "experiment", label: "Experiments" },
-              { value: "accession", label: "Accession" },
+              { value: "biosampleCount:desc", label: "BioSamples" },
+              { value: "experimentCount:desc", label: "SRA Experiments" },
+              { value: "identifier:asc", label: "Accession" },
             ]}
             value={sort}
             onChange={setSort}
           />
         </span>
-      </div>
-      <Card padding="none" flush>
-        <div className="overflow-auto">
-          <table className="w-full min-w-projects-min border-collapse text-fs-body-sm">
-            <thead>
-              <tr className="bg-surface-subtle">
-                <Th>BioProject</Th>
-                <Th>Title</Th>
-                <Th align="right">BioSamples</Th>
-                <Th align="right">Experiments</Th>
-                <Th>Assay</Th>
-                {fields.map((field) => (
-                  <Th key={field} minWidth>
-                    {fieldLabel(field)} composition
-                  </Th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {(projects.data?.projects ?? []).map((project) => (
-                <ProjectRow key={project.bioproject} project={project} condition={condition} fields={fields} />
+      </CardHeader>
+      <div className="overflow-auto">
+        <table className="w-full min-w-projects-min border-collapse text-fs-body-sm">
+          <thead>
+            <tr className="bg-surface-subtle">
+              <Th>BioProject</Th>
+              <Th>Title</Th>
+              <Th align="right">BioSamples</Th>
+              <Th align="right">SRA Experiments</Th>
+              <Th>Assay</Th>
+              {fields.map((field) => (
+                <Th key={field} minWidth>
+                  {fieldLabel(field)} composition
+                </Th>
               ))}
-            </tbody>
-          </table>
-        </div>
-      </Card>
-      <div className="mt-2.5 flex items-center justify-between gap-4 text-fs-micro text-ink-soft">
-        <span>
-          Click a row to restrict the condition to that project. Composition:
-          {LEGEND.map((item, index) => (
-            <span key={item.label} className="ml-1.5 inline-flex items-center gap-1">
-              <span className={cn("inline-block h-2 w-2 rounded-badge", item.color)} />
-              {item.label}
-              {index < LEGEND.length - 1 ? " ·" : "."}
-            </span>
-          ))}
-        </span>
-        <Pager page={state.page} pages={pages} onChange={onPage} />
+            </tr>
+          </thead>
+          <tbody>
+            {(projects.data?.items ?? []).map((project) => (
+              <ProjectRow key={project.identifier} project={project} condition={condition} fields={fields} />
+            ))}
+          </tbody>
+        </table>
       </div>
-    </div>
+      <CardFooter>
+        <div className="flex flex-col gap-1 text-fs-micro">
+          <span>Term composition shows how consistently the samples of a project were annotated. A thin slice may be a mapping error.</span>
+          <span>
+            Click a row to restrict the condition to that project. Composition:
+            {LEGEND.map((item, index) => (
+              <span key={item.label} className="ml-1.5 inline-flex items-center gap-1">
+                <span className={cn("inline-block h-2 w-2 rounded-badge", item.color)} />
+                {item.label}
+                {index < LEGEND.length - 1 ? " ·" : "."}
+              </span>
+            ))}
+          </span>
+        </div>
+        <Pager page={state.page} pages={pages} onChange={onPage} />
+      </CardFooter>
+    </Card>
   )
 }
 
@@ -150,14 +148,14 @@ const ProjectRow = ({ project, condition, fields }: ProjectRowProps) => {
       className={cn("cursor-pointer border-b border-brand-soft hover:bg-brand-soft", selected && "bg-brand-soft")}
     >
       <td className="px-2.5 py-1.5 font-mono text-fs-label whitespace-nowrap text-brand">
-        {project.bioproject}
+        {project.identifier}
         {selected && <span className="ml-1.5 font-sans text-fs-micro font-semibold">✓</span>}
       </td>
       <td className="min-w-70 max-w-95 truncate px-2.5 py-1.5" title={project.title ?? ""}>
         {project.title}
       </td>
-      <td className="px-2.5 py-1.5 text-right font-mono text-fs-label">{formatCount(project.n_biosample)}</td>
-      <td className="px-2.5 py-1.5 text-right font-mono text-fs-label">{formatCount(project.n_experiment)}</td>
+      <td className="px-2.5 py-1.5 text-right font-mono text-fs-label">{formatCount(project.biosampleCount)}</td>
+      <td className="px-2.5 py-1.5 text-right font-mono text-fs-label">{formatCount(project.experimentCount)}</td>
       <td className="px-2.5 py-1.5 whitespace-nowrap">
         <span className="flex flex-wrap gap-1">
           {project.assays.map((assay) => (

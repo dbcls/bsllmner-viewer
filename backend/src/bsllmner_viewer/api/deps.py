@@ -19,6 +19,16 @@ def get_store(request: Request) -> Store:
 
 StoreDep = Annotated[Store, Depends(get_store)]
 
+FacetSelfExcludeParam = Annotated[
+    bool,
+    Query(
+        alias="facetSelfExclude",
+        description=(
+            "Compute without the top-level conjuncts of `q` that are only on the dimensions of the aggregation"
+        ),
+    ),
+]
+
 QParam = Annotated[
     str | None,
     Query(

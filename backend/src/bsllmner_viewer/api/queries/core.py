@@ -34,7 +34,7 @@ def population(ast: Node | None, fields: FieldSet) -> Population:
 def count_expr(unit: Unit, alias: str = "p", bp_alias: str = "bp") -> str:
     if unit == "biosample":
         return f"count(DISTINCT {alias}.biosample)"
-    if unit == "experiment":
+    if unit == "sra-experiment":
         return f"count(DISTINCT {alias}.experiment)"
     return f"count(DISTINCT {bp_alias}.bioproject)"
 

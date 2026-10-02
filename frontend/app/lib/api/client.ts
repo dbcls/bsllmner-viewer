@@ -1,6 +1,7 @@
 import createClient from "openapi-fetch"
 
 import type { paths } from "./openapi-types"
+import type { AccessionType, EntryType } from "./types"
 
 /**
  * Typed client over the api. Requests go to the same origin; in development the
@@ -16,6 +17,8 @@ export type Problem = {
   status: number
   detail?: string
   instance?: string
+  timestamp?: string
+  requestId?: string
 }
 
 export class ApiError extends Error {
@@ -36,6 +39,14 @@ export const unwrap = <T>(result: { data?: T; error?: unknown; response: Respons
 
 const isProblem = (value: unknown): value is Problem =>
   typeof value === "object" && value !== null && "type" in value && "status" in value && "title" in value
+
+/** The api path that exports every entry of a type matching the condition. */
+export const exportEntriesUrl = (type: EntryType, q: string | null, format: "tsv" | "ndjson"): string =>
+  apiUrl(`/api/export/entries/${type}`, { q: q ?? undefined, format })
+
+/** The api path that lists the accessions of a type matching the condition. */
+export const exportAccessionsUrl = (type: AccessionType, q: string | null): string =>
+  apiUrl(`/api/export/accessions/${type}`, { q: q ?? undefined })
 
 /** The URL of a GET request, for the API modal and for downloads. */
 export const apiUrl = (path: string, params: Record<string, string | number | boolean | undefined>): string => {

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 
-import { useParsedCondition, useProjects, useRecords } from "~/lib/api/queries"
+import { useEntries,useParsedCondition, useProjects } from "~/lib/api/queries"
 import { formatCount } from "~/lib/format"
 import { Button, Chip, cn, LinkButton, Segmented, TextArea } from "~/ui"
 
@@ -26,9 +26,9 @@ export const ConditionBar = ({ q, condition, onShare, onExport, onApi, exportMen
   const [draft, setDraft] = useState(q ?? "")
   const [draftError, setDraftError] = useState<string | null>(null)
   const draftParse = useParsedCondition(draftError === "pending" ? draft : null)
-  const biosamples = useRecords({ q, unit: "biosample", page: 1, perPage: 1 })
-  const experiments = useRecords({ q, unit: "experiment", page: 1, perPage: 1 })
-  const projects = useProjects({ q, selfExclusion: false, sort: "biosample", page: 1, perPage: 1, compositionFields: "" })
+  const biosamples = useEntries({ q, type: "biosample", page: 1, perPage: 1 })
+  const experiments = useEntries({ q, type: "sra-experiment", page: 1, perPage: 1 })
+  const projects = useProjects({ q, selfExclusion: false, sort: "biosampleCount:desc", page: 1, perPage: 1, compositionFields: "" })
   const groups = conditionGroups(condition.ast)
 
   useEffect(() => {
@@ -57,7 +57,7 @@ export const ConditionBar = ({ q, condition, onShare, onExport, onApi, exportMen
 
   const totals =
     biosamples.data && experiments.data && projects.data
-      ? `${formatCount(biosamples.data.total)} BioSamples · ${formatCount(experiments.data.total)} Experiments · ${formatCount(projects.data.total)} BioProjects`
+      ? `${formatCount(biosamples.data.pagination.total)} BioSamples · ${formatCount(experiments.data.pagination.total)} SRA Experiments · ${formatCount(projects.data.pagination.total)} BioProjects`
       : "Counting…"
 
   return (

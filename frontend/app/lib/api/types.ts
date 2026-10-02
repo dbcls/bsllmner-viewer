@@ -18,8 +18,10 @@ export type TrendSeries = Schemas["TrendSeries"]
 export type ProjectsResponse = Schemas["ProjectsResponse"]
 export type Project = Schemas["Project"]
 export type Composition = Schemas["Composition"]
-export type RecordsResponse = Schemas["RecordsResponse"]
-export type RecordRow = Schemas["RecordRow"]
+export type EntriesResponse = Schemas["EntriesResponse"]
+export type EntryItem = Schemas["EntryItem"]
+export type Organism = Schemas["Organism"]
+export type Pagination = Schemas["Pagination"]
 export type AnnotationValue = Schemas["AnnotationValue"]
 export type EntryResponse = Schemas["EntryResponse"]
 export type EntryAnnotation = Schemas["EntryAnnotation"]
@@ -28,10 +30,10 @@ export type TermsResponse = Schemas["TermsResponse"]
 export type TermHit = Schemas["TermHit"]
 export type TermChildrenResponse = Schemas["TermChildrenResponse"]
 
-export type Unit = "biosample" | "experiment" | "bioproject"
-export type RecordUnit = "biosample" | "experiment"
-export type AccessionKind = "biosample" | "experiment" | "run" | "bioproject"
-export type ProjectSort = "biosample" | "experiment" | "accession"
+export type Unit = Schemas["Unit"]
+export type EntryType = Schemas["EntryType"]
+export type AccessionType = "biosample" | "sra-experiment" | "sra-run" | "bioproject"
+export type ProjectSort = Schemas["ProjectSort"]
 
 /** AST node as returned by the api: bool ops carry `rules`, leaves carry `field`. */
 export type AstNode =

@@ -9,12 +9,12 @@ import duckdb
 from bsllmner_viewer.api.queries.core import Population
 from bsllmner_viewer.api.schemas import Composition, CompositionSegment
 
-type ProjectSort = Literal["biosample", "experiment", "accession"]
+type ProjectSort = Literal["biosampleCount:desc", "experimentCount:desc", "identifier:asc"]
 
 _ORDER = {
-    "biosample": "n_biosample DESC, n_experiment DESC, bioproject",
-    "experiment": "n_experiment DESC, n_biosample DESC, bioproject",
-    "accession": "bioproject",
+    "biosampleCount:desc": "n_biosample DESC, n_experiment DESC, bioproject",
+    "experimentCount:desc": "n_experiment DESC, n_biosample DESC, bioproject",
+    "identifier:asc": "bioproject",
 }
 
 

@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test"
 
-import { axisHeader, cell, expectParam, expectQ, termPicker, viewTabs, workspaceUrl } from "./helpers"
+import { axisHeader, cell, expectChosen, expectParam, expectQ, termPicker, viewTabs, workspaceUrl } from "./helpers"
 
 const MCF7 = "CVCL:0031"
 
@@ -20,11 +20,11 @@ test.describe("heatmap", () => {
   })
 
   test("a cell narrows to the population of the table, not to the condition on its own fields", async ({ page }) => {
-    await page.goto(workspaceUrl({ tab: "heatmap", q: `(cell_line:"${MCF7}" OR cell_line:"CVCL:0027") AND title:run1`, unit: "experiment" }))
+    await page.goto(workspaceUrl({ tab: "heatmap", q: `(cell_line:"${MCF7}" OR cell_line:"CVCL:0027") AND title:run1`, unit: "sra-experiment" }))
     await expect(page.getByRole("main").getByText("Not filtered by Cell line or Assay")).toBeVisible()
     await cell(page, "K-562", "RNA-Seq").click()
     await expectQ(page, 'title:run1 AND cell_line:"CVCL:0004" AND library_strategy:RNA-Seq')
-    await expectParam(page, "unit", "experiment")
+    await expectParam(page, "unit", "sra-experiment")
   })
 
   test("a cell without records is not a button", async ({ page }) => {
@@ -59,7 +59,7 @@ test.describe("heatmap", () => {
     await page.getByRole("button", { name: "Swap axes" }).click()
     await expectParam(page, "row", "library_strategy")
     await expectParam(page, "col", "cell_line")
-    await expect(page.getByRole("combobox", { name: "Row dimension" })).toHaveValue("library_strategy")
+    await expectChosen(page.getByRole("combobox", { name: "Row dimension" }), "Assay")
     await expect(cell(page, "ATAC-seq", "MCF-7")).toBeVisible()
     await page.getByRole("radio", { name: "Residual" }).click()
     await expectParam(page, "color", "residual")

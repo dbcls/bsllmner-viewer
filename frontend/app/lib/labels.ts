@@ -88,7 +88,7 @@ export const statusLabel = (value: string): string =>
 
 export const UNIT_LABELS: Record<string, string> = {
   biosample: "BioSamples",
-  experiment: "Experiments",
+  "sra-experiment": "SRA Experiments",
   bioproject: "BioProjects",
 }
 

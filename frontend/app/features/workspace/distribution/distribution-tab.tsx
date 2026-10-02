@@ -40,16 +40,20 @@ export const DistributionTab = ({ state, condition, onExpandedStatus, onExpanded
   const ontologies = new Map(fields.map((f) => [f.name, f.ontologies.map(ontologyLabel).join(" / ")]))
   return (
     <div>
-      <div className="mb-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-fs-label text-ink-soft">
-        <span className="inline-flex items-center gap-1.5">
-          <span className="inline-block h-2 w-5.5 rounded-badge bg-brand" />
-          Exact match
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <span className="inline-block h-2 w-5.5 rounded-badge bg-brand-light" />
-          LLM selected
-        </span>
-        <span>Each card shows the terms assigned to the most BioSamples. Counts include child terms.</span>
+      <div className="mb-3.5">
+        <Card padding="sm">
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-fs-label text-ink-soft">
+            <span className="inline-flex items-center gap-1.5">
+              <span className="inline-block h-2 w-5.5 rounded-badge bg-brand" />
+              Exact match
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="inline-block h-2 w-5.5 rounded-badge bg-brand-light" />
+              LLM selected
+            </span>
+            <span>Each card shows the terms assigned to the most BioSamples. Counts include child terms.</span>
+          </div>
+        </Card>
       </div>
       <div className="grid grid-cols-3 gap-3.5">
         {[...ordered, ...EXTRA_DIMENSIONS].map((field) => (
@@ -85,7 +89,7 @@ type CardProps = {
   onExpanded: (expanded: string[]) => void
 }
 
-const isTermElement = (element: Element | TermElement): element is TermElement => "has_children" in element
+const isTermElement = (element: Element | TermElement): element is TermElement => "hasChildren" in element
 
 const DistributionCard = ({ field, isAnnotation, ontology, state, condition, onExpandedStatus, onExpanded }: CardProps) => {
   const distribution = useDistribution({
@@ -98,7 +102,7 @@ const DistributionCard = ({ field, isAnnotation, ontology, state, condition, onE
   })
   const ownCondition = clausesOfField(condition.ast, field).length > 0
   const data = distribution.data
-  const unfiltered = data !== undefined && data.population_q !== data.q
+  const unfiltered = data !== undefined && data.populationQ !== data.q
   const shown = data?.elements ?? []
   const elements = field === "date_created" ? [...shown].reverse() : shown
   const max = Math.max(1, ...elements.map((e) => e.count))
@@ -108,8 +112,8 @@ const DistributionCard = ({ field, isAnnotation, ontology, state, condition, onE
     elements.map((e) => ({
       label: e.label,
       count: e.count,
-      exact: isTermElement(e) ? e.count_exact : e.count,
-      selected: isTermElement(e) ? e.count_selected : 0,
+      exact: isTermElement(e) ? e.countExact : e.count,
+      selected: isTermElement(e) ? e.countSelected : 0,
       depth: 0,
     }))
   const exportName = `${field}-distribution`
@@ -117,7 +121,7 @@ const DistributionCard = ({ field, isAnnotation, ontology, state, condition, onE
     downloadTsv(
       `${exportName}.tsv`,
       ["value", "label", unit.toLowerCase(), "exact_match", "llm_selected"],
-      elements.map((e) => [e.value, e.label, e.count, isTermElement(e) ? e.count_exact : "", isTermElement(e) ? e.count_selected : ""]),
+      elements.map((e) => [e.value, e.label, e.count, isTermElement(e) ? e.countExact : "", isTermElement(e) ? e.countSelected : ""]),
     )
   const exportSvg = () => downloadSvgMarkup(`${exportName}.svg`, barsSvg(fieldLabel(field), unit, collect()))
   const exportPng = () => {
@@ -186,11 +190,11 @@ type ElementRowsProps = {
 
 const ElementRows = ({ field, element, depth, max, isAnnotation, ownCondition, state, condition, onExpanded }: ElementRowsProps) => {
   const key = `${field}:${element.value}`
-  const expandable = isTermElement(element) && element.has_children
+  const expandable = isTermElement(element) && element.hasChildren
   const expanded = expandable && state.expanded.includes(key)
   const selected = condition.isSelected(element.clauses)
-  const exact = isTermElement(element) ? element.count_exact : element.count
-  const selectedCount = isTermElement(element) ? element.count_selected : 0
+  const exact = isTermElement(element) ? element.countExact : element.count
+  const selectedCount = isTermElement(element) ? element.countSelected : 0
   const exactPct = isAnnotation ? (exact + selectedCount > 0 ? (exact / (exact + selectedCount)) * 100 : 100) : 100
   const dimmed = ownCondition && !selected
   const toggleExpanded = () => onExpanded(expanded ? state.expanded.filter((e) => e !== key) : [...state.expanded, key])

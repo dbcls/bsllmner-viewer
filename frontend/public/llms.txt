@@ -1,0 +1,39 @@
+# bsllmner-viewer
+
+> Ontology-mapped annotations of public BioSamples, linked to their SRA experiments and BioProjects. bsllmner-mk2 extracted cell lines, cell types, tissues, diseases, drugs, genetic perturbations, and ChIP antigens from the free-text BioSample attributes with an LLM, and mapped each value to an ontology term. This site queries, counts, and exports those annotations.
+
+Use the JSON API rather than the pages. Every page of this site shows the result of one API query, and the API returns the same result.
+
+## API
+
+- [Swagger UI](/api): every endpoint with its parameters, and requests that you can try
+- [OpenAPI document](/api/openapi.json): the contract of the API
+- [API specification](https://github.com/dbcls/bsllmner-viewer/blob/main/docs/api.md): the conventions, the condition language, and how counts are computed
+- [Data model](https://github.com/dbcls/bsllmner-viewer/blob/main/docs/data-model.md): records, annotation statuses, and counting units
+
+## Conditions
+
+Every query takes one condition string, `q`. The language is the Lucene subset of the DDBJ Search API: `field:value`, `field:"phrase"`, `field:[a TO b]`, `AND`, `OR`, `NOT`, and parentheses. Text without a field is rejected.
+
+- `disease:"MONDO:0007254"` matches breast cancer and every descendant term.
+- `cell_line:"CVCL:0030" AND library_strategy:ATAC-seq` matches HeLa ATAC-seq experiments.
+- `organism_id:9606 AND date_created:[2015-01-01 TO 2020-12-31]` matches human BioSamples created from 2015 to 2020.
+- `disease_status:unmapped` matches BioSamples whose disease value has no ontology term.
+
+`GET /api/dataset` lists the fields of the language. `GET /api/terms?query=<text>` finds the term IDs to use in a condition.
+
+## Endpoints
+
+- `GET /api/entries/biosample?q=` and `GET /api/entries/sra-experiment?q=`: the matching BioSamples or experiments, one page at a time
+- `GET /api/entries/biosample/{accession}`: one BioSample with its attributes, annotations, and the evidence of each annotation
+- `GET /api/distribution?field=&q=`: counts per term or value of one field
+- `GET /api/crosstab?row=&col=&q=`: counts per pair of two fields, with expected counts that reveal gaps
+- `GET /api/trend?q=`: counts per year of BioSample creation
+- `GET /api/projects?q=`: BioProjects of the matching BioSamples
+- `GET /api/export/accessions/{type}?q=`: every matching accession of `biosample`, `sra-experiment`, `sra-run`, or `bioproject`, one per line
+
+## Notes
+
+- Counts are counts of records. A record is a BioSample with one of its SRA experiments. The `unit` parameter counts distinct BioSamples, experiments, or BioProjects.
+- Annotations come from an LLM and can be wrong. Each annotation has a status that tells how its term was chosen, or why it has none.
+- Every response has `datasetVersion`. Keep it with results that you record, because counts change with each build of the dataset.

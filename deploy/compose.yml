@@ -1,9 +1,11 @@
 # Deployment: api serving one store file, and nginx serving the built frontend and proxying /api.
-# Works with `docker compose` and `podman compose`.
+# Works with podman-compose and docker compose.
 services:
   api:
     build:
       context: ../backend
+      args:
+        BSLLMNER_VIEWER_COMMIT: ${BSLLMNER_VIEWER_COMMIT:-}
     image: bsllmner-viewer-api
     volumes:
       - ${BSLLMNER_VIEWER_STORE_DIR:?set to the directory holding the store files}:/data/store:ro
@@ -13,15 +15,26 @@ services:
     command: >
       uv run uvicorn bsllmner_viewer.api.app:create_app --factory
       --host 0.0.0.0 --port 8000 --workers ${BSLLMNER_VIEWER_API_WORKERS:-2}
+    # CMD-SHELL with one string: podman-compose 1.0.6 quotes the arguments of the CMD form wrongly.
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import json, urllib.request; r = urllib.request.urlopen('http://localhost:8000/api/service-info', timeout=5); raise SystemExit(json.load(r)['store'] != 'ok')\""]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     restart: unless-stopped
 
   web:
     build:
       context: ../frontend
       dockerfile: Dockerfile.web
+      args:
+        BSLLMNER_VIEWER_COMMIT: ${BSLLMNER_VIEWER_COMMIT:-}
     image: bsllmner-viewer-web
     ports:
       - "${BSLLMNER_VIEWER_PORT:-20081}:80"
+    environment:
+      BSLLMNER_VIEWER_NOINDEX: ${BSLLMNER_VIEWER_NOINDEX:-false}
     depends_on:
       - api
     restart: unless-stopped

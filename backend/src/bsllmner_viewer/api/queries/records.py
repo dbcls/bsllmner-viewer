@@ -8,17 +8,17 @@ import duckdb
 import orjson
 
 from bsllmner_viewer.api.queries.core import Population
-from bsllmner_viewer.api.schemas import AnnotationValue, RecordRow, RecordUnit
+from bsllmner_viewer.api.schemas import AnnotationValue, EntryItem, EntryType, Organism
 
 
-def count_records(cur: duckdb.DuckDBPyConnection, pop: Population, unit: RecordUnit) -> int:
+def count_records(cur: duckdb.DuckDBPyConnection, pop: Population, unit: EntryType) -> int:
     expr = "count(DISTINCT p.biosample)" if unit == "biosample" else "count(*)"
     row = cur.execute(f"WITH {pop.cte()} SELECT {expr} FROM pop p", list(pop.params)).fetchone()
     return int(row[0]) if row else 0
 
 
 def page_keys(
-    cur: duckdb.DuckDBPyConnection, pop: Population, unit: RecordUnit, page: int, per_page: int
+    cur: duckdb.DuckDBPyConnection, pop: Population, unit: EntryType, page: int, per_page: int
 ) -> list[tuple[str, str | None]]:
     """(biosample, experiment) keys of one page, ordered by accession."""
     offset = (page - 1) * per_page
@@ -37,7 +37,7 @@ def page_keys(
 
 def record_rows(
     cur: duckdb.DuckDBPyConnection, pop: Population, keys: list[tuple[str, str | None]], fields: tuple[str, ...]
-) -> list[RecordRow]:
+) -> list[EntryItem]:
     if not keys:
         return []
     accessions = sorted({k[0] for k in keys})
@@ -79,19 +79,19 @@ def record_rows(
         annotations.setdefault(str(bs), {}).setdefault(str(field), []).append(
             AnnotationValue(value=value, status=str(status), term_id=term_id, label=label)
         )
-    rows: list[RecordRow] = []
+    rows: list[EntryItem] = []
     for bs, ex in keys:
         detail = details.get(bs)
         exps = experiments.get(bs, [])
         shown = [e for e in exps if ex is None or e[0] == ex]
         rows.append(
-            RecordRow(
+            EntryItem(
+                identifier=bs if ex is None else ex,
+                type="biosample" if ex is None else "sra-experiment",
                 biosample=bs,
-                experiment=ex,
                 experiments=[e[0] for e in shown],
                 title=detail[1] if detail else None,
-                organism_id=detail[2] if detail else None,
-                organism_name=detail[3] if detail else None,
+                organism=organism_of(detail[2], detail[3]) if detail else None,
                 library_strategy=sorted({e[1] for e in shown if e[1]}),
                 bioprojects=bioprojects.get(bs, []),
                 date_created=detail[4].isoformat() if detail and detail[4] else None,
@@ -100,6 +100,10 @@ def record_rows(
             )
         )
     return rows
+
+
+def organism_of(organism_id: int | None, name: str | None) -> Organism | None:
+    return None if organism_id is None else Organism(identifier=str(organism_id), name=name)
 
 
 def attributes_of(raw: Any) -> list[dict[str, Any]]:

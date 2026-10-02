@@ -54,7 +54,7 @@ export const ConditionPanel = ({ q, condition, onAddTerm }: ConditionPanelProps)
   const [titleText, setTitleText] = useState("")
   const textClauses = selected.filter((clause) => clause.field === "title" || clause.field.endsWith("_value"))
   const fieldOptions = fields.map((f) => ({ value: f.name, label: fieldLabel(f.name) }))
-  const targetAssays = dataset.data?.target_assays ?? []
+  const targetAssays = dataset.data?.targetAssays ?? []
   const assayCounts = new Map((assays.data?.elements ?? []).map((e) => [e.value, e.count]))
 
   const selectedFor = (field: string) => clausesOfField(condition.ast, field)

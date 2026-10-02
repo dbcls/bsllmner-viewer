@@ -13,7 +13,7 @@ from bsllmner_viewer.dsl.serializer import serialize
 from bsllmner_viewer.dsl.transform import add_clause
 from tests.synthetic import ANNOTATED, TARGET_ASSAYS
 
-UNITS = ("biosample", "experiment", "bioproject")
+UNITS = ("biosample", "sra-experiment", "bioproject")
 DIMENSIONS = (
     "cell_line",
     "disease",
@@ -53,9 +53,9 @@ def _q(ast: Node | None) -> str | None:
 def _count(client: TestClient, q: str | None, unit: str) -> int:
     params = {"q": q} if q else {}
     if unit == "bioproject":
-        lines = client.get("/api/export/accessions", params={**params, "kind": "bioproject"}).text.splitlines()
+        lines = client.get("/api/export/accessions/bioproject", params=params).text.splitlines()
         return len(lines) - 1
-    return int(client.get("/api/records", params={**params, "unit": unit}).json()["total"])
+    return int(client.get(f"/api/entries/{unit}", params=params).json()["pagination"]["total"])
 
 
 def _and(q: str | None, clauses: list[dict[str, str]]) -> str | None:
@@ -77,22 +77,32 @@ def test_element_count_equals_population_and_element(
 ) -> None:
     body = client.get(
         "/api/distribution",
-        params={"field": dim, "unit": unit, "q": _q(ast) or "", "self_exclusion": str(excl).lower()},
+        params={"field": dim, "unit": unit, "q": _q(ast) or "", "facetSelfExclude": str(excl).lower()},
     ).json()
-    assert body["population_q"] == (_q(ast) if not excl else body["population_q"])
-    assert body["total"] == _count(client, body["population_q"], unit)
+    if not excl:
+        assert body["populationQ"] == _q(ast)
+    assert body["total"] == _count(client, body["populationQ"], unit)
     for element in body["elements"][:4]:
-        assert element["count"] == _count(client, _and(body["population_q"], element["clauses"]), unit), element
+        assert element["count"] == _count(client, _and(body["populationQ"], element["clauses"]), unit), element
 
 
 @settings(max_examples=25)
-@given(conditions, st.sampled_from(UNITS))
-def test_crosstab_cells_and_margins_match_record_counts(client: TestClient, ast: Node | None, unit: str) -> None:
+@given(conditions, st.sampled_from(UNITS), st.booleans())
+def test_crosstab_cells_and_margins_match_record_counts(
+    client: TestClient, ast: Node | None, unit: str, excl: bool
+) -> None:
     body = client.get(
         "/api/crosstab",
-        params={"row": "disease", "col": "library_strategy", "unit": unit, "q": _q(ast) or "", "limit": 3},
+        params={
+            "row": "disease",
+            "col": "library_strategy",
+            "unit": unit,
+            "q": _q(ast) or "",
+            "limit": 3,
+            "facetSelfExclude": str(excl).lower(),
+        },
     ).json()
-    pop = body["population_q"]
+    pop = body["populationQ"]
     for row in body["rows"]:
         assert row["count"] == _count(client, _and(pop, row["clauses"]), unit)
     for col in body["cols"]:
@@ -106,7 +116,7 @@ def test_crosstab_cells_and_margins_match_record_counts(client: TestClient, ast:
 
 def _narrow(client: TestClient, q: str | None, clauses: list[dict[str, str]]) -> str | None:
     body = client.post("/api/dsl/select", json={"q": q, "clauses": clauses, "mode": "narrow"}).json()
-    return None if body["q"] is None else str(body["q"])
+    return None if body["dsl"] is None else str(body["dsl"])
 
 
 @settings(max_examples=25)
@@ -122,14 +132,14 @@ def test_narrowing_to_a_cell_matches_the_count_of_the_cell(
             "unit": unit,
             "q": _q(ast) or "",
             "limit": 3,
-            "self_exclusion": str(excl).lower(),
+            "facetSelfExclude": str(excl).lower(),
         },
     ).json()
     rows = {r["value"]: r for r in body["rows"]}
     cols = {c["value"]: c for c in body["cols"]}
     for cell in body["cells"][:6]:
         clauses = [*rows[cell["row"]]["clauses"], *cols[cell["col"]]["clauses"]]
-        assert cell["count"] == _count(client, _narrow(client, body["population_q"], clauses), unit), cell
+        assert cell["count"] == _count(client, _narrow(client, body["populationQ"], clauses), unit), cell
 
 
 @settings(max_examples=25)
@@ -137,18 +147,18 @@ def test_narrowing_to_a_cell_matches_the_count_of_the_cell(
 def test_trend_points_match_record_counts(
     client: TestClient, ast: Node | None, unit: str, excl: bool, field: str | None
 ) -> None:
-    params = {"unit": unit, "q": _q(ast) or "", "self_exclusion": str(excl).lower(), "limit": 2}
+    params = {"unit": unit, "q": _q(ast) or "", "facetSelfExclude": str(excl).lower(), "limit": 2}
     if field:
         params["field"] = field
     body = client.get("/api/trend", params=params).json()
     assert body["years"] == sorted(set(body["years"]))
     assert [p["year"] for p in body["total"]] == body["years"]
     for point in body["total"][:3]:
-        assert point["count"] == _count(client, _and(body["total_population_q"], point["clauses"]), unit), point
+        assert point["count"] == _count(client, _and(body["totalPopulationQ"], point["clauses"]), unit), point
     for series in body["series"]:
         assert [p["year"] for p in series["points"]] == body["years"]
         for point in series["points"][:2]:
-            assert point["count"] == _count(client, _narrow(client, body["population_q"], point["clauses"]), unit)
+            assert point["count"] == _count(client, _narrow(client, body["populationQ"], point["clauses"]), unit)
 
 
 @settings(max_examples=30)
@@ -168,38 +178,62 @@ def test_default_elements_contain_every_value_the_condition_names(
 
 
 @settings(max_examples=20)
-@given(conditions, st.sampled_from(["", "cancer", "c", "MONDO", "liver", "dex", "CVCL:0031"]), st.sampled_from(UNITS))
+@given(
+    conditions,
+    st.sampled_from(["", "cancer", "c", "MONDO", "liver", "dex", "CVCL:0031"]),
+    st.sampled_from(UNITS),
+    st.booleans(),
+)
 def test_term_hits_match_record_counts_in_the_population_of_their_field(
-    client: TestClient, ast: Node | None, query: str, unit: str
+    client: TestClient, ast: Node | None, query: str, unit: str, excl: bool
 ) -> None:
-    body = client.get("/api/terms", params={"query": query, "q": _q(ast) or "", "unit": unit, "limit": 6}).json()
+    flag = str(excl).lower()
+    body = client.get(
+        "/api/terms", params={"query": query, "q": _q(ast) or "", "unit": unit, "limit": 6, "facetSelfExclude": flag}
+    ).json()
     for hit in body["terms"]:
         single = client.get(
-            "/api/terms", params={"field": hit["field"], "query": hit["term_id"], "q": _q(ast) or "", "unit": unit}
+            "/api/terms",
+            params={
+                "field": hit["field"],
+                "query": hit["termId"],
+                "q": _q(ast) or "",
+                "unit": unit,
+                "facetSelfExclude": flag,
+            },
         ).json()
-        assert hit["count"] == _count(client, _and(single["population_q"], hit["clauses"]), unit), hit
+        assert hit["count"] == _count(client, _and(single["populationQ"], hit["clauses"]), unit), hit
 
 
 @settings(max_examples=20)
-@given(conditions, st.sampled_from(UNITS))
-def test_status_group_matches_the_union_of_its_statuses(client: TestClient, ast: Node | None, unit: str) -> None:
+@given(conditions, st.sampled_from(UNITS), st.booleans())
+def test_status_group_matches_the_union_of_its_statuses(
+    client: TestClient, ast: Node | None, unit: str, excl: bool
+) -> None:
     grouped = client.get(
-        "/api/distribution", params={"field": "disease_status", "unit": unit, "q": _q(ast) or ""}
+        "/api/distribution",
+        params={"field": "disease_status", "unit": unit, "q": _q(ast) or "", "facetSelfExclude": str(excl).lower()},
     ).json()
     for element in grouped["elements"]:
-        assert element["count"] == _count(client, _and(grouped["population_q"], element["clauses"]), unit)
+        assert element["count"] == _count(client, _and(grouped["populationQ"], element["clauses"]), unit)
 
 
 @settings(max_examples=20)
-@given(conditions, st.sampled_from(["disease", "tissue", "drug"]))
-def test_term_count_equals_the_count_of_its_descendant_terms(client: TestClient, ast: Node | None, field: str) -> None:
-    body = client.get("/api/distribution", params={"field": field, "q": _q(ast) or "", "limit": 3}).json()
+@given(conditions, st.sampled_from(["disease", "tissue", "drug"]), st.booleans())
+def test_term_count_equals_the_count_of_its_descendant_terms(
+    client: TestClient, ast: Node | None, field: str, excl: bool
+) -> None:
+    flag = str(excl).lower()
+    body = client.get(
+        "/api/distribution", params={"field": field, "q": _q(ast) or "", "limit": 3, "facetSelfExclude": flag}
+    ).json()
     for element in body["elements"]:
         children = client.get(
-            "/api/terms/children", params={"field": field, "term_id": element["value"], "q": _q(ast) or ""}
+            "/api/terms/children",
+            params={"field": field, "termId": element["value"], "q": _q(ast) or "", "facetSelfExclude": flag},
         ).json()
         alternatives = " OR ".join(f'{field}:"{c["value"]}"' for c in [element, *children["children"]])
-        q = f"({alternatives})" if body["population_q"] is None else f"({body['population_q']}) AND ({alternatives})"
+        q = f"({alternatives})" if body["populationQ"] is None else f"({body['populationQ']}) AND ({alternatives})"
         assert element["count"] == _count(client, q, "biosample")
 
 
@@ -211,8 +245,8 @@ def test_select_twice_restores_the_condition(client: TestClient, ast: Node | Non
         payload.update({"from": clause.value.from_, "to": clause.value.to})
     else:
         payload["value"] = clause.value
-    once = client.post("/api/dsl/select", json={"q": _q(ast), "clauses": [payload]}).json()["q"]
-    twice = client.post("/api/dsl/select", json={"q": once, "clauses": [payload]}).json()["q"]
+    once = client.post("/api/dsl/select", json={"q": _q(ast), "clauses": [payload]}).json()["dsl"]
+    twice = client.post("/api/dsl/select", json={"q": once, "clauses": [payload]}).json()["dsl"]
     assert _leaves(client, twice) == _leaves(client, _q(ast))
 
 
@@ -238,5 +272,5 @@ def test_parse_serialize_round_trip_through_the_api(client: TestClient, ast: Nod
         return
     parsed = client.get("/api/dsl/parse", params={"q": _q(ast)}).json()
     serialized = client.post("/api/dsl/serialize", json={"ast": parsed["ast"]}).json()
-    assert serialized["q"] == parsed["q"]
-    assert client.get("/api/dsl/parse", params={"q": serialized["q"]}).json()["ast"] == parsed["ast"]
+    assert serialized["dsl"] == parsed["q"]
+    assert client.get("/api/dsl/parse", params={"q": serialized["dsl"]}).json()["ast"] == parsed["ast"]

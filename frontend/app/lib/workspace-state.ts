@@ -1,4 +1,4 @@
-import type { RecordUnit, Unit } from "./api/types"
+import type { EntryType, Unit } from "./api/types"
 
 export const TABS = ["samples", "distribution", "heatmap", "trend", "projects"] as const
 export type Tab = (typeof TABS)[number]
@@ -11,7 +11,7 @@ export type WorkspaceState = {
   tab: Tab
   unit: Unit
   selfExclusion: boolean
-  rows: RecordUnit
+  rows: EntryType
   page: number
   row: string
   col: string
@@ -42,7 +42,7 @@ export const DEFAULTS: WorkspaceState = {
   expanded: [],
 }
 
-const UNITS: readonly Unit[] = ["biosample", "experiment", "bioproject"]
+const UNITS: readonly Unit[] = ["biosample", "sra-experiment", "bioproject"]
 
 const list = (value: string | null): string[] | null =>
   value === null ? null : value.split(",").map((s) => s.trim()).filter(Boolean)
@@ -56,7 +56,7 @@ export const readState = (params: URLSearchParams): WorkspaceState => {
     tab: TABS.includes(tab as Tab) ? (tab as Tab) : DEFAULTS.tab,
     unit: UNITS.includes(unit as Unit) ? (unit as Unit) : DEFAULTS.unit,
     selfExclusion: params.get("se") !== "0",
-    rows: params.get("rows") === "experiment" ? "experiment" : "biosample",
+    rows: params.get("rows") === "sra-experiment" ? "sra-experiment" : "biosample",
     page: Number.isInteger(page) && page >= 1 ? page : 1,
     row: params.get("row") ?? DEFAULTS.row,
     col: params.get("col") ?? DEFAULTS.col,

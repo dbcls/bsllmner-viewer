@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 
-import { apiUrl } from "~/lib/api/client"
+import { apiUrl, exportAccessionsUrl, exportEntriesUrl } from "~/lib/api/client"
 import { copyText } from "~/lib/export"
 import { formatCount } from "~/lib/format"
 import { DownloadLink, LinkButton, Modal } from "~/ui"
@@ -14,11 +14,11 @@ type ExportMenuProps = {
   totalRecords: number | undefined
 }
 
-const ACCESSION_KINDS = [
-  { kind: "biosample", label: "BioSample", hint: "SAMN…" },
-  { kind: "experiment", label: "Experiment", hint: "SRX…" },
-  { kind: "run", label: "Run", hint: "SRR…" },
-  { kind: "bioproject", label: "BioProject", hint: "PRJ…" },
+const ACCESSION_TYPES = [
+  { type: "biosample", label: "BioSample", hint: "SAMN…" },
+  { type: "sra-experiment", label: "SRA Experiment", hint: "SRX…" },
+  { type: "sra-run", label: "Run", hint: "SRR…" },
+  { type: "bioproject", label: "BioProject", hint: "PRJ…" },
 ] as const
 
 /** The outputs of the condition: record exports and accession lists. */
@@ -47,18 +47,18 @@ export const ExportMenu = ({ open, onClose, q, totalRecords }: ExportMenuProps) 
       className="absolute top-9 right-13 z-popover w-menu rounded-card border border-border-soft bg-surface p-2 text-fs-body-sm shadow-modal"
     >
       <div className="px-2 pt-1.5 pb-1 text-fs-label font-semibold text-ink-soft">Records (all annotation fields)</div>
-      <DownloadLink role="menuitem" className={item} href={apiUrl("/api/export/records", { q: q ?? undefined, format: "tsv" })}>
+      <DownloadLink role="menuitem" className={item} href={exportEntriesUrl("biosample", q, "tsv")}>
         <span>Records · TSV</span>
         <span className="font-mono text-fs-label text-ink-soft">{totalRecords === undefined ? "" : `${formatCount(totalRecords)} rows`}</span>
       </DownloadLink>
-      <DownloadLink role="menuitem" className={item} href={apiUrl("/api/export/records", { q: q ?? undefined, format: "json" })}>
+      <DownloadLink role="menuitem" className={item} href={exportEntriesUrl("biosample", q, "ndjson")}>
         <span>Records · JSON lines</span>
       </DownloadLink>
       <div className="mt-1 border-t border-brand-soft px-2 pt-2.5 pb-1 text-fs-label font-semibold text-ink-soft">
         Accession lists (one per line)
       </div>
-      {ACCESSION_KINDS.map(({ kind, label, hint }) => (
-        <DownloadLink key={kind} role="menuitem" className={item} href={apiUrl("/api/export/accessions", { q: q ?? undefined, kind })}>
+      {ACCESSION_TYPES.map(({ type, label, hint }) => (
+        <DownloadLink key={type} role="menuitem" className={item} href={exportAccessionsUrl(type, q)}>
           <span>{label}</span>
           <span className="font-mono text-fs-label text-ink-soft">{hint}</span>
         </DownloadLink>
@@ -85,26 +85,26 @@ const TAB_LABELS: Record<WorkspaceState["tab"], string> = {
 /** The api request that returns the current view. */
 export const apiRequestFor = (state: WorkspaceState): string => {
   const q = state.q ?? undefined
-  const se = state.selfExclusion ? undefined : "false"
+  const facetSelfExclude = state.selfExclusion ? "true" : undefined
   switch (state.tab) {
     case "samples":
-      return apiUrl("/api/records", { q, unit: state.rows, page: state.page, per_page: 25 })
+      return apiUrl(`/api/entries/${state.rows}`, { q, page: state.page, perPage: 25 })
     case "distribution":
-      return apiUrl("/api/distribution", { q, field: "disease", unit: state.unit, self_exclusion: se })
+      return apiUrl("/api/distribution", { q, field: "disease", unit: state.unit, facetSelfExclude })
     case "heatmap":
       return apiUrl("/api/crosstab", {
         q,
         row: state.row,
         col: state.col,
         unit: state.unit,
-        self_exclusion: se,
-        row_elements: state.rowTerms?.join(","),
-        col_elements: state.colTerms?.join(","),
+        facetSelfExclude,
+        rowElements: state.rowTerms?.join(","),
+        colElements: state.colTerms?.join(","),
       })
     case "trend":
-      return apiUrl("/api/trend", { q, field: state.trendField ?? undefined, unit: state.unit, self_exclusion: se, elements: state.trendTerms?.join(",") })
+      return apiUrl("/api/trend", { q, field: state.trendField ?? undefined, unit: state.unit, facetSelfExclude, elements: state.trendTerms?.join(",") })
     case "projects":
-      return apiUrl("/api/projects", { q, self_exclusion: se, sort: "biosample", page: state.page, per_page: 25, composition_fields: "disease,cell_line,tissue" })
+      return apiUrl("/api/projects", { q, facetSelfExclude, sort: "biosampleCount:desc", page: state.page, perPage: 25, compositionFields: "disease,cell_line,tissue" })
   }
 }
 
@@ -154,7 +154,7 @@ export const ApiModal = ({ open, onClose, state, onToast }: ApiModalProps) => {
       </div>
       <div className="flex justify-between border-t border-border-soft px-4.5 py-2.5 text-fs-label text-ink-soft">
         <span>
-          Pin <span className="font-mono">dataset_version</span> in scripts; counts change with each build.
+          Pin <span className="font-mono">datasetVersion</span> in scripts; counts change with each build.
         </span>
         <LinkButton
           onClick={async () => {
