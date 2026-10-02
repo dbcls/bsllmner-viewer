@@ -1,11 +1,12 @@
 import { useDataset, useDistribution, useTermChildren } from "~/lib/api/queries"
-import type { Element, TermElement } from "~/lib/api/types"
+import type { DatasetResponse, Element, TermElement } from "~/lib/api/types"
 import { downloadPngMarkup, downloadSvgMarkup, downloadTsv } from "~/lib/export"
 import { formatCount } from "~/lib/format"
 import { fieldLabel, ontologyLabel, unitLabel } from "~/lib/labels"
-import { Card, Clickable, cn, LinkButton, Tag } from "~/ui"
+import { Card, Clickable, cn, LinkButton, Skeleton, Tag } from "~/ui"
 
 import { clausesOfField } from "../ast"
+import { expectedElements } from "../expected-elements"
 import type { WorkspaceState } from "../state"
 import type { Condition } from "../use-condition"
 import { type BarDatum, barsSvg } from "./bars-svg"
@@ -23,6 +24,9 @@ const FIELD_ORDER = [
   "overexpressed_gene",
 ]
 const EXTRA_DIMENSIONS = ["library_strategy", "organism_id", "date_created"]
+const LIMIT = 10
+/** The annotation cards drawn as skeletons before the description of the dataset arrives, on the first visit only. */
+const FIELD_CARDS = 6
 
 type DistributionTabProps = {
   state: WorkspaceState
@@ -56,12 +60,21 @@ export const DistributionTab = ({ state, condition, onExpandedStatus, onExpanded
         </Card>
       </div>
       <div className="grid grid-cols-3 gap-4">
+        {dataset.data === undefined &&
+          Array.from({ length: FIELD_CARDS }, (_, index) => (
+            <Card key={index} padding="sm">
+              <Skeleton className="w-32" />
+              <SkeletonStatus />
+              <SkeletonBars count={LIMIT} />
+            </Card>
+          ))}
         {[...ordered, ...EXTRA_DIMENSIONS].map((field) => (
           <DistributionCard
             key={field}
             field={field}
             isAnnotation={names.has(field)}
             ontology={ontologies.get(field) ?? extraOntology(field)}
+            dataset={dataset.data}
             state={state}
             condition={condition}
             onExpandedStatus={onExpandedStatus}
@@ -83,6 +96,7 @@ type CardProps = {
   field: string
   isAnnotation: boolean
   ontology: string
+  dataset: DatasetResponse | undefined
   state: WorkspaceState
   condition: Condition
   onExpandedStatus: () => void
@@ -91,13 +105,13 @@ type CardProps = {
 
 const isTermElement = (element: Element | TermElement): element is TermElement => "hasChildren" in element
 
-const DistributionCard = ({ field, isAnnotation, ontology, state, condition, onExpandedStatus, onExpanded }: CardProps) => {
+const DistributionCard = ({ field, isAnnotation, ontology, dataset, state, condition, onExpandedStatus, onExpanded }: CardProps) => {
   const distribution = useDistribution({
     field,
     q: state.q,
     unit: state.unit,
     selfExclusion: state.selfExclusion,
-    limit: 10,
+    limit: LIMIT,
     expandedStatus: state.expandedStatus,
   })
   const ownCondition = clausesOfField(condition.ast, field).length > 0
@@ -130,7 +144,7 @@ const DistributionCard = ({ field, isAnnotation, ontology, state, condition, onE
   }
 
   return (
-    <Card padding="sm">
+    <Card padding="sm" busy={distribution.isPlaceholderData}>
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <span className="font-semibold">{fieldLabel(field)}</span>
@@ -154,7 +168,9 @@ const DistributionCard = ({ field, isAnnotation, ontology, state, condition, onE
         </div>
       </div>
       {isAnnotation && data?.status && <StatusBar status={data.status} expanded={state.expandedStatus} onToggleExpanded={onExpandedStatus} />}
+      {isAnnotation && data === undefined && <SkeletonStatus />}
       <div className={cn("flex-1", !isAnnotation && "mt-2")}>
+        {data === undefined && <SkeletonBars count={expectedElements(field, dataset, LIMIT)} />}
         {elements.map((element) => (
           <ElementRows
             key={element.value}
@@ -175,6 +191,35 @@ const DistributionCard = ({ field, isAnnotation, ontology, state, condition, onE
     </Card>
   )
 }
+
+/** The status composition of a field before it arrives: the thin bar and one line of its legend. */
+const SkeletonStatus = () => (
+  <div aria-hidden="true">
+    <Skeleton kind="block" className="mt-2 mb-1 h-1.5 w-full" />
+    <div className="mb-2 text-fs-micro">
+      <Skeleton className="w-3/4" />
+    </div>
+  </div>
+)
+
+/** Skeleton bars, each as tall as an element row: its label, its bar, and its count. */
+const SkeletonBars = ({ count }: { count: number }) => (
+  <div aria-busy="true">
+    {Array.from({ length: count }, (_, index) => (
+      <div key={index} className="flex items-center gap-2 px-0.5 py-0.5">
+        <span className="min-w-0 flex-1">
+          <span className="block text-fs-body-sm">
+            <Skeleton className="w-1/2" />
+          </span>
+          <Skeleton kind="block" className="mt-0.5 h-2 w-full" />
+        </span>
+        <span className="flex w-17 shrink-0 justify-end text-fs-label">
+          <Skeleton className="w-12" />
+        </span>
+      </div>
+    ))}
+  </div>
+)
 
 type ElementRowsProps = {
   field: string

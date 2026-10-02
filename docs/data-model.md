@@ -23,8 +23,8 @@ A BioSample analyzed by a run but linked to no experiment of a target assay is k
 
 | Entity | Attributes | Relationships |
 |---|---|---|
-| BioSample | Accession, organism, title, creation date, original attributes | N:M with SRA Experiment, N:M with BioProject |
-| SRA Experiment | Accession, `library_strategy` | 1:N with SRA Run |
+| BioSample | Accession, organism, title, creation date, original attributes | 1:N with SRA Experiment, N:M with BioProject |
+| SRA Experiment | Accession, `library_strategy` | N:1 with BioSample, 1:N with SRA Run |
 | SRA Run | Accession | N:1 with SRA Experiment |
 | BioProject | Accession, title | N:M with BioSample |
 | Annotation | Field, extracted value, status, term | N:1 with BioSample |

@@ -7,10 +7,12 @@ type TagProps = {
   kind?: "neutral" | "warn" | "brand"
   mono?: boolean
   title?: string
+  /** The color class of a dot before the text, which tells apart values of one kind, such as assays. */
+  dot?: string
 }
 
 /** A small inline label: assays in tables, notes such as "Not filtered by Disease". */
-export const Tag = ({ children, kind = "neutral", mono, title }: TagProps) => (
+export const Tag = ({ children, kind = "neutral", mono, title, dot }: TagProps) => (
   <span
     title={title}
     className={cn(
@@ -21,6 +23,7 @@ export const Tag = ({ children, kind = "neutral", mono, title }: TagProps) => (
       mono && "font-mono",
     )}
   >
+    {dot && <span aria-hidden="true" className={cn("mr-1.5 inline-block size-1.75 rounded-full align-px", dot)} />}
     {children}
   </span>
 )

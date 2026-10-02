@@ -35,7 +35,7 @@ TITLE_ATTRIBUTE = "title"
     operation_id="listEntries",
     responses=NOT_FOUND_RESPONSE,
     response_model=EntriesResponse,
-    summary="BioSample or SRA experiment entries that match the condition",
+    summary="BioSample entries that match the condition",
 )
 def list_entries(
     store: StoreDep,
@@ -47,8 +47,8 @@ def list_entries(
     ast = parse_condition(store, q)
     pop = population(ast, store.field_set)
     with store.cursor() as cur:
-        total = rq.count_entries(cur, pop, type)
-        keys = rq.page_keys(cur, pop, type, page, per_page)
+        total = rq.count_entries(cur, pop)
+        keys = rq.page_keys(cur, pop, page, per_page)
         rows = rq.entry_rows(cur, pop, keys, tuple(f.name for f in store.fields))
     return EntriesResponse(
         dataset_version=version_ref(store),

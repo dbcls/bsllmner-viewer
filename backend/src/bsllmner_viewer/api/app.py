@@ -27,7 +27,7 @@ OPENAPI_TAGS: list[dict[str, str]] = [
         "and per year.",
     },
     {"name": "Condition", "description": "Conversion between condition strings and ASTs, and element selection."},
-    {"name": "Projects", "description": "BioProjects of the matching BioSamples with their annotation composition."},
+    {"name": "Projects", "description": "BioProjects of the matching BioSamples."},
     {"name": "Terms", "description": "Search and navigation of the ontology terms that annotate the BioSamples."},
     {"name": "Export", "description": "Matching entries and accessions as files."},
     {"name": "Dataset", "description": "Version information, fields, and population totals of the dataset."},

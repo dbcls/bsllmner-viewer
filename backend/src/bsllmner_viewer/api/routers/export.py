@@ -23,7 +23,6 @@ _BATCH = 1000
 TSV_COLUMNS = (
     "identifier",
     "type",
-    "biosample",
     "experiments",
     "title",
     "organismIdentifier",
@@ -96,7 +95,7 @@ def export_entries(
         with store.cursor() as cur:
             page = 1
             while True:
-                keys = rq.page_keys(cur, pop, type, page, _BATCH)
+                keys = rq.page_keys(cur, pop, page, _BATCH)
                 if not keys:
                     break
                 for item in rq.entry_rows(cur, pop, keys, fields):
@@ -106,7 +105,6 @@ def export_entries(
                         cells = [
                             item.identifier,
                             item.type,
-                            item.biosample,
                             ";".join(item.experiments),
                             item.title or "",
                             item.organism.identifier if item.organism else "",

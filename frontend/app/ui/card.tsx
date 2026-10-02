@@ -1,19 +1,24 @@
 import type { ComponentProps, ReactNode } from "react"
 
 import { cn } from "./cn"
+import { busyClass } from "./skeleton"
 
 type CardProps = Omit<ComponentProps<"div">, "className"> & {
   children: ReactNode
   /** `lg` is for a card that holds a whole part of a page; a heading in it can put its rule on the card's edge (`rule="edge"`). */
   padding?: "none" | "sm" | "md" | "lg"
   flush?: boolean
+  /** The card shows a previous result while the next one is on its way (`busyClass`). */
+  busy?: boolean
 }
 
-export const Card = ({ children, padding = "md", flush, ...rest }: CardProps) => (
+export const Card = ({ children, padding = "md", flush, busy = false, ...rest }: CardProps) => (
   <div
     {...rest}
+    aria-busy={busy || undefined}
     className={cn(
       "rounded-card border border-border-soft bg-surface shadow-card",
+      busyClass(busy),
       padding === "lg" && "p-6",
       padding === "md" && "px-4 py-3.5",
       padding === "sm" && "px-3.5 py-3",

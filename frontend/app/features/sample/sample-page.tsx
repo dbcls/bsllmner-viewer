@@ -2,10 +2,11 @@ import { useState } from "react"
 import { Link, useSearchParams } from "react-router"
 
 import { ApiError } from "~/lib/api/client"
-import { useEntry } from "~/lib/api/queries"
+import { useDataset, useEntry } from "~/lib/api/queries"
 import type { EntryResponse, Evidence } from "~/lib/api/types"
+import { assayDotClass } from "~/lib/assays"
 import { fieldLabel, statusInfo } from "~/lib/labels"
-import { Caption, Card, cn, ExternalLink, StatusPill, Tag } from "~/ui"
+import { Caption, Card, cn, ExternalLink, Skeleton, StatusPill, Tag } from "~/ui"
 
 import { evidenceContext, segmentText } from "./evidence"
 import { backHref, bioprojectHref, termHref } from "./links"
@@ -24,7 +25,13 @@ export const SamplePage = ({ accession }: SamplePageProps) => {
   const [searchParams] = useSearchParams()
   const from = searchParams.get("from")
   const entry = useEntry(accession)
+  const dataset = useDataset()
+  const targetAssays = dataset.data?.targetAssays ?? []
   const [highlighted, setHighlighted] = useState<string | null>(null)
+
+  if (!entry.data && !entry.isError) {
+    return <SampleSkeleton accession={accession} back={backHref(from)} annotationRows={dataset.data?.fields.length ?? SKELETON_ANNOTATIONS} />
+  }
 
   if (!entry.data) {
     const notFound = entry.error instanceof ApiError && entry.error.problem.status === 404
@@ -36,7 +43,7 @@ export const SamplePage = ({ accession }: SamplePageProps) => {
             <Caption>BioSample</Caption>
             <div className="mt-0.5 font-mono text-fs-h1 font-semibold tracking-h1 text-ink">{accession}</div>
             <div className="mt-1.5 text-fs-body-sm text-ink-soft">
-              {notFound ? `BioSample ${accession} is not in the dataset.` : entry.isError ? "Something went wrong loading this BioSample." : "Loading…"}
+              {notFound ? `BioSample ${accession} is not in the dataset.` : "Something went wrong loading this BioSample."}
             </div>
           </Card>
         </div>
@@ -45,7 +52,6 @@ export const SamplePage = ({ accession }: SamplePageProps) => {
   }
 
   const data = entry.data
-  const ncbi = data.identifier.startsWith("SAMN") || data.identifier.startsWith("SAME")
 
   return (
     <div className="mx-auto w-full max-w-content-max px-page-gutter py-4">
@@ -58,7 +64,7 @@ export const SamplePage = ({ accession }: SamplePageProps) => {
               <div className="mt-0.5 font-mono text-fs-h1 font-semibold tracking-h1 text-ink">{data.identifier}</div>
               {data.title && <div className="mt-1.5 text-fs-h2 text-ink">{data.title}</div>}
               <div className="mt-1.5 flex gap-3.5 text-fs-body-sm text-ink-soft">
-                {data.organism?.name && <span className="italic">{data.organism?.name}</span>}
+                {data.organism?.name && <span>{data.organism.name}</span>}
                 {data.dateCreated && (
                   <span>
                     Created <span className="font-mono">{data.dateCreated.slice(0, 10)}</span>
@@ -66,16 +72,7 @@ export const SamplePage = ({ accession }: SamplePageProps) => {
                 )}
               </div>
             </div>
-            <div className="flex shrink-0 gap-2">
-              <ExternalLink kind="button" href={`https://ddbj.nig.ac.jp/search/entry/biosample/${data.identifier}`}>
-                DDBJ Search
-              </ExternalLink>
-              {ncbi && (
-                <ExternalLink kind="button" href={`https://www.ncbi.nlm.nih.gov/biosample/${data.identifier}`}>
-                  NCBI BioSample
-                </ExternalLink>
-              )}
-            </div>
+            <EntryLinks accession={data.identifier} />
           </div>
         </Card>
       </div>
@@ -84,12 +81,75 @@ export const SamplePage = ({ accession }: SamplePageProps) => {
         <Annotations entry={data} highlighted={highlighted} onHighlight={setHighlighted} />
       </div>
       <div className="mt-4 grid grid-cols-[3fr_2fr] items-start gap-4">
-        <ExperimentsCard experiments={data.experiments} />
+        <ExperimentsCard experiments={data.experiments} targetAssays={targetAssays} />
         <BioProjectsCard bioprojects={data.bioprojects} />
       </div>
     </div>
   )
 }
+
+const EntryLinks = ({ accession }: { accession: string }) => (
+  <div className="flex shrink-0 gap-2">
+    <ExternalLink kind="button" href={`https://ddbj.nig.ac.jp/search/entry/biosample/${accession}`}>
+      DDBJ Search
+    </ExternalLink>
+    <ExternalLink kind="button" href={`https://www.ncbi.nlm.nih.gov/biosample/${accession}`}>
+      NCBI BioSample
+    </ExternalLink>
+  </div>
+)
+
+/** The annotation rows drawn before the description of the dataset arrives, on the first visit only. */
+const SKELETON_ANNOTATIONS = 6
+
+type SampleSkeletonProps = {
+  accession: string
+  back: string
+  annotationRows: number
+}
+
+/** The page before the BioSample arrives: what the accession alone gives, and every card with skeleton rows. */
+const SampleSkeleton = ({ accession, back, annotationRows }: SampleSkeletonProps) => (
+  <div aria-busy="true" className="mx-auto w-full max-w-content-max px-page-gutter py-4">
+    <BackLink href={back} />
+    <div className="mt-3 mb-4">
+      <Card>
+        <div className="flex items-start justify-between gap-6">
+          <div className="min-w-0 flex-1">
+            <Caption>BioSample</Caption>
+            <div className="mt-0.5 font-mono text-fs-h1 font-semibold tracking-h1 text-ink">{accession}</div>
+            <div className="mt-1.5 text-fs-h2">
+              <Skeleton className="w-96" />
+            </div>
+            <div className="mt-1.5 text-fs-body-sm">
+              <Skeleton className="w-56" />
+            </div>
+          </div>
+          <EntryLinks accession={accession} />
+        </div>
+      </Card>
+    </div>
+    <div className="grid grid-cols-[2fr_3fr] items-start gap-4">
+      <SkeletonCard title="Original attributes" rows={6} />
+      <SkeletonCard title="Annotations" rows={annotationRows} />
+    </div>
+    <div className="mt-4 grid grid-cols-[3fr_2fr] items-start gap-4">
+      <SkeletonCard title="SRA Experiments" rows={2} />
+      <SkeletonCard title="BioProject" rows={2} />
+    </div>
+  </div>
+)
+
+const SkeletonCard = ({ title, rows }: { title: string; rows: number }) => (
+  <Card>
+    <div className="mb-2 font-semibold">{title}</div>
+    {Array.from({ length: rows }, (_, index) => (
+      <div key={index} className="border-b border-brand-soft py-2 text-fs-body-sm">
+        <Skeleton className="w-3/4" />
+      </div>
+    ))}
+  </Card>
+)
 
 const BackLink = ({ href }: { href: string }) => (
   <Link to={href} className="text-fs-body-sm text-brand no-underline hover:text-brand-deep">
@@ -225,7 +285,7 @@ const AnnotationRow = ({
           </>
         )}
       </span>
-      <StatusPill status={annotation.status} glyph={info.glyph} label={info.label} />
+      <StatusPill status={annotation.status} label={info.label} />
       {annotation.evidence.length > 0 && (
         <div className="col-span-2 col-start-2 flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-fs-label text-ink-soft">
           <span className="text-fs-micro font-semibold">
@@ -247,7 +307,7 @@ const AnnotationRow = ({
   )
 }
 
-const ExperimentsCard = ({ experiments }: { experiments: EntryExperiment[] }) => (
+const ExperimentsCard = ({ experiments, targetAssays }: { experiments: EntryExperiment[]; targetAssays: readonly string[] }) => (
   <Card>
     <div className="mb-2 font-semibold">SRA Experiments</div>
     <table className="w-full border-collapse text-fs-body-sm">
@@ -277,7 +337,7 @@ const ExperimentsCard = ({ experiments }: { experiments: EntryExperiment[] }) =>
             <td className="border-b border-brand-soft px-2 py-1.5">
               {experiment.libraryStrategy &&
                 (experiment.inPopulation ? (
-                  <Tag>{experiment.libraryStrategy}</Tag>
+                  <Tag dot={assayDotClass(experiment.libraryStrategy, targetAssays)}>{experiment.libraryStrategy}</Tag>
                 ) : (
                   <span className="text-fs-label text-ink-soft">{experiment.libraryStrategy}</span>
                 ))}

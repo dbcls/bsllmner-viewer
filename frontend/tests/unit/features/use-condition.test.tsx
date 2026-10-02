@@ -10,6 +10,8 @@ type SelectBody = { q: string | null; clauses: Record<string, string>[]; mode: s
 const OLD_RANGE = { field: "date_created", from: "2015-01-01", to: "2016-12-31" }
 const NEW_RANGE = { field: "date_created", from: "2018-01-01", to: "2019-12-31" }
 const Q = "date_created:[2015-01-01 TO 2016-12-31]"
+const HUMAN = { field: "organism_id", value: "9606" }
+const HUMAN_Q = "organism_id:9606"
 
 const state = vi.hoisted(() => ({
   selects: [] as SelectBody[],
@@ -28,6 +30,10 @@ vi.mock("~/lib/api/client", async (importOriginal) => {
   }
   const POST = async (_path: string, init: { body: SelectBody }) => {
     state.selects.push(init.body)
+    if (init.body.clauses[0]?.["field"] === HUMAN.field) {
+      const ast = { field: HUMAN.field, op: "eq", value: HUMAN.value }
+      return { data: { dsl: HUMAN_Q, ast, labels: { "9606": "Homo sapiens" } }, response: new Response("{}") }
+    }
     const removed = init.body.clauses.some((c) => c["from"] === OLD_RANGE.from)
     const dsl = removed ? null : "date_created:[2018-01-01 TO 2019-12-31]"
     return { data: { dsl, ast: null, labels: {} }, response: new Response("{}") }
@@ -80,5 +86,27 @@ describe("useCondition replaceField", () => {
 
     expect(state.selects.map((s) => s.clauses)).toEqual([[NEW_RANGE]])
     expect(state.selects[0]?.q).toBe("organism_id:9606")
+  })
+})
+
+describe("useCondition toggle", () => {
+  it("shows the changed condition as soon as q changes, before a parse of the new q answers", async () => {
+    // One client for every render, so that the cache outlives the rerender.
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const own = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    let q: string | null = null
+    const update = vi.fn((patch: { q?: string | null }) => {
+      q = patch.q ?? null
+    })
+    const { result, rerender } = renderHook(() => useCondition(q, update), { wrapper: own })
+
+    await act(async () => {
+      await result.current.toggle([HUMAN])
+    })
+    rerender()
+
+    expect(q).toBe(HUMAN_Q)
+    expect(result.current.isSelected([HUMAN])).toBe(true)
+    expect(result.current.labels).toEqual({ "9606": "Homo sapiens" })
   })
 })

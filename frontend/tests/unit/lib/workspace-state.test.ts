@@ -3,22 +3,19 @@ import { describe, expect, it } from "vitest"
 import { DEFAULTS, readState, workspaceSearch, writeState } from "~/lib/workspace-state"
 
 describe("workspace state in the URL", () => {
-  it("writes the counting unit and the row type with the values of the api", () => {
-    const params = writeState({ ...DEFAULTS, unit: "sra-experiment", rows: "sra-experiment" })
+  it("writes the counting unit with the value of the api", () => {
+    const params = writeState({ ...DEFAULTS, unit: "sra-experiment" })
     expect(params.get("unit")).toBe("sra-experiment")
-    expect(params.get("rows")).toBe("sra-experiment")
   })
 
-  it("restores unit=sra-experiment and rows=sra-experiment from the URL", () => {
-    const state = readState(new URLSearchParams("unit=sra-experiment&rows=sra-experiment"))
+  it("restores unit=sra-experiment from the URL", () => {
+    const state = readState(new URLSearchParams("unit=sra-experiment"))
     expect(state.unit).toBe("sra-experiment")
-    expect(state.rows).toBe("sra-experiment")
   })
 
-  it("falls back to the defaults for the value experiment", () => {
-    const state = readState(new URLSearchParams("unit=experiment&rows=experiment"))
+  it("falls back to the default for the value experiment", () => {
+    const state = readState(new URLSearchParams("unit=experiment"))
     expect(state.unit).toBe(DEFAULTS.unit)
-    expect(state.rows).toBe(DEFAULTS.rows)
   })
 
   it("keeps the names of the parameters", () => {

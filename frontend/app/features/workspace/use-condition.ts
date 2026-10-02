@@ -1,8 +1,8 @@
 import { useQueryClient } from "@tanstack/react-query"
 import { useCallback } from "react"
 
-import { parsedConditionOptions, useParsedCondition, useSelectElement, useSetKeyword } from "~/lib/api/queries"
-import type { AstNode, Clause } from "~/lib/api/types"
+import { cacheParsedCondition, parsedConditionOptions, useParsedCondition, useSelectElement, useSetKeyword } from "~/lib/api/queries"
+import type { AstNode, Clause, ConditionResponse } from "~/lib/api/types"
 
 import { clausesOfField, hasClauses } from "./ast"
 import type { Patch } from "./state"
@@ -16,13 +16,22 @@ export const useCondition = (q: string | null, update: (patch: Patch) => void) =
   const ast = (parsed.data?.ast ?? null) as AstNode | null
   const labels = parsed.data?.labels ?? {}
 
+  /** Move to a changed condition, with its parse already known from the response that changed it. */
+  const apply = useCallback(
+    (result: ConditionResponse) => {
+      cacheParsedCondition(queryClient, result)
+      update({ q: result.dsl })
+    },
+    [queryClient, update],
+  )
+
   const toggle = useCallback(
     async (clauses: Clause[]) => {
       const result = await select.mutateAsync({ q, clauses })
-      update({ q: result.dsl })
+      apply(result)
       return result
     },
-    [q, select, update],
+    [q, select, apply],
   )
 
   /** Replace the clauses of a field with one clause. The AST is fetched for `q`, because the parsed condition of the hook can still be loading after `q` changed. */
@@ -34,10 +43,9 @@ export const useCondition = (q: string | null, update: (patch: Patch) => void) =
       if (present.length) {
         current = (await select.mutateAsync({ q: current, clauses: present })).dsl
       }
-      const result = await select.mutateAsync({ q: current, clauses: [clause] })
-      update({ q: result.dsl })
+      apply(await select.mutateAsync({ q: current, clauses: [clause] }))
     },
-    [q, queryClient, select, update],
+    [q, queryClient, select, apply],
   )
 
   /** The condition that matches what an element counts: the element's clauses added by AND to its population. */
@@ -49,10 +57,9 @@ export const useCondition = (q: string | null, update: (patch: Patch) => void) =
   /** Replace the keywords of the condition with the keywords of typed text. Empty text removes them. */
   const setKeyword = useCallback(
     async (text: string) => {
-      const result = await keyword.mutateAsync({ q, keyword: text })
-      update({ q: result.dsl })
+      apply(await keyword.mutateAsync({ q, keyword: text }))
     },
-    [q, keyword, update],
+    [q, keyword, apply],
   )
 
   const clear = useCallback(() => update({ q: null }), [update])
@@ -61,7 +68,7 @@ export const useCondition = (q: string | null, update: (patch: Patch) => void) =
 
   const isSelected = useCallback((clauses: Clause[]) => hasClauses(ast, clauses), [ast])
 
-  return { ast, labels, parseError: parsed.error, toggle, replaceField, setKeyword, narrowed, clear, applyText, isSelected, pending: select.isPending }
+  return { ast, labels, parsing: q !== null && parsed.isPending, parseError: parsed.error, toggle, replaceField, setKeyword, narrowed, clear, applyText, isSelected, pending: select.isPending }
 }
 
 export type Condition = ReturnType<typeof useCondition>

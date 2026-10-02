@@ -117,21 +117,34 @@ export const select = async (
 export const countOf = async (request: APIRequestContext, q: string, unit: Unit = "biosample"): Promise<number> =>
   (await distribution(request, "library_strategy", { q, unit, selfExclude: false, limit: 1 })).total
 
-/** BioProjects with 2 to 20 BioSamples, in the order of accession, for tests that need a small population. */
+/**
+ * BioProjects with 2 to 20 BioSamples, for tests that need a small population. Many BioProjects have a single BioSample,
+ * so a binary search finds the first page of the ascending BioSample order that reaches 2 BioSamples.
+ */
 export const smallProjects = async (request: APIRequestContext): Promise<Project[]> => {
-  const { items } = await get<{ items: Project[] }>(request, "/api/projects", { sort: "identifier:asc", perPage: 100 })
-  const small = items.filter((project) => project.biosampleCount >= 2 && project.biosampleCount <= 20)
-  if (small.length === 0) throw new Error("no BioProject with 2 to 20 BioSamples among the first 100 BioProjects")
+  const perPage = 100
+  const pageOf = async (page: number): Promise<Project[]> =>
+    (await get<{ items: Project[] }>(request, "/api/projects", { sort: "biosampleCount:asc", perPage, page })).items
+  const { pagination } = await get<{ pagination: { total: number } }>(request, "/api/projects", { perPage: 1 })
+  let low = 1
+  let high = Math.max(1, Math.ceil(pagination.total / perPage))
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2)
+    if (((await pageOf(middle)).at(-1)?.biosampleCount ?? 0) >= 2) high = middle
+    else low = middle + 1
+  }
+  const small = (await pageOf(low)).filter((project) => project.biosampleCount >= 2 && project.biosampleCount <= 20)
+  if (small.length === 0) throw new Error("no BioProject with 2 to 20 BioSamples")
   return small
 }
 
-export type EntryItem = { identifier: string; biosample: string; title: string | null }
+export type EntryItem = { identifier: string; title: string | null }
 
 export type EntryList = { pagination: { page: number; perPage: number; total: number }; items: EntryItem[] }
 
-/** One page of the entry list of a condition. The condition always narrows the list. */
-export const entries = (request: APIRequestContext, type: "biosample" | "sra-experiment", q: string, perPage = 20): Promise<EntryList> =>
-  get(request, `/api/entries/${type}`, { q, perPage })
+/** One page of the BioSample entries of a condition. The condition always narrows the list. */
+export const entries = (request: APIRequestContext, q: string, perPage = 20): Promise<EntryList> =>
+  get(request, "/api/entries/biosample", { q, perPage })
 
 export type Entry = {
   identifier: string
@@ -147,6 +160,6 @@ export type ProjectList = {
   items: { identifier: string; title: string | null; biosampleCount: number; experimentCount: number; clauses: Clause[] }[]
 }
 
-/** The projects as the Projects tab requests them: counted from the full condition. */
+/** The projects as the Projects tab requests them: counted from the condition without its BioProject clauses. */
 export const projects = (request: APIRequestContext, q: string | null, sort: string, perPage = 20, page = 1): Promise<ProjectList> =>
-  get(request, "/api/projects", { q, sort, perPage, page, compositionFields: "disease,cell_line,tissue" })
+  get(request, "/api/projects", { q, facetSelfExclude: true, sort, perPage, page })

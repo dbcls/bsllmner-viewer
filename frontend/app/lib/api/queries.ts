@@ -1,4 +1,4 @@
-import { queryOptions, useMutation, useQuery } from "@tanstack/react-query"
+import { type QueryClient, queryOptions, useMutation, useQuery } from "@tanstack/react-query"
 
 import { api, unwrap } from "./client"
 import type {
@@ -10,7 +10,6 @@ import type {
   DistributionResponse,
   EntriesResponse,
   EntryResponse,
-  EntryType,
   ParseResponse,
   ProjectSort,
   ProjectsResponse,
@@ -28,11 +27,47 @@ const defined = <T extends Record<string, unknown>>(params: T): { [K in keyof T]
     [K in keyof T]-?: Exclude<T[K], undefined>
   }
 
+/** Where the last description of the dataset is kept between visits. */
+export const DATASET_STORAGE_KEY = "bsllmner-viewer:dataset"
+
+const isDataset = (value: unknown): value is DatasetResponse =>
+  typeof value === "object" && value !== null && Array.isArray((value as DatasetResponse).fields) && Array.isArray((value as DatasetResponse).targetAssays)
+
+/** The description of the dataset from the last visit, or undefined when there is none or it cannot be read. */
+export const storedDataset = (): DatasetResponse | undefined => {
+  try {
+    const raw = globalThis.localStorage?.getItem(DATASET_STORAGE_KEY)
+    if (!raw) return undefined
+    const value: unknown = JSON.parse(raw)
+    return isDataset(value) ? value : undefined
+  } catch {
+    return undefined
+  }
+}
+
+const storeDataset = (dataset: DatasetResponse): void => {
+  try {
+    globalThis.localStorage?.setItem(DATASET_STORAGE_KEY, JSON.stringify(dataset))
+  } catch {
+    // A browser that refuses storage draws the fields once the description arrives.
+  }
+}
+
+/**
+ * The description of the dataset: its fields, target assays, and organisms. The description from the last visit is
+ * shown while the current one loads, so that the views draw their cards and rows from the first paint; the current one
+ * replaces it and is kept for the next visit.
+ */
 export const useDataset = () =>
   useQuery({
     queryKey: ["dataset"],
-    queryFn: async (): Promise<DatasetResponse> => unwrap(await api.GET("/api/dataset")),
+    queryFn: async (): Promise<DatasetResponse> => {
+      const dataset = unwrap(await api.GET("/api/dataset"))
+      storeDataset(dataset)
+      return dataset
+    },
     staleTime: Infinity,
+    placeholderData: storedDataset,
   })
 
 /** The parse of a condition. An operation that changes a condition fetches it with these options, so that it reads the AST of the condition it changes. */
@@ -44,6 +79,16 @@ export const parsedConditionOptions = (condition: string | null) =>
     staleTime: Infinity,
     retry: false,
   })
+
+/**
+ * Put the AST and the labels of a changed condition into the cache of its parse. The views then read the new condition as
+ * soon as it is in the URL, and no render shows the condition without its AST.
+ */
+export const cacheParsedCondition = (queryClient: QueryClient, result: ConditionResponse): void => {
+  if (result.dsl === null || result.ast === null) return
+  const parsed: ParseResponse = { datasetVersion: result.datasetVersion, q: result.dsl, ast: result.ast, labels: result.labels }
+  queryClient.setQueryData(parsedConditionOptions(result.dsl).queryKey, parsed)
+}
 
 export const useParsedCondition = (condition: string | null) => useQuery(parsedConditionOptions(condition))
 
@@ -172,7 +217,6 @@ export type ProjectsParams = {
   sort: ProjectSort
   page: number
   perPage: number
-  compositionFields: string
 }
 
 export const useProjects = (params: ProjectsParams, enabled = true) =>
@@ -188,7 +232,6 @@ export const useProjects = (params: ProjectsParams, enabled = true) =>
               sort: params.sort,
               page: params.page,
               perPage: params.perPage,
-              compositionFields: params.compositionFields,
             }),
           },
         }),
@@ -199,7 +242,6 @@ export const useProjects = (params: ProjectsParams, enabled = true) =>
 
 export type EntriesParams = {
   q: string | null
-  type: EntryType
   page: number
   perPage: number
 }
@@ -211,7 +253,7 @@ export const useEntries = (params: EntriesParams, enabled = true) =>
       unwrap(
         await api.GET("/api/entries/{type}", {
           params: {
-            path: { type: params.type },
+            path: { type: "biosample" },
             query: defined({ q: q(params.q), page: params.page, perPage: params.perPage }),
           },
         }),

@@ -7,13 +7,11 @@ import { copyText } from "~/lib/export"
 import { fieldLabel } from "~/lib/labels"
 import { Toast } from "~/ui"
 
-import { leaves } from "./ast"
 import { ConditionBar } from "./condition-bar"
 import { ConditionPanel } from "./condition-panel"
 import { DistributionTab } from "./distribution/distribution-tab"
 import { type AxisSide, HeatmapTab } from "./heatmap/heatmap-tab"
 import { ApiModal, ExportMenu } from "./overlays"
-import { compositionFields } from "./projects/composition"
 import { ProjectsTab } from "./projects/projects-tab"
 import { SamplesTab } from "./samples/samples-tab"
 import { useWorkspaceState } from "./state"
@@ -35,7 +33,7 @@ export const WorkspacePage = () => {
   const [apiOpen, setApiOpen] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const entries = useEntries({ q: state.q, type: "biosample", page: 1, perPage: 1 })
+  const entries = useEntries({ q: state.q, page: 1, perPage: 1 })
   const axisElements = useRef<Record<AxisSide, string[]>>({ row: [], col: [] })
   const onAxisElements = useCallback((side: AxisSide, values: string[]) => {
     axisElements.current[side] = values
@@ -98,7 +96,7 @@ export const WorkspacePage = () => {
           <Tabs state={state} onUnit={(unit) => update({ unit })} onSelfExclusion={() => update({ selfExclusion: !state.selfExclusion })} />
           <div className="px-workspace-gutter pt-4">
             {state.tab === "samples" && (
-              <SamplesTab state={state} onRows={(rows) => update({ rows, page: 1 })} onPage={(page) => update({ page })} search={location.search} />
+              <SamplesTab state={state} onPage={(page) => update({ page })} search={location.search} />
             )}
             {state.tab === "distribution" && (
               <DistributionTab
@@ -143,7 +141,6 @@ export const WorkspacePage = () => {
         open={apiOpen}
         onClose={() => setApiOpen(false)}
         state={state}
-        compositionFields={compositionFields(leaves(condition.ast).map((leaf) => leaf.field), new Set(fields))}
         onToast={showToast}
       />
       <Toast message={toast} />

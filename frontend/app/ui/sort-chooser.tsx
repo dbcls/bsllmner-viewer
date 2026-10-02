@@ -1,4 +1,5 @@
 import { ACTION_ICON, Icon } from "./icons"
+import { InlineLabel } from "./inline-label"
 import { Select } from "./select"
 
 export type SortDirection = "asc" | "desc"
@@ -23,7 +24,7 @@ export const SortChooser = ({ keys, value, direction, onChange }: SortChooserPro
   const action = reversed === "asc" ? "Sort ascending" : "Sort descending"
   return (
     <span className="inline-flex items-center gap-1.5 text-fs-label text-ink-soft">
-      Sort by
+      <InlineLabel>Sort by</InlineLabel>
       <span className="inline-flex">
         <Select
           size="sm"

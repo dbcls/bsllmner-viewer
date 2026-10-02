@@ -2,7 +2,7 @@ import { useState } from "react"
 
 import type { Element, TermElement } from "~/lib/api/types"
 import { fieldLabel } from "~/lib/labels"
-import { Button, Card, Chip, Clickable, LinkButton, Select, TextArea } from "~/ui"
+import { Button, Card, Chip, Clickable, LinkButton, Select, Skeleton, TextArea } from "~/ui"
 
 export type AxisSide = "row" | "col"
 
@@ -11,6 +11,10 @@ type AxisCardProps = {
   dimension: string
   dimensions: { value: string; label: string }[]
   elements: (Element | TermElement)[]
+  /** The number of elements on their way, while the cross-tabulation loads for the first time; null once they are known. */
+  pending: number | null
+  /** A previous cross-tabulation is shown while the next one loads. */
+  busy: boolean
   explicit: boolean
   expanded: Set<string>
   depthOf: (value: string) => number
@@ -28,6 +32,8 @@ export const AxisCard = ({
   dimension,
   dimensions,
   elements,
+  pending,
+  busy,
   explicit,
   expanded,
   depthOf,
@@ -41,13 +47,19 @@ export const AxisCard = ({
   const [pasteOpen, setPasteOpen] = useState(false)
   const [pasteText, setPasteText] = useState("")
   return (
-    <Card padding="sm">
+    <Card padding="sm" busy={busy}>
       <div className="flex flex-wrap items-center gap-2">
         <span className="w-16 text-fs-body-sm font-semibold text-ink">{side === "row" ? "Rows" : "Columns"}</span>
         <Select options={dimensions} value={dimension} onChange={onDimension} aria-label={`${side === "row" ? "Row" : "Column"} dimension`} />
         <span className="text-fs-label text-ink-soft">
-          {elements.length} {elements.length === 1 ? "term" : "terms"}
-          {!explicit && " (top 10)"}
+          {pending === null ? (
+            <>
+              {elements.length} {elements.length === 1 ? "term" : "terms"}
+              {!explicit && " (top 10)"}
+            </>
+          ) : (
+            <Skeleton className="w-20" />
+          )}
         </span>
         <span className="flex-1" />
         <LinkButton onClick={onAdd}>+ Add term</LinkButton>
@@ -57,6 +69,7 @@ export const AxisCard = ({
         </LinkButton>
       </div>
       <div className="mt-2 flex flex-wrap gap-1">
+        {pending !== null && Array.from({ length: pending }, (_, index) => <Skeleton key={index} kind="block" className="h-5 w-20" />)}
         {elements.map((element) => (
           <span key={element.value} style={{ marginLeft: depthOf(element.value) * 12 }}>
             <Chip

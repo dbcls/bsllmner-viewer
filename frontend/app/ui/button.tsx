@@ -3,8 +3,8 @@ import type { ButtonHTMLAttributes, ReactNode } from "react"
 import { cn } from "./cn"
 import { Icon, type IconName } from "./icons"
 
-type ButtonKind = "primary" | "secondary" | "ghost" | "inverse"
-type ButtonSize = "xs" | "sm" | "md"
+type ButtonKind = "primary" | "secondary" | "quiet" | "ghost" | "inverse"
+type ButtonSize = "2xs" | "xs" | "sm" | "md"
 
 type ButtonProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "className"> & {
   kind?: ButtonKind
@@ -19,14 +19,18 @@ type ButtonProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "className"> & 
 }
 
 const kindClass: Record<ButtonKind, string> = {
-  primary: "bg-brand text-white border border-transparent hover:bg-brand-deep",
-  secondary: "bg-surface text-ink border border-border-soft hover:bg-brand-soft",
-  ghost: "bg-transparent text-brand-deep border border-transparent hover:bg-brand-soft",
-  inverse: "bg-ink text-brand-soft border border-ink-mid hover:bg-ink-mid",
+  primary: "font-semibold bg-brand text-white border border-transparent hover:bg-brand-deep",
+  secondary: "font-semibold bg-surface text-ink border border-border-soft hover:bg-brand-soft",
+  /** An action repeated on every row of a table: lighter than `secondary`, so that a column of them does not outweigh the data. */
+  quiet: "font-medium bg-surface text-ink-mid border border-border-soft hover:bg-brand-soft hover:text-ink",
+  ghost: "font-semibold bg-transparent text-brand-deep border border-transparent hover:bg-brand-soft",
+  inverse: "font-semibold bg-ink text-brand-soft border border-ink-mid hover:bg-ink-mid",
 }
 
 /** A whole-pixel height, so buttons stacked in a column sit on whole pixels and their text renders alike. */
 const sizeClass: Record<ButtonSize, string> = {
+  /** No taller than a line of table text, so that a row with a button is as tall as a row without one. */
+  "2xs": "h-5 px-2 text-fs-label",
   xs: "h-6 px-2.5 text-fs-body-sm",
   sm: "h-7 px-3 text-fs-body-sm",
   md: "h-8 px-4 text-fs-body",
@@ -38,7 +42,7 @@ const sizeClass: Record<ButtonSize, string> = {
  */
 export const buttonClass = (kind: ButtonKind, size: ButtonSize, block = false): string =>
   cn(
-    "inline-flex shrink-0 items-center gap-1.5 rounded-button font-sans font-semibold leading-none whitespace-nowrap cursor-pointer",
+    "inline-flex shrink-0 items-center gap-1.5 rounded-button font-sans leading-none whitespace-nowrap cursor-pointer",
     block ? "w-full justify-start" : "justify-center",
     kindClass[kind],
     sizeClass[size],

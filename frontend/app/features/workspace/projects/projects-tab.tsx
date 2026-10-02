@@ -1,42 +1,26 @@
 import type { ReactNode } from "react"
 
 import { useDataset, useProjects } from "~/lib/api/queries"
-import type { Composition, Project, ProjectSort } from "~/lib/api/types"
+import type { Project, ProjectSort } from "~/lib/api/types"
 import { formatCount } from "~/lib/format"
-import { fieldLabel } from "~/lib/labels"
 import { TABLE_PER_PAGE } from "~/lib/workspace-state"
-import { Card, CardFooter, CardHeader, cn, Pager, SortChooser, type SortDirection, type SortKey, Tag } from "~/ui"
+import { ACTION_ICON, Button, Card, CardFooter, CardHeader, cn, ExternalLink, Pager, SortChooser, type SortDirection, type SortKey } from "~/ui"
 
-import { leaves } from "../ast"
+import { AssayTags } from "../assay-tags"
+import { SkeletonTableRows } from "../skeleton-rows"
 import type { WorkspaceState } from "../state"
 import type { Condition } from "../use-condition"
 import { useTableTop } from "../use-table-top"
-import { compositionFields, compositionSegments, compositionSummary } from "./composition"
 
-type ProjectSortKey = "biosampleCount" | "experimentCount" | "identifier"
+type ProjectSortKey = "biosampleCount" | "experimentCount"
 
 const SORT_KEYS: (SortKey & { value: ProjectSortKey })[] = [
   { value: "biosampleCount", label: "BioSamples", direction: "desc" },
   { value: "experimentCount", label: "SRA Experiments", direction: "desc" },
-  { value: "identifier", label: "Accession", direction: "asc" },
 ]
 
 const projectSort = (key: string, direction: SortDirection): ProjectSort =>
   `${SORT_KEYS.find((option) => option.value === key)?.value ?? "biosampleCount"}:${direction}`
-
-const SEGMENT_COLOR: Record<string, string> = {
-  term: "bg-brand",
-  other: "bg-brand-light",
-  unmapped: "bg-unmapped-light",
-  no_value: "bg-border-soft",
-}
-
-const LEGEND: { color: string; label: string }[] = [
-  { color: "bg-brand", label: "most frequent term" },
-  { color: "bg-brand-light", label: "other terms" },
-  { color: "bg-unmapped-light", label: "unmapped" },
-  { color: "bg-border-soft", label: "no value" },
-]
 
 type ProjectsTabProps = {
   state: WorkspaceState
@@ -46,44 +30,21 @@ type ProjectsTabProps = {
 }
 
 /**
- * The BioProjects of the entries that match the full condition, with a composition summary of up to 3 annotation fields
- * per project.
+ * The BioProjects of the entries that match the condition without its BioProject clauses, so that the BioProjects added to
+ * the condition stay among the others.
  */
 export const ProjectsTab = ({ state, condition, onPage, onSort }: ProjectsTabProps) => {
   const table = useTableTop(onPage)
-  const dataset = useDataset()
-  const annotationFields = new Set((dataset.data?.fields ?? []).map((field) => field.name))
-  const requested = compositionFields(leaves(condition.ast).map((leaf) => leaf.field), annotationFields)
-  const projects = useProjects({
-    q: state.q,
-    selfExclusion: false,
-    sort: state.sort,
-    page: state.page,
-    perPage: TABLE_PER_PAGE,
-    compositionFields: requested.join(","),
-  })
-  const fields = projects.data?.compositionFields ?? requested
+  const projects = useProjects({ q: state.q, selfExclusion: true, sort: state.sort, page: state.page, perPage: TABLE_PER_PAGE })
+  const targetAssays = useDataset().data?.targetAssays ?? []
   const [sortKey = "biosampleCount", sortDirection = "desc"] = state.sort.split(":") as [ProjectSortKey, SortDirection]
   const total = projects.data?.pagination.total
 
   return (
-    <Card ref={table.ref} padding="none" flush>
+    <Card ref={table.ref} padding="none" flush busy={projects.isPlaceholderData}>
       <CardHeader>
-        <div className="flex min-w-0 grow basis-80 flex-col gap-1 text-fs-micro">
-          <span>Term composition shows how consistently the samples of a project were annotated. A thin slice may be a mapping error.</span>
-          <span>
-            Click a row to restrict the condition to that project. Composition:
-            {LEGEND.map((item, index) => (
-              <span key={item.label} className="ml-1.5 inline-flex items-center gap-1">
-                <span className={cn("inline-block h-2 w-2 rounded-badge", item.color)} />
-                {item.label}
-                {index < LEGEND.length - 1 ? " ·" : "."}
-              </span>
-            ))}
-          </span>
-        </div>
-        <SortChooser keys={SORT_KEYS} value={sortKey} direction={sortDirection} onChange={(key, direction) => onSort(projectSort(key, direction))} />
-        <div className="ml-auto">
+        <div className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-2">
+          <SortChooser keys={SORT_KEYS} value={sortKey} direction={sortDirection} onChange={(key, direction) => onSort(projectSort(key, direction))} />
           <Pager page={state.page} perPage={TABLE_PER_PAGE} total={total} onChange={onPage} />
         </div>
       </CardHeader>
@@ -96,16 +57,14 @@ export const ProjectsTab = ({ state, condition, onPage, onSort }: ProjectsTabPro
               <Th align="right">BioSamples</Th>
               <Th align="right">SRA Experiments</Th>
               <Th>Assay</Th>
-              {fields.map((field) => (
-                <Th key={field} minWidth>
-                  {fieldLabel(field)} composition
-                </Th>
-              ))}
+              <Th>Links</Th>
+              <Th>Condition</Th>
             </tr>
           </thead>
           <tbody>
+            {projects.data === undefined && <SkeletonTableRows columns={["w-24", "w-64", "w-12", "w-12", "w-16", "w-20", "w-16"]} />}
             {(projects.data?.items ?? []).map((project) => (
-              <ProjectRow key={project.identifier} project={project} condition={condition} fields={fields} />
+              <ProjectRow key={project.identifier} project={project} condition={condition} targetAssays={targetAssays} />
             ))}
           </tbody>
         </table>
@@ -119,12 +78,11 @@ export const ProjectsTab = ({ state, condition, onPage, onSort }: ProjectsTabPro
   )
 }
 
-const Th = ({ children, align = "left", minWidth = false }: { children: ReactNode; align?: "left" | "right"; minWidth?: boolean }) => (
+const Th = ({ children, align = "left" }: { children: ReactNode; align?: "left" | "right" }) => (
   <th
     className={cn(
       "border-b border-border-soft px-2.5 py-2 text-fs-label font-semibold whitespace-nowrap text-ink-soft",
       align === "right" ? "text-right" : "text-left",
-      minWidth && "min-w-40",
     )}
   >
     {children}
@@ -134,52 +92,53 @@ const Th = ({ children, align = "left", minWidth = false }: { children: ReactNod
 type ProjectRowProps = {
   project: Project
   condition: Condition
-  fields: string[]
+  targetAssays: readonly string[]
 }
 
-const ProjectRow = ({ project, condition, fields }: ProjectRowProps) => {
+const ProjectRow = ({ project, condition, targetAssays }: ProjectRowProps) => {
   const selected = condition.isSelected(project.clauses)
-  const compositionByField = new Map(project.composition.map((composition) => [composition.field, composition]))
   return (
-    <tr
-      onClick={() => void condition.toggle(project.clauses)}
-      className={cn("cursor-pointer border-b border-brand-soft hover:bg-brand-soft", selected && "bg-brand-soft")}
-    >
-      <td className="px-2.5 py-1.5 font-mono text-fs-label whitespace-nowrap text-brand">
-        {project.identifier}
-        {selected && <span className="ml-1.5 font-sans text-fs-micro font-semibold">✓</span>}
-      </td>
-      <td className="min-w-70 max-w-95 truncate px-2.5 py-1.5" title={project.title ?? ""}>
+    <tr className={cn("border-b border-brand-soft", selected && "bg-brand-soft")}>
+      <td className="px-2.5 py-1.5 font-mono text-fs-label whitespace-nowrap text-brand">{project.identifier}</td>
+      <td className="w-full max-w-0 truncate px-2.5 py-1.5" title={project.title ?? ""}>
         {project.title}
       </td>
       <td className="px-2.5 py-1.5 text-right font-mono text-fs-label">{formatCount(project.biosampleCount)}</td>
       <td className="px-2.5 py-1.5 text-right font-mono text-fs-label">{formatCount(project.experimentCount)}</td>
       <td className="px-2.5 py-1.5 whitespace-nowrap">
-        <span className="flex flex-wrap gap-1">
-          {project.assays.map((assay) => (
-            <Tag key={assay}>{assay}</Tag>
-          ))}
-        </span>
+        <AssayTags assays={project.assays} targetAssays={targetAssays} />
       </td>
-      {fields.map((field) => {
-        const composition = compositionByField.get(field)
-        return (
-          <td key={field} className="min-w-40 px-2.5 py-1.5">
-            {composition && <CompositionCell composition={composition} />}
-          </td>
-        )
-      })}
+      <td className="px-2.5 py-1.5 text-fs-label whitespace-nowrap">
+        <ProjectLinks identifier={project.identifier} />
+      </td>
+      <td className="px-2.5 py-1.5 whitespace-nowrap">
+        {/*
+          One width for both labels, so the columns do not move when a project is added or removed. The negative margin
+          keeps the button, a little taller than a line of text, from making the row taller than a row of the Samples table.
+        */}
+        <div className="-my-px flex w-22">
+          <ConditionButton project={project} selected={selected} onToggle={() => void condition.toggle(project.clauses)} />
+        </div>
+      </td>
     </tr>
   )
 }
 
-const CompositionCell = ({ composition }: { composition: Composition }) => (
-  <div>
-    <div className="flex h-2.5 w-composition gap-px overflow-hidden rounded-badge">
-      {compositionSegments(composition).map((segment) => (
-        <div key={segment.kind} className={cn("h-full", SEGMENT_COLOR[segment.kind])} style={{ width: `${segment.pct}%` }} title={segment.title} />
-      ))}
-    </div>
-    <div className="mt-0.5 truncate text-fs-micro text-ink-soft">{compositionSummary(composition)}</div>
-  </div>
+const ConditionButton = ({ project, selected, onToggle }: { project: Project; selected: boolean; onToggle: () => void }) =>
+  selected ? (
+    <Button kind="quiet" size="2xs" block icon={ACTION_ICON.clear} aria-label={`Remove ${project.identifier} from the condition`} onClick={onToggle}>
+      Remove
+    </Button>
+  ) : (
+    <Button kind="quiet" size="2xs" block icon={ACTION_ICON.add} aria-label={`Add ${project.identifier} to the condition`} onClick={onToggle}>
+      Add
+    </Button>
+  )
+
+const ProjectLinks = ({ identifier }: { identifier: string }) => (
+  <>
+    <ExternalLink href={`https://ddbj.nig.ac.jp/search/entry/bioproject/${identifier}`}>DDBJ</ExternalLink>
+    {" · "}
+    <ExternalLink href={`https://www.ncbi.nlm.nih.gov/bioproject/${identifier}`}>NCBI</ExternalLink>
+  </>
 )

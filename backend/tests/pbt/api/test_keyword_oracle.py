@@ -240,14 +240,15 @@ def test_keyword_condition_matches_the_entries_the_documented_rules_select(
 
 @settings(max_examples=40)
 @given(data=st.data())
-def test_keyword_count_in_the_entry_list_equals_the_number_of_matching_accessions(
+def test_keyword_counts_of_biosamples_and_experiments_equal_the_number_of_matching_accessions(
     client: TestClient, corpus: Corpus, data: st.DataObject
 ) -> None:
     a = data.draw(atoms(corpus))
     expected = _evaluate(corpus, a.text, atom(corpus, a.value, phrase=a.phrase))
-    for unit in ("biosample", "sra-experiment"):
-        total = client.get(f"/api/entries/{unit}", params={"q": a.text}).json()["pagination"]["total"]
-        assert total == len(expected[unit]), a.text
+    total = client.get("/api/entries/biosample", params={"q": a.text}).json()["pagination"]["total"]
+    assert total == len(expected["biosample"]), a.text
+    experiments = client.get("/api/export/accessions/sra-experiment", params={"q": a.text}).text.splitlines()[1:]
+    assert len(experiments) == len(expected["sra-experiment"]), a.text
 
 
 @pytest.mark.parametrize(

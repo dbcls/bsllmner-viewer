@@ -28,4 +28,9 @@ describe("TextInput", () => {
     expect(onChange).toHaveBeenCalledWith("a")
     expect(onEnter).toHaveBeenCalledOnce()
   })
+  it("keeps the glyph and the placeholder of the large search box", () => {
+    const { container } = render(<TextInput value="" onChange={vi.fn()} icon="search" size="lg" placeholder="Keyword or accession" aria-label="Keyword" />)
+    expect(screen.getByRole("textbox", { name: "Keyword" })).toHaveAttribute("placeholder", "Keyword or accession")
+    expect(container.querySelector("svg")).toHaveAttribute("aria-hidden", "true")
+  })
 })

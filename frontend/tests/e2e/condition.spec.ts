@@ -121,7 +121,7 @@ test.describe("condition", () => {
   })
 
   test("an accession typed as a keyword finds its entry", async ({ page, request }) => {
-    const [item] = (await entries(request, "biosample", "", 1)).items
+    const [item] = (await entries(request, "", 1)).items
     if (!item) throw new Error("the dataset has no BioSample")
     await page.goto("/entries")
     const box = conditionPanel(page).getByRole("textbox", { name: "Keyword" })

@@ -5,8 +5,9 @@ import type { Clause, Unit } from "~/lib/api/types"
 import { type DateRange, enteredRange, isoDate, RECENT_YEARS, recentRange, recentYearsOf } from "~/lib/date-range"
 import { formatCount } from "~/lib/format"
 import { fieldLabel, GROUP_LABELS, organismLabel, type StatusGroup } from "~/lib/labels"
-import { ACTION_ICON, Caption, CheckboxRow, Chip, Clickable, cn, HelpHint, LinkButton, PaneHeading, Select, TextInput } from "~/ui"
+import { ACTION_ICON, Caption, CheckboxRow, Chip, Clickable, cn, HelpHint, LinkButton, PaneHeading, Select, Skeleton, TextInput } from "~/ui"
 
+import { AssayTag } from "./assay-tags"
 import { clauseLabel, clausesOfField, keywordText, selectedClauses } from "./ast"
 import type { Condition } from "./use-condition"
 
@@ -20,9 +21,6 @@ type ConditionPanelProps = {
 
 /** The organisms the panel lists: those with at least this share of the dataset's BioSamples. */
 const ORGANISM_MIN_SHARE = 0.01
-
-/** "Homo sapiens" as "H. sapiens". */
-const abbreviatedSpecies = (name: string): string => name.replace(/^(\S)\S*\s+/, "$1. ")
 
 /** The condition inputs: terms per field, assay, organism, creation year, annotation status, and text matches. */
 export const ConditionPanel = ({ q, unit, condition, onAddTerm }: ConditionPanelProps) => {
@@ -58,6 +56,7 @@ export const ConditionPanel = ({ q, unit, condition, onAddTerm }: ConditionPanel
       <KeywordSearch condition={condition} />
       <PaneHeading spacing="top">Annotation terms</PaneHeading>
       <Section>
+        {dataset.data === undefined && <SkeletonRows count={FIELD_ROWS} className="border-b border-brand-soft py-1.5" />}
         {fields.map((field) => {
           const terms = selectedFor(field.name)
           return (
@@ -82,6 +81,7 @@ export const ConditionPanel = ({ q, unit, condition, onAddTerm }: ConditionPanel
       </Section>
       <PaneHeading spacing="top">Assay</PaneHeading>
       <Section>
+        {dataset.data === undefined && <SkeletonRows count={ASSAY_ROWS} className="py-1" />}
         {targetAssays.map((assay) => {
           const clause: Clause = { field: "library_strategy", value: assay }
           return (
@@ -89,7 +89,7 @@ export const ConditionPanel = ({ q, unit, condition, onAddTerm }: ConditionPanel
               key={assay}
               checked={condition.isSelected([clause])}
               onChange={() => void condition.toggle([clause])}
-              label={assay}
+              label={<AssayTag assay={assay} targetAssays={targetAssays} />}
               count={assayCounts(assay)}
             />
           )
@@ -97,6 +97,7 @@ export const ConditionPanel = ({ q, unit, condition, onAddTerm }: ConditionPanel
       </Section>
       <PaneHeading spacing="top">Organism</PaneHeading>
       <Section>
+        {dataset.data === undefined && <SkeletonRows count={ORGANISM_ROWS} className="py-1" />}
         {organisms.map((organism) => {
           const clause: Clause = { field: "organism_id", value: organism.identifier }
           return (
@@ -105,7 +106,6 @@ export const ConditionPanel = ({ q, unit, condition, onAddTerm }: ConditionPanel
               checked={condition.isSelected([clause])}
               onChange={() => void condition.toggle([clause])}
               label={organismLabel(organism.identifier, organism.name)}
-              {...(organism.name ? { sub: abbreviatedSpecies(organism.name) } : {})}
               count={organismCount(organism.identifier)}
             />
           )
@@ -115,7 +115,7 @@ export const ConditionPanel = ({ q, unit, condition, onAddTerm }: ConditionPanel
       <Section>
         <CreationDate condition={condition} />
       </Section>
-      <PaneHeading spacing="top" aside={<HelpHint label="About annotation status">{STATUS_HELP}</HelpHint>}>
+      <PaneHeading spacing="top" aside={<HelpHint label="About annotation status" side="top">{STATUS_HELP}</HelpHint>}>
         Annotation status
       </PaneHeading>
       <Section>
@@ -137,13 +137,32 @@ export const ConditionPanel = ({ q, unit, condition, onAddTerm }: ConditionPanel
 }
 
 /**
- * The count shown beside each value of a field: "…" while the counts load, and 0 for a value that no entry of the
+ * The count shown beside each value of a field: a skeleton while the counts load, and 0 for a value that no entry of the
  * condition has, since an aggregation leaves such values out.
  */
 const countsOf = (elements: { value: string; count: number }[] | undefined) => {
   const counts = new Map((elements ?? []).map((element) => [element.value, element.count]))
-  return (value: string): string => (elements === undefined ? "…" : formatCount(counts.get(value) ?? 0))
+  return (value: string): ReactNode => (elements === undefined ? <Skeleton className="w-10" /> : formatCount(counts.get(value) ?? 0))
 }
+
+/**
+ * How many skeleton rows a section shows before the description of the dataset arrives. Only the first visit needs a
+ * guess; later visits draw the rows from the stored description.
+ */
+const FIELD_ROWS = 6
+const ASSAY_ROWS = 3
+const ORGANISM_ROWS = 2
+
+/** Skeleton rows as tall as the rows that replace them: one line of text inside the rows' own padding. */
+const SkeletonRows = ({ count, className }: { count: number; className: string }) => (
+  <div aria-busy="true">
+    {Array.from({ length: count }, (_, index) => (
+      <div key={index} className={className}>
+        <Skeleton className="w-28" />
+      </div>
+    ))}
+  </div>
+)
 
 /** The items under a heading of the pane, set in a little from the heading's rule. */
 const Section = ({ children }: { children: ReactNode }) => <div className="pl-1">{children}</div>
@@ -232,10 +251,10 @@ const KeywordSearch = ({ condition }: { condition: Condition }) => {
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         icon={ACTION_ICON.search}
-        size="sm"
+        size="lg"
         block
         spellCheck={false}
-        placeholder="Search by keyword or accession"
+        placeholder="Keyword or accession"
         aria-label="Keyword"
       />
       {error && (

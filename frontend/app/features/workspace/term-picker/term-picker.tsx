@@ -5,7 +5,7 @@ import type { Clause, TermHit, Unit } from "~/lib/api/types"
 import { formatCount } from "~/lib/format"
 import { fieldLabel, unitLabel } from "~/lib/labels"
 import { termDetail } from "~/lib/terms"
-import { ACTION_ICON, Modal, Select, TermRow, TextInput } from "~/ui"
+import { ACTION_ICON, busyClass, cn, Modal, Select, TermRow, TermRowSkeleton, TextInput } from "~/ui"
 
 export type PickerMode = "condition" | "row" | "col"
 
@@ -16,6 +16,9 @@ export type PickerRequest = {
   field: string
   mode: PickerMode
 }
+
+/** The rows that hold the place of the result before it arrives. */
+const SKELETON_TERMS = 8
 
 type TermPickerProps = {
   request: PickerRequest | null
@@ -77,12 +80,13 @@ export const TermPicker = ({ request, onClose, fields, dimensions, q, unit, self
           {mode === "condition" ? "Adds to condition" : `Adds to ${mode === "row" ? "rows" : "columns"} · stays open`}
         </span>
       </div>
-      <div className="max-h-picker-list overflow-auto">
+      <div aria-busy={(searchable && !terms.data) || terms.isPlaceholderData || undefined} className={cn("max-h-picker-list overflow-auto", busyClass(terms.isPlaceholderData))}>
         {!searchable && (
           <div className="px-6 py-6 text-center text-fs-body-sm text-ink-soft">
             {fieldLabel(field)} has no terms to pick; its elements are chosen automatically.
           </div>
         )}
+        {searchable && !terms.data && Array.from({ length: SKELETON_TERMS }, (_, index) => <TermRowSkeleton key={index} />)}
         {searchable &&
           (terms.data?.terms ?? []).map((hit) => {
             const selected = isSelected(mode, hit.field, hit)

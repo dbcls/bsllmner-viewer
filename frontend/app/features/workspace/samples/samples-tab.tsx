@@ -1,109 +1,113 @@
+import type { ReactNode } from "react"
 import { useNavigate } from "react-router"
 
 import { useDataset, useEntries } from "~/lib/api/queries"
-import type { AnnotationValue, EntryItem, EntryType } from "~/lib/api/types"
+import type { AnnotationValue, EntryItem } from "~/lib/api/types"
 import { fieldLabel, STATUS_ORDER, statusInfo } from "~/lib/labels"
 import { TABLE_PER_PAGE } from "~/lib/workspace-state"
-import { Card, CardFooter, CardHeader, ExternalLink, Pager, Segmented, StatusGlyph, Tag } from "~/ui"
+import { Card, CardFooter, CardHeader, cn, ExternalLink, FrozenTd, FrozenTh, HelpHint, InlineLabel, Pager, StatusGlyph, StatusPill, TableScroller } from "~/ui"
 
+import { AssayTags } from "../assay-tags"
+import { SkeletonTableRows } from "../skeleton-rows"
 import type { WorkspaceState } from "../state"
 import { useTableTop } from "../use-table-top"
 
+/** An annotation with an extracted value. A cell leaves a field without one (not stated, or extraction failed) empty. */
+const hasValue = (value: AnnotationValue): boolean => statusInfo(value.status).group !== "no_value"
+
+/** The statuses that the cells mark, and so the legend names. */
+const CELL_STATUSES = STATUS_ORDER.filter((status) => statusInfo(status).group !== "no_value")
+
+/** One width for every annotation column, so that the columns line up; a longer value ends in an ellipsis. */
+const ANNOTATION_WIDTH = "w-36 min-w-36 max-w-36"
+
+/** The width of the first column, which stays put when the table scrolls sideways. It holds the longest accession. */
+const FROZEN_WIDTH = "w-36 min-w-36 max-w-36"
+
+/** The rule is on the cells rather than the row: the table has separate borders, which the frozen column needs. */
+const TD = "border-b border-brand-soft px-2.5 py-1.5"
+
 type SamplesTabProps = {
   state: WorkspaceState
-  onRows: (rows: EntryType) => void
   onPage: (page: number) => void
   search: string
 }
 
-/** The entry list: one row per BioSample or per SRA experiment, filtered by the full condition. */
-export const SamplesTab = ({ state, onRows, onPage, search }: SamplesTabProps) => {
+/** The entry list: one row per BioSample, filtered by the full condition. */
+export const SamplesTab = ({ state, onPage, search }: SamplesTabProps) => {
   const navigate = useNavigate()
   const dataset = useDataset()
   const fields = dataset.data?.fields.map((f) => f.name) ?? []
-  const entries = useEntries({ q: state.q, type: state.rows, page: state.page, perPage: TABLE_PER_PAGE })
+  const entries = useEntries({ q: state.q, page: state.page, perPage: TABLE_PER_PAGE })
   const total = entries.data?.pagination.total
   const table = useTableTop(onPage)
 
   return (
-    <Card ref={table.ref} padding="none" flush>
+    <Card ref={table.ref} padding="none" flush busy={entries.isPlaceholderData}>
       <CardHeader>
-        <div className="flex min-w-0 grow basis-80 flex-wrap items-center gap-x-3.5 gap-y-1">
-          <span className="font-semibold text-ink-mid">Status</span>
-          {STATUS_ORDER.map((status) => {
-            const info = statusInfo(status)
-            return (
-              <span key={status} className="inline-flex items-center gap-1">
-                <StatusGlyph status={status} glyph={info.glyph} label={info.label} />
-                {info.label}
-              </span>
-            )
-          })}
+        <div className="flex min-w-0 grow basis-80 flex-wrap items-center gap-x-1.5 gap-y-1">
+          <InlineLabel>Status</InlineLabel>
+          {CELL_STATUSES.map((status) => (
+            <StatusPill key={status} status={status} label={statusInfo(status).label} size="sm" />
+          ))}
+          <HelpHint label="About the status marks">{STATUS_HELP}</HelpHint>
         </div>
-        <span className="inline-flex items-center gap-1.5">
-          Rows are
-          <Segmented
-            ariaLabel="Row unit"
-            options={[
-              { value: "biosample", label: "BioSamples" },
-              { value: "sra-experiment", label: "SRA Experiments" },
-            ]}
-            value={state.rows}
-            onChange={onRows}
-          />
-        </span>
         <div className="ml-auto">
           <Pager page={state.page} perPage={TABLE_PER_PAGE} total={total} onChange={onPage} />
         </div>
       </CardHeader>
-      <div className="overflow-auto">
-        <table className="w-full min-w-table-min border-collapse text-fs-body-sm">
+      <TableScroller>
+        <table className="w-full min-w-table-min border-separate border-spacing-0 text-fs-body-sm">
           <thead>
             <tr className="bg-surface-subtle">
-              {[state.rows === "sra-experiment" ? "SRA Experiment" : "BioSample", "Title", "Organism", "Assay", "BioProject", "Year", ...fields.map(fieldLabel), "Links"].map((column) => (
-                <th
-                  key={column}
-                  className="border-b border-border-soft px-2.5 py-2 text-left text-fs-label font-semibold whitespace-nowrap text-ink-soft"
-                >
-                  {column}
-                </th>
+              <Th width={FROZEN_WIDTH} frozen>
+                BioSample
+              </Th>
+              {["Title", "Organism", "Assay", "BioProject", "Year"].map((column) => (
+                <Th key={column}>{column}</Th>
               ))}
+              {fields.map((field) => (
+                <Th key={field} width={ANNOTATION_WIDTH}>
+                  {fieldLabel(field)}
+                </Th>
+              ))}
+              <Th>Links</Th>
             </tr>
           </thead>
           <tbody>
+            {entries.data === undefined && <SkeletonTableRows columns={[...LEAD_SKELETONS, ...fields.map(() => "w-24"), "w-20"]} frozen />}
             {(entries.data?.items ?? []).map((row) => (
               <tr
-                key={`${row.type}/${row.identifier}`}
-                onClick={() => navigate(`/entries/${row.biosample}${search ? `?from=${encodeURIComponent(search)}` : ""}`)}
-                className="cursor-pointer border-b border-brand-soft hover:bg-brand-soft"
+                key={row.identifier}
+                onClick={() => navigate(`/entries/${row.identifier}${search ? `?from=${encodeURIComponent(search)}` : ""}`)}
+                className="group cursor-pointer hover:bg-brand-soft"
               >
-                <td className="px-2.5 py-1.5 font-mono text-fs-label whitespace-nowrap text-brand">{row.identifier}</td>
-                <td className="max-w-64 truncate px-2.5 py-1.5" title={row.title ?? ""}>
+                <FrozenTd className={cn(TD, FROZEN_WIDTH, "truncate font-mono text-fs-label whitespace-nowrap text-brand")}>{row.identifier}</FrozenTd>
+                <td className={cn(TD, "max-w-64 truncate")} title={row.title ?? ""}>
                   {row.title}
                 </td>
-                <td className="px-2.5 py-1.5 whitespace-nowrap text-ink-mid italic">{row.organism?.name}</td>
-                <td className="px-2.5 py-1.5 whitespace-nowrap">
-                  <span className="flex gap-1">
-                    {row.libraryStrategy.map((assay) => (
-                      <Tag key={assay}>{assay}</Tag>
-                    ))}
-                  </span>
+                <td className={cn(TD, "whitespace-nowrap text-ink-mid")}>{row.organism?.name}</td>
+                <td className={cn(TD, "whitespace-nowrap")}>
+                  <AssayTags assays={row.libraryStrategy} targetAssays={dataset.data?.targetAssays ?? []} />
                 </td>
-                <td className="px-2.5 py-1.5 font-mono text-fs-label whitespace-nowrap">{row.bioprojects.join(", ")}</td>
-                <td className="px-2.5 py-1.5 font-mono text-fs-label">{row.dateCreated?.slice(0, 4)}</td>
-                {fields.map((field) => (
-                  <td key={field} className="max-w-44 truncate px-2.5 py-1.5 whitespace-nowrap" title={annotationTitle(field, row.annotations[field] ?? [])}>
-                    <AnnotationCell values={row.annotations[field] ?? []} />
-                  </td>
-                ))}
-                <td className="px-2.5 py-1.5 text-fs-label whitespace-nowrap">
+                <td className={cn(TD, "font-mono text-fs-label whitespace-nowrap")}>{row.bioprojects.join(", ")}</td>
+                <td className={cn(TD, "font-mono text-fs-label")}>{row.dateCreated?.slice(0, 4)}</td>
+                {fields.map((field) => {
+                  const values = (row.annotations[field] ?? []).filter(hasValue)
+                  return (
+                    <td key={field} className={cn(TD, ANNOTATION_WIDTH, "truncate whitespace-nowrap")} title={annotationTitle(field, values) || undefined}>
+                      <AnnotationCell values={values} />
+                    </td>
+                  )
+                })}
+                <td className={cn(TD, "text-fs-label whitespace-nowrap")}>
                   <RowLinks row={row} />
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
-      </div>
+      </TableScroller>
       <CardFooter>
         <div className="ml-auto">
           <Pager page={state.page} perPage={TABLE_PER_PAGE} total={total} onChange={table.onFootPage} />
@@ -111,6 +115,43 @@ export const SamplesTab = ({ state, onRows, onPage, search }: SamplesTabProps) =
       </CardFooter>
     </Card>
   )
+}
+
+/** The widths of the skeletons of the columns before the annotation columns, near the widths of their values. */
+const LEAD_SKELETONS = ["w-24", "w-48", "w-24", "w-16", "w-20", "w-8"]
+
+const STATUS_MEANING: Record<string, string> = {
+  mapped_exact: "The value matched an ontology label or synonym exactly.",
+  mapped_selected: "The LLM selected the term from the candidate terms.",
+  unmapped_no_candidate: "No ontology term resembled the value.",
+  unmapped_rejected: "Similar terms existed, but the LLM adopted none.",
+}
+
+const STATUS_HELP = (
+  <>
+    {CELL_STATUSES.map((status, index) => (
+      <span key={status} className={cn("block", index > 0 && "mt-1.5")}>
+        <StatusPill status={status} label={statusInfo(status).label} size="sm" /> {STATUS_MEANING[status]}
+      </span>
+    ))}
+    <span className="mt-1.5 block">An empty cell has no extracted value.</span>
+  </>
+)
+
+type ThProps = {
+  children: ReactNode
+  /** A fixed width for the column, whose header then ends in an ellipsis instead of widening it. */
+  width?: string
+  /** The column stays put when the table scrolls sideways. */
+  frozen?: boolean
+}
+
+const Th = ({ children, width, frozen = false }: ThProps) => {
+  const className = cn(
+    "border-b border-border-soft px-2.5 py-2 text-left text-fs-label font-semibold whitespace-nowrap text-ink-soft",
+    width && cn(width, "truncate"),
+  )
+  return frozen ? <FrozenTh className={className}>{children}</FrozenTh> : <th className={className}>{children}</th>
 }
 
 const AnnotationCell = ({ values }: { values: AnnotationValue[] }) => {
@@ -123,7 +164,7 @@ const AnnotationCell = ({ values }: { values: AnnotationValue[] }) => {
         return (
           <span key={index} className={index > 0 ? "ml-1.5" : ""}>
             <span className="mr-1">
-              <StatusGlyph status={value.status} glyph={info.glyph} label={info.label} />
+              <StatusGlyph status={value.status} label={info.label} />
             </span>
             <span className={value.termId ? "text-ink" : "text-ink-mid italic"}>{text}</span>
           </span>
@@ -136,31 +177,16 @@ const AnnotationCell = ({ values }: { values: AnnotationValue[] }) => {
 const annotationTitle = (field: string, values: AnnotationValue[]): string =>
   values
     .map((value) => {
-      const info = statusInfo(value.status)
-      if (!value.value) return `${fieldLabel(field)}: ${info.label.toLowerCase()}`
       const target = value.termId ? `${value.label ?? ""} (${value.termId})` : "no term"
-      return `${fieldLabel(field)}: extracted “${value.value}” → ${target} · ${info.label}`
+      return `${fieldLabel(field)}: extracted “${value.value ?? ""}” → ${target} · ${statusInfo(value.status).label}`
     })
     .join("\n")
 
-const RowLinks = ({ row }: { row: EntryItem }) => {
-  const ncbi = row.biosample.startsWith("SAMN") || row.biosample.startsWith("SAME")
-  const chipAtlasExperiment = row.type === "sra-experiment" ? row.identifier : row.experiments[0]
-  return (
-    <>
-      <ExternalLink href={`https://ddbj.nig.ac.jp/search/entry/biosample/${row.biosample}`}>DDBJ</ExternalLink>
-      {ncbi && (
-        <>
-          {" · "}
-          <ExternalLink href={`https://www.ncbi.nlm.nih.gov/biosample/${row.biosample}`}>NCBI</ExternalLink>
-        </>
-      )}
-      {row.chipAtlas.length > 0 && chipAtlasExperiment && (
-        <>
-          {" · "}
-          <ExternalLink href={`https://chip-atlas.org/view?id=${chipAtlasExperiment}`}>ChIP-Atlas</ExternalLink>
-        </>
-      )}
-    </>
-  )
-}
+/** The pages of the row's BioSample in DDBJ Search and NCBI. */
+const RowLinks = ({ row }: { row: EntryItem }) => (
+  <>
+    <ExternalLink href={`https://ddbj.nig.ac.jp/search/entry/biosample/${row.identifier}`}>DDBJ</ExternalLink>
+    {" · "}
+    <ExternalLink href={`https://www.ncbi.nlm.nih.gov/biosample/${row.identifier}`}>NCBI</ExternalLink>
+  </>
+)

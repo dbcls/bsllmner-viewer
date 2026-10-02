@@ -1,4 +1,4 @@
-"""BioSample or experiment entries and per-BioSample details for a page of results."""
+"""BioSample entries and their details for a page of results."""
 
 from __future__ import annotations
 
@@ -8,39 +8,29 @@ import duckdb
 import orjson
 
 from bsllmner_viewer.api.queries.core import Population
-from bsllmner_viewer.api.schemas import AnnotationValue, EntryItem, EntryType, Organism
+from bsllmner_viewer.api.schemas import AnnotationValue, EntryItem, Organism
 
 
-def count_entries(cur: duckdb.DuckDBPyConnection, pop: Population, unit: EntryType) -> int:
-    expr = "count(DISTINCT p.biosample)" if unit == "biosample" else "count(*)"
-    row = cur.execute(f"WITH {pop.cte()} SELECT {expr} FROM pop p", list(pop.params)).fetchone()
+def count_entries(cur: duckdb.DuckDBPyConnection, pop: Population) -> int:
+    row = cur.execute(f"WITH {pop.cte()} SELECT count(DISTINCT p.biosample) FROM pop p", list(pop.params)).fetchone()
     return int(row[0]) if row else 0
 
 
-def page_keys(
-    cur: duckdb.DuckDBPyConnection, pop: Population, unit: EntryType, page: int, per_page: int
-) -> list[tuple[str, str | None]]:
-    """(biosample, experiment) keys of one page, ordered by accession."""
-    offset = (page - 1) * per_page
-    if unit == "biosample":
-        rows = cur.execute(
-            f"WITH {pop.cte()} SELECT DISTINCT p.biosample FROM pop p ORDER BY 1 LIMIT ? OFFSET ?",
-            [*pop.params, per_page, offset],
-        ).fetchall()
-        return [(str(r[0]), None) for r in rows]
+def page_keys(cur: duckdb.DuckDBPyConnection, pop: Population, page: int, per_page: int) -> list[str]:
+    """BioSample accessions of one page, in the order of accession."""
     rows = cur.execute(
-        f"WITH {pop.cte()} SELECT p.biosample, p.experiment FROM pop p ORDER BY 1, 2 LIMIT ? OFFSET ?",
-        [*pop.params, per_page, offset],
+        f"WITH {pop.cte()} SELECT DISTINCT p.biosample FROM pop p ORDER BY 1 LIMIT ? OFFSET ?",
+        [*pop.params, per_page, (page - 1) * per_page],
     ).fetchall()
-    return [(str(r[0]), str(r[1])) for r in rows]
+    return [str(r[0]) for r in rows]
 
 
 def entry_rows(
-    cur: duckdb.DuckDBPyConnection, pop: Population, keys: list[tuple[str, str | None]], fields: tuple[str, ...]
+    cur: duckdb.DuckDBPyConnection, pop: Population, keys: list[str], fields: tuple[str, ...]
 ) -> list[EntryItem]:
     if not keys:
         return []
-    accessions = sorted({k[0] for k in keys})
+    accessions = sorted(set(keys))
     placeholders = ", ".join("?" for _ in accessions)
     details = {
         str(r[0]): r
@@ -80,15 +70,13 @@ def entry_rows(
             AnnotationValue(value=value, status=str(status), term_id=term_id, label=label)
         )
     rows: list[EntryItem] = []
-    for bs, ex in keys:
+    for bs in keys:
         detail = details.get(bs)
-        exps = experiments.get(bs, [])
-        shown = [e for e in exps if ex is None or e[0] == ex]
+        shown = experiments.get(bs, [])
         rows.append(
             EntryItem(
-                identifier=bs if ex is None else ex,
-                type="biosample" if ex is None else "sra-experiment",
-                biosample=bs,
+                identifier=bs,
+                type="biosample",
                 experiments=[e[0] for e in shown],
                 title=detail[1] if detail else None,
                 organism=organism_of(detail[2], detail[3]) if detail else None,

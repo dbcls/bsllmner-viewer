@@ -102,7 +102,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** BioSample or SRA experiment entries that match the condition */
+        /** BioSample entries that match the condition */
         get: operations["listEntries"];
         put?: never;
         post?: never;
@@ -359,29 +359,6 @@ export interface components {
             /** To */
             to?: string;
         };
-        /** Composition */
-        Composition: {
-            /** Field */
-            field: string;
-            /** Total */
-            total: number;
-            /** Segments */
-            segments: components["schemas"]["CompositionSegment"][];
-        };
-        /** CompositionSegment */
-        CompositionSegment: {
-            /**
-             * Kind
-             * @enum {string}
-             */
-            kind: "term" | "other" | "unmapped" | "no_value";
-            /** Label */
-            label: string | null;
-            /** Termid */
-            termId: string | null;
-            /** Count */
-            count: number;
-        };
         /** ConditionResponse */
         ConditionResponse: {
             datasetVersion: components["schemas"]["DatasetVersionRef"];
@@ -580,12 +557,10 @@ export interface components {
         EntryItem: {
             /**
              * Identifier
-             * @description BioSample accession for `biosample` rows, experiment accession otherwise
+             * @description BioSample accession
              */
             identifier: string;
             type: components["schemas"]["EntryType"];
-            /** Biosample */
-            biosample: string;
             /**
              * Experiments
              * @description Experiments of the BioSample that match the condition
@@ -641,8 +616,8 @@ export interface components {
             /** Bioprojects */
             bioprojects: components["schemas"]["EntryBioProject"][];
         };
-        /** @enum {string} */
-        EntryType: "biosample" | "sra-experiment";
+        /** @constant */
+        EntryType: "biosample";
         /** Evidence */
         Evidence: {
             /**
@@ -774,11 +749,9 @@ export interface components {
             assays: string[];
             /** Clauses */
             clauses: components["schemas"]["Clause-Output"][];
-            /** Composition */
-            composition: components["schemas"]["Composition"][];
         };
         /** @enum {string} */
-        ProjectSort: "biosampleCount:desc" | "biosampleCount:asc" | "experimentCount:desc" | "experimentCount:asc" | "identifier:asc" | "identifier:desc";
+        ProjectSort: "biosampleCount:desc" | "biosampleCount:asc" | "experimentCount:desc" | "experimentCount:asc";
         /** ProjectsResponse */
         ProjectsResponse: {
             datasetVersion: components["schemas"]["DatasetVersionRef"];
@@ -790,8 +763,6 @@ export interface components {
             facetSelfExclude: boolean;
             /** Sort */
             sort: string;
-            /** Compositionfields */
-            compositionFields: string[];
             pagination: components["schemas"]["Pagination"];
             /** Items */
             items: components["schemas"]["Project"][];
@@ -1240,7 +1211,7 @@ export interface operations {
             };
             header?: never;
             path: {
-                type: "biosample" | "sra-experiment";
+                type: "biosample";
             };
             cookie?: never;
         };
@@ -1544,8 +1515,6 @@ export interface operations {
                 sort?: components["schemas"]["ProjectSort"];
                 page?: number;
                 perPage?: number;
-                /** @description Comma-separated annotation fields whose composition is returned */
-                compositionFields?: string | null;
             };
             header?: never;
             path?: never;
@@ -1772,7 +1741,7 @@ export interface operations {
             };
             header?: never;
             path: {
-                type: "biosample" | "sra-experiment";
+                type: "biosample";
             };
             cookie?: never;
         };

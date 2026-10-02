@@ -9,14 +9,18 @@ import { downloadPngMarkup, downloadSvgMarkup, downloadTsv } from "~/lib/export"
 import { formatCount, formatResidual } from "~/lib/format"
 import { fieldLabel, unitLabel } from "~/lib/labels"
 import { MATRIX_PRESETS } from "~/lib/presets"
-import { Card, CardFooter, CardHeader, Clickable, cn, LinkButton, Segmented, Select, Tag } from "~/ui"
+import { Card, CardFooter, CardHeader, Clickable, cn, InlineLabel, LinkButton, Segmented, Select, Skeleton, Tag } from "~/ui"
 
+import { expectedElements } from "../expected-elements"
 import { type HeatmapColor, type Patch, workspaceSearch, type WorkspaceState } from "../state"
 import type { Condition } from "../use-condition"
 import { AxisCard, type AxisSide } from "./axis-card"
 import { type MatrixCell, matrixSvg, matrixSvgSize } from "./matrix-svg"
 
 const AXIS_DIMENSIONS = ["library_strategy", "organism_id", "date_created"]
+
+/** The number of elements per axis when the view names none. */
+const LIMIT = 10
 
 type HeatmapTabProps = {
   state: WorkspaceState
@@ -46,9 +50,11 @@ export const HeatmapTab = ({ state, condition, update, onOpenPicker, onAxisEleme
     selfExclusion: state.selfExclusion,
     ...(state.rowTerms ? { rowElements: state.rowTerms.join(",") } : {}),
     ...(state.colTerms ? { colElements: state.colTerms.join(",") } : {}),
-    limit: 10,
+    limit: LIMIT,
   })
   const data = crosstab.data
+  const pendingRows = data === undefined ? expectedElements(state.row, dataset.data, LIMIT, state.rowTerms) : null
+  const pendingCols = data === undefined ? expectedElements(state.col, dataset.data, LIMIT, state.colTerms) : null
   const rows = useMemo(() => data?.rows ?? [], [data])
   const cols = useMemo(() => data?.cols ?? [], [data])
 
@@ -220,6 +226,8 @@ export const HeatmapTab = ({ state, condition, update, onOpenPicker, onAxisEleme
             dimension={dimensionOf(side)}
             dimensions={dimensions}
             elements={side === "row" ? rows : cols}
+            pending={side === "row" ? pendingRows : pendingCols}
+            busy={crosstab.isPlaceholderData}
             explicit={(side === "row" ? state.rowTerms : state.colTerms) !== null}
             expanded={new Set(Object.keys(expansions[side]))}
             depthOf={depthOf(side)}
@@ -235,11 +243,11 @@ export const HeatmapTab = ({ state, condition, update, onOpenPicker, onAxisEleme
           />
         ))}
       </div>
-      <Card padding="none" flush>
+      <Card padding="none" flush busy={crosstab.isPlaceholderData}>
         <CardHeader>
           <div className="flex w-full items-center justify-between">
             <div className="flex items-center gap-2">
-              <span>Preset</span>
+              <InlineLabel>Preset</InlineLabel>
               <Select
                 size="sm"
                 placeholder="Choose…"
@@ -262,7 +270,7 @@ export const HeatmapTab = ({ state, condition, update, onOpenPicker, onAxisEleme
                 ⇄ Swap axes
               </LinkButton>
               <span className="inline-flex items-center gap-1.5">
-                Color
+                <InlineLabel>Color</InlineLabel>
                 <Segmented
                   ariaLabel="Cell color"
                   options={[
@@ -323,7 +331,8 @@ export const HeatmapTab = ({ state, condition, update, onOpenPicker, onAxisEleme
           </div>
         </CardHeader>
         <div className="max-h-matrix-max overflow-auto">
-          <table className="min-w-full border-separate border-spacing-0.5 text-fs-label">
+          {pendingRows !== null && pendingCols !== null && <SkeletonMatrix rows={pendingRows} cols={pendingCols} />}
+          <table className={cn("min-w-full border-separate border-spacing-0.5 text-fs-label", data === undefined && "hidden")}>
             <thead>
               <tr>
                 <th className="sticky top-0 left-0 z-20 bg-surface px-2.5 py-2 text-left align-bottom text-fs-micro font-semibold whitespace-nowrap text-ink-soft">
@@ -426,6 +435,44 @@ export const HeatmapTab = ({ state, condition, update, onOpenPicker, onAxisEleme
     </div>
   )
 }
+
+/** The matrix before the first cross-tabulation of a condition arrives: its headers and cells as skeletons, at their sizes. */
+const SkeletonMatrix = ({ rows, cols }: { rows: number; cols: number }) => (
+  <table aria-busy="true" className="min-w-full border-separate border-spacing-0.5 text-fs-label">
+    <thead>
+      <tr>
+        <th className="px-2.5 py-2 text-left align-bottom text-fs-micro">
+          <Skeleton className="w-28" />
+        </th>
+        {Array.from({ length: cols }, (_, index) => (
+          <th key={index} className="min-w-heat-cell px-1 py-1.5 align-bottom text-fs-micro">
+            <Skeleton className="w-14" />
+          </th>
+        ))}
+        <th className="px-2 py-1.5 text-fs-micro">
+          <Skeleton className="w-12" />
+        </th>
+      </tr>
+    </thead>
+    <tbody>
+      {Array.from({ length: rows }, (_, row) => (
+        <tr key={row}>
+          <th className="px-2.5 py-1 text-left">
+            <Skeleton className="w-24" />
+          </th>
+          {Array.from({ length: cols }, (_, col) => (
+            <td key={col} className="p-0">
+              <Skeleton kind="block" className="h-8 w-full min-w-heat-cell" />
+            </td>
+          ))}
+          <td className="px-2.5">
+            <Skeleton className="w-12" />
+          </td>
+        </tr>
+      ))}
+    </tbody>
+  </table>
+)
 
 const Swatch = ({ className }: { className: string }) => <span className={cn("inline-block h-3.5 w-5.5 rounded-badge", className)} />
 

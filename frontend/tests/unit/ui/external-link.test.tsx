@@ -33,4 +33,10 @@ describe("ExternalLink", () => {
     expect(link.firstChild).toBe(icons[0])
     expect(icons[0]?.querySelector("path")).toHaveAttribute("fill", "currentColor")
   })
+  it("contains its hidden note, so that the note does not reach past a scrolling box", () => {
+    render(<ExternalLink href="https://example.org/">DDBJ</ExternalLink>)
+    const link = screen.getByRole("link", { name: "DDBJ (opens in a new tab)" })
+    expect(link).toHaveClass("relative")
+    expect(link.querySelector(".sr-only")?.parentElement).toBe(link)
+  })
 })

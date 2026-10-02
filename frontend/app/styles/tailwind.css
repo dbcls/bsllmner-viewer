@@ -59,6 +59,7 @@
   --color-unmapped-light: #E7C77A;
   --color-failed:         #E9A79E;
   --color-grid:           #EDEBF2;
+  --color-skeleton:       #ECE9F2;  /* the place of content that is on its way */
 
   /* Lines that split the trend, in a fixed order. The brand purple is the line of the condition itself;
      the red of gaps and the goldenrod of unmapped values are not used for a line. */
@@ -67,6 +68,14 @@
   --color-series-3:     #1BAF7A;
   --color-series-4:     #E87BA4;
   --color-series-5:     #008300;
+
+  /* The dot of an assay, one per target assay in their order. Light and quiet beside the brand purple, and away from
+     the purple, the goldenrod, and the red that mark statuses. Every pair stays apart under protanopia and
+     deuteranopia (OKLab delta E 8.7 or more). An assay after the last color gets a gray dot; a new color has to pass the
+     same check against every other color, because the condition panel shows all the assays together. */
+  --color-assay-1:      #62ACE8;
+  --color-assay-2:      #85B56A;
+  --color-assay-3:      #DB86AF;
 
   /* The under-represented side of the residual scale. */
   --color-under:        #004098;
@@ -124,9 +133,8 @@
   --spacing-condition-label: 144px;  /* field names of the condition, so every row's values start at one x */
   --spacing-heat-cell:     72px;
   --spacing-heat-head:     96px;
-  --spacing-composition:  150px;
   --spacing-table-min:   1500px;
-  --spacing-projects-min: 1180px;
+  --spacing-projects-min:  880px;
   --spacing-picker-list:  420px;
   --spacing-menu:         280px;
   --spacing-listbox:      320px;  /* tallest open list of a Select before it scrolls */

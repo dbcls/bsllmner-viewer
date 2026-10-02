@@ -1,8 +1,8 @@
 import { Fragment, useEffect, useState } from "react"
 
-import { useEntries, useParsedCondition, useProjects } from "~/lib/api/queries"
+import { useDistribution, useEntries, useParsedCondition, useProjects } from "~/lib/api/queries"
 import { formatCount } from "~/lib/format"
-import { ACTION_ICON, Button, Chip, cn, CopyButton, LinkButton, Segmented, TextArea } from "~/ui"
+import { ACTION_ICON, Button, Chip, cn, CopyButton, LinkButton, Segmented, Skeleton, TextArea } from "~/ui"
 
 import { clauseLabel, type ConditionGroup, conditionGroups, describeAst, groupLabel } from "./ast"
 import type { Condition } from "./use-condition"
@@ -87,12 +87,7 @@ const Tree = ({ groups, condition }: TreeProps) => (
         </Row>
       ) : group.kind === "clauses" ? (
         <Row key={group.field} index={index} count={groups.length} label={groupLabel(group.field)}>
-          <span
-            className={cn(
-              "inline-flex min-h-7 max-w-full flex-wrap items-center gap-1 rounded-button border px-1",
-              group.clauses.length > 1 ? "border-brand-light" : "border-transparent",
-            )}
-          >
+          <span className="inline-flex min-h-7 max-w-full flex-wrap items-center gap-1 border border-transparent px-1">
             {group.clauses.map((clause, clauseIndex) => (
               <Fragment key={`${clause.field}:${clause.value ?? clause.from}`}>
                 {clauseIndex > 0 && <span className="px-0.5 text-fs-badge leading-none font-bold tracking-widest text-brand">OR</span>}
@@ -117,23 +112,46 @@ const Tree = ({ groups, condition }: TreeProps) => (
 )
 
 type Total = {
-  count: number
+  /** Undefined while the count is on its way. */
+  count: number | undefined
   unit: string
 }
 
-const Totals = ({ totals }: { totals: Total[] | null }) => (
-  <p aria-live="polite" className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-    {totals === null ? (
-      <span className="text-fs-label text-ink-soft">Counting…</span>
-    ) : (
-      totals.map(({ count, unit }) => (
-        <span key={unit} className="inline-flex items-baseline gap-1.5 whitespace-nowrap">
-          <span className="text-fs-body font-semibold text-ink tabular-nums">{formatCount(count)}</span>
-          <span className="text-fs-label text-ink-soft">{unit}</span>
-        </span>
-      ))
-    )}
+/** The counts of the condition in each unit. A count on its way is a skeleton beside its unit, so the line keeps its place. */
+const Totals = ({ totals }: { totals: Total[] }) => (
+  <p aria-live="polite" aria-busy={totals.some((total) => total.count === undefined) || undefined} className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+    {totals.map(({ count, unit }) => (
+      <span key={unit} className="inline-flex items-baseline gap-1.5 whitespace-nowrap">
+        <span className="text-fs-body font-semibold text-ink tabular-nums">{count === undefined ? <Skeleton className="w-16" /> : formatCount(count)}</span>
+        <span className="text-fs-label text-ink-soft">{unit}</span>
+      </span>
+    ))}
   </p>
+)
+
+/**
+ * The number of rows that the tree of a condition string will take: one per field that the string names. Values in
+ * quotes are left out, since a term ID such as `"EFO:0004038"` looks like a field. Used for the skeleton rows while the
+ * condition is parsed, so that the bar has its height before the tree arrives.
+ */
+export const estimatedRows = (q: string): number => {
+  const unquoted = q.replace(/"[^"]*"/g, '""')
+  const fields = [...unquoted.matchAll(/(?:^|[\s(])([A-Za-z_]\w*):/g)].map((match) => match[1])
+  return Math.max(1, new Set(fields).size)
+}
+
+const SkeletonRows = ({ count }: { count: number }) => (
+  <div aria-busy="true" className="flex flex-col gap-1">
+    {Array.from({ length: count }, (_, index) => (
+      <div key={index} className="flex h-7 items-center">
+        <span className="w-rail-col shrink-0" />
+        <span className="w-condition-label shrink-0 pr-2 pl-2.5">
+          <Skeleton className="w-20" />
+        </span>
+        <Skeleton kind="block" className="h-6 w-40" />
+      </div>
+    ))}
+  </div>
 )
 
 /** The current condition as a query tree or as the editable string, with its totals and the outputs that belong to it. */
@@ -142,9 +160,10 @@ export const ConditionBar = ({ q, condition, onShare, onExport, onApi, exportMen
   const [draft, setDraft] = useState(q ?? "")
   const [draftError, setDraftError] = useState<string | null>(null)
   const draftParse = useParsedCondition(draftError === "pending" ? draft : null)
-  const biosamples = useEntries({ q, type: "biosample", page: 1, perPage: 1 })
-  const experiments = useEntries({ q, type: "sra-experiment", page: 1, perPage: 1 })
-  const projects = useProjects({ q, selfExclusion: false, sort: "biosampleCount:desc", page: 1, perPage: 1, compositionFields: "" })
+  const biosamples = useEntries({ q, page: 1, perPage: 1 })
+  // Experiments are not entries; the total of any distribution counted in experiments is the count of the condition.
+  const experiments = useDistribution({ field: "library_strategy", q, unit: "sra-experiment", selfExclusion: false, limit: 1 })
+  const projects = useProjects({ q, selfExclusion: false, sort: "biosampleCount:desc", page: 1, perPage: 1 })
   const groups = conditionGroups(condition.ast)
 
   useEffect(() => {
@@ -171,14 +190,11 @@ export const ConditionBar = ({ q, condition, onShare, onExport, onApi, exportMen
     }
   }, [draftError, draftParse.data, draftParse.error, condition])
 
-  const totals =
-    biosamples.data && experiments.data && projects.data
-      ? [
-        { count: biosamples.data.pagination.total, unit: "BioSamples" },
-        { count: experiments.data.pagination.total, unit: "SRA Experiments" },
-        { count: projects.data.pagination.total, unit: "BioProjects" },
-      ]
-      : null
+  const totals: Total[] = [
+    { count: biosamples.data?.pagination.total, unit: "BioSamples" },
+    { count: experiments.data?.total, unit: "SRA Experiments" },
+    { count: projects.data?.pagination.total, unit: "BioProjects" },
+  ]
 
   return (
     <section aria-label="Condition" className="flex shrink-0 items-start gap-3 border-b border-border-soft bg-surface px-workspace-gutter py-2.5">
@@ -186,8 +202,10 @@ export const ConditionBar = ({ q, condition, onShare, onExport, onApi, exportMen
         <div className="flex flex-1 items-start gap-4 px-3 py-2">
           <div className="min-w-0 flex-1">
             {mode === "visual" ? (
-              groups.length === 0 ? (
-                <div className="flex min-h-7 items-center px-1 text-fs-body-sm text-ink-soft">No condition. Every entry of the dataset matches.</div>
+              condition.parsing && q ? (
+                <SkeletonRows count={estimatedRows(q)} />
+              ) : groups.length === 0 ? (
+                <div className="flex min-h-7 items-center px-1 text-fs-body-sm text-ink-soft">No condition. All entries of the dataset are shown.</div>
               ) : (
                 <Tree groups={groups} condition={condition} />
               )

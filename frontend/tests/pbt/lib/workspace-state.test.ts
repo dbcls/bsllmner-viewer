@@ -9,7 +9,6 @@ const state: fc.Arbitrary<WorkspaceState> = fc.record({
   tab: fc.constantFrom(...TABS),
   unit: fc.constantFrom("biosample", "sra-experiment", "bioproject"),
   selfExclusion: fc.boolean(),
-  rows: fc.constantFrom("biosample", "sra-experiment"),
   page: fc.integer({ min: 1, max: 9999 }),
   sort: fc.constantFrom(...PROJECT_SORTS),
   row: fc.constantFrom("cell_line", "disease", "library_strategy"),

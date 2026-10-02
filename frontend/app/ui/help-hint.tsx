@@ -6,6 +6,8 @@ import { ACTION_ICON, Icon } from "./icons"
 type HelpHintProps = {
   /** What the help is about, as the accessible name of the button: "About annotation status". */
   label: string
+  /** Where the bubble opens. `top` keeps a bubble near the bottom of the page from making the page taller. */
+  side?: "bottom" | "top"
   children: ReactNode
 }
 
@@ -13,7 +15,7 @@ type HelpHintProps = {
  * A "?" button that shows a short explanation in a bubble under it. The bubble opens while the pointer is over the
  * button or the button has focus; a click keeps it open until another click, a click outside, or Escape.
  */
-export const HelpHint = ({ label, children }: HelpHintProps) => {
+export const HelpHint = ({ label, side = "bottom", children }: HelpHintProps) => {
   const [hovered, setHovered] = useState(false)
   const [pinned, setPinned] = useState(false)
   const wrapper = useRef<HTMLSpanElement | null>(null)
@@ -61,7 +63,10 @@ export const HelpHint = ({ label, children }: HelpHintProps) => {
         <span
           id={bubbleId}
           role="tooltip"
-          className="absolute top-full left-1/2 z-tooltip mt-1.5 w-max max-w-64 -translate-x-1/2 rounded-button bg-ink px-3 py-2 text-fs-label leading-snug font-normal whitespace-normal text-white shadow-modal"
+          className={cn(
+            "absolute left-1/2 z-tooltip w-max max-w-64 -translate-x-1/2 rounded-button border border-border-soft bg-surface px-3 py-2 text-fs-label leading-snug font-normal whitespace-normal text-ink shadow-modal",
+            side === "bottom" ? "top-full mt-1.5" : "bottom-full mb-1.5",
+          )}
         >
           {children}
         </span>

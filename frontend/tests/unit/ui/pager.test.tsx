@@ -37,9 +37,11 @@ describe("Pager", () => {
     expect(screen.getByRole("button", { name: "Next page" })).toBeDisabled()
   })
 
-  it("shows that the list is being counted while the total is unknown", () => {
+  it("keeps its frame while the total is counted: a busy range and disabled steps", () => {
     render(<Pager page={1} perPage={25} total={undefined} onChange={vi.fn()} />)
-    expect(screen.getByText("Counting…")).toBeInTheDocument()
-    expect(screen.queryByRole("button")).toBeNull()
+    expect(screen.getByRole("navigation", { name: "Pages" })).toHaveAttribute("aria-busy", "true")
+    expect(screen.queryByText(/results|\//)).toBeNull()
+    expect(screen.getByRole("button", { name: "Previous page" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "Next page" })).toBeDisabled()
   })
 })

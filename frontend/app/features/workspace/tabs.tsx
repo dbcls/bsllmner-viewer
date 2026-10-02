@@ -1,7 +1,7 @@
 import { Link } from "react-router"
 
 import type { Unit } from "~/lib/api/types"
-import { cn, Segmented, Toggle } from "~/ui"
+import { cn, InlineLabel, Segmented, Toggle } from "~/ui"
 
 import { type Tab, TABS, workspaceSearch,type WorkspaceState } from "./state"
 
@@ -46,7 +46,7 @@ export const Tabs = ({ state, onUnit, onSelfExclusion }: TabsProps) => (
     {!TABLES.includes(state.tab) && (
       <div className="flex items-center gap-4 pb-2 text-fs-label text-ink-soft">
         <span className="inline-flex items-center gap-1.5">
-          Count
+          <InlineLabel>Count</InlineLabel>
           <Segmented
             ariaLabel="Counting unit"
             options={[

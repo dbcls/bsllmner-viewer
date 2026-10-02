@@ -12,6 +12,7 @@ const FALLBACKS: Record<string, string> = {
   "--color-under": "#004098",
   "--color-under-soft": "#DFEBFB",
   "--color-surface": "#FFFFFF",
+  "--color-skeleton": "#ECE9F2",
 }
 
 const cache = new Map<string, string>()

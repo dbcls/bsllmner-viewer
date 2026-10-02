@@ -7,7 +7,7 @@ import { token } from "~/lib/color"
 import { downloadPng, downloadSvg, downloadTsv } from "~/lib/export"
 import { formatCount } from "~/lib/format"
 import { fieldLabel, organismLabel, unitLabel } from "~/lib/labels"
-import { Card, LinkButton, Select, Tag } from "~/ui"
+import { Card, InlineLabel, LinkButton, Select, Skeleton, Tag } from "~/ui"
 
 import { workspaceSearch, type WorkspaceState } from "../state"
 import type { Condition } from "../use-condition"
@@ -88,14 +88,14 @@ export const TrendTab = ({ state, condition, onSplit }: TrendTabProps) => {
   }
 
   return (
-    <Card padding="sm">
+    <Card padding="sm" busy={trend.isPlaceholderData}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-semibold">{state.unit === "biosample" ? "Per BioSample creation year" : `${unit} per BioSample creation year`}</span>
           {yearUnfiltered && <Tag kind="warn">Not filtered by Year</Tag>}
           {splitUnfiltered && split && <Tag kind="warn">Split lines are not filtered by {fieldLabel(split)}</Tag>}
           <span className="inline-flex items-center gap-1.5 text-fs-label text-ink-soft">
-            Split by
+            <InlineLabel>Split by</InlineLabel>
             <Select
               size="sm"
               placeholder="None"
@@ -210,12 +210,26 @@ export const TrendTab = ({ state, condition, onSplit }: TrendTabProps) => {
             ))}
           </div>
         </>
+      ) : data ? (
+        <div className="py-10 text-center text-fs-body-sm text-ink-soft">No entries with a creation year match this condition.</div>
       ) : (
-        data && <div className="py-10 text-center text-fs-body-sm text-ink-soft">No entries with a creation year match this condition.</div>
+        <SkeletonChart />
       )}
     </Card>
   )
 }
+
+/** The chart before the first trend of a condition arrives: the plot area at its size, and one line of legend. */
+const SkeletonChart = () => (
+  <div aria-busy="true">
+    <svg viewBox="0 0 960 320" className="mt-3 w-full max-w-chart-max animate-pulse" aria-hidden="true">
+      <rect x={PLOT.left} y={PLOT.top} width={PLOT.right - PLOT.left} height={PLOT.bottom - PLOT.top} rx={4} fill={token("--color-skeleton")} />
+    </svg>
+    <div className="mt-2 text-fs-label">
+      <Skeleton className="w-28" />
+    </div>
+  </div>
+)
 
 type LegendItemProps = {
   color: string

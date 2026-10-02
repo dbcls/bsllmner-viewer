@@ -39,7 +39,7 @@ test.describe("outputs of the condition", () => {
     const [project] = await smallProjects(request)
     if (!project) throw new Error("no small BioProject")
     const q = await select(request, null, project.clauses)
-    const total = (await entries(request, "biosample", q, 1)).pagination.total
+    const total = (await entries(request, q, 1)).pagination.total
     await page.goto(workspaceUrl({ q }))
     await expectCounted(page)
     const read = async (name: RegExp): Promise<string[]> => {

@@ -40,7 +40,10 @@ type ExternalLinkProps = Omit<AnchorHTMLAttributes<HTMLAnchorElement>, "classNam
   icon?: IconName
 }
 
-/** A link to another site, opened in a new tab. Unless it has its own glyph, an icon after its text says so. */
+/**
+ * A link to another site, opened in a new tab. Unless it has its own glyph, an icon after its text says so. The link is
+ * the containing block of its hidden note (`relative`), so that a link in a scrolling table does not widen the page.
+ */
 export const ExternalLink = ({ children, kind = "text", icon, ...rest }: ExternalLinkProps) => (
   <a
     {...rest}
@@ -48,6 +51,7 @@ export const ExternalLink = ({ children, kind = "text", icon, ...rest }: Externa
     rel="noreferrer"
     onClick={(event) => event.stopPropagation()}
     className={cn(
+      "relative",
       kind === "text" && "text-brand hover:text-brand-deep",
       kind === "button" &&
         "inline-flex items-center gap-1.5 rounded-button border border-border-soft bg-surface px-3 py-1.5 text-fs-body-sm leading-none font-semibold text-ink hover:bg-brand-soft",

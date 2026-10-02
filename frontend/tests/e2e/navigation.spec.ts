@@ -57,25 +57,21 @@ test.describe("workspace navigation", () => {
     await expect(page.getByRole("main").getByRole("button", { name: "3 groups" }).first()).toBeVisible()
   })
 
-  test("a URL restores the entry type and the page of the entry list", async ({ page, request }) => {
+  test("a URL restores the page of the entry list", async ({ page, request }) => {
     const { q } = await topDiseaseCondition(request)
-    const total = (await entries(request, "sra-experiment", q, 1)).pagination.total
+    const total = (await entries(request, q, 1)).pagination.total
     const pages = Math.ceil(total / TABLE_PER_PAGE)
-    expect(pages, "pages of the experiment list").toBeGreaterThanOrEqual(3)
-    await page.goto(workspaceUrl({ q, rows: "sra-experiment", page: "2" }))
-    await expect(page.getByRole("radio", { name: "SRA Experiments" })).toHaveAttribute("aria-checked", "true")
-    await expect(page.getByRole("main").getByRole("columnheader", { name: "SRA Experiment", exact: true })).toBeVisible()
+    expect(pages, "pages of the BioSample list").toBeGreaterThanOrEqual(3)
+    await page.goto(workspaceUrl({ q, page: "2" }))
+    await expect(page.getByRole("main").getByRole("columnheader", { name: "BioSample", exact: true })).toBeVisible()
     await expect(page.getByRole("main")).toContainText(pageRangeText(total, 2))
     await page.getByRole("button", { name: "Next page" }).first().click()
     await expectParam(page, "page", "3")
-    await page.getByRole("radio", { name: "BioSamples" }).click()
-    await expectParam(page, "rows", null)
-    await expectParam(page, "page", null)
   })
 
   test("a row of the entry list opens the sample and the back link returns to the same state", async ({ page, request }) => {
     const { q } = await topDiseaseCondition(request)
-    const [first] = (await entries(request, "biosample", q)).items
+    const [first] = (await entries(request, q)).items
     if (!first) throw new Error("the condition matches no BioSample")
     const detail = await entry(request, first.identifier)
     await page.goto(workspaceUrl({ q, unit: "bioproject" }))
@@ -96,7 +92,7 @@ test.describe("workspace navigation", () => {
 
   test("a term on the sample page searches for the samples annotated with it", async ({ page, request }) => {
     const { q } = await topDiseaseCondition(request)
-    const [first] = (await entries(request, "biosample", q)).items
+    const [first] = (await entries(request, q)).items
     if (!first) throw new Error("the condition matches no BioSample")
     const annotated = (await entry(request, first.identifier)).annotations.find((annotation) => annotation.termId)
     if (!annotated?.termId) throw new Error("the sample has no annotated term")

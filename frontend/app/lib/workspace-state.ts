@@ -1,4 +1,4 @@
-import type { EntryType, ProjectSort, Unit } from "./api/types"
+import type { ProjectSort, Unit } from "./api/types"
 
 export const TABS = ["samples", "projects", "distribution", "heatmap", "trend"] as const
 
@@ -14,8 +14,6 @@ const PROJECT_SORT_SET: Record<ProjectSort, true> = {
   "biosampleCount:asc": true,
   "experimentCount:desc": true,
   "experimentCount:asc": true,
-  "identifier:asc": true,
-  "identifier:desc": true,
 }
 
 export const PROJECT_SORTS = Object.keys(PROJECT_SORT_SET) as ProjectSort[]
@@ -26,7 +24,6 @@ export type WorkspaceState = {
   tab: Tab
   unit: Unit
   selfExclusion: boolean
-  rows: EntryType
   page: number
   sort: ProjectSort
   row: string
@@ -45,7 +42,6 @@ export const DEFAULTS: WorkspaceState = {
   tab: "samples",
   unit: "biosample",
   selfExclusion: true,
-  rows: "biosample",
   page: 1,
   sort: "biosampleCount:desc",
   row: "cell_line",
@@ -74,7 +70,6 @@ export const readState = (params: URLSearchParams): WorkspaceState => {
     tab: TABS.includes(tab as Tab) ? (tab as Tab) : DEFAULTS.tab,
     unit: UNITS.includes(unit as Unit) ? (unit as Unit) : DEFAULTS.unit,
     selfExclusion: params.get("se") !== "0",
-    rows: params.get("rows") === "sra-experiment" ? "sra-experiment" : "biosample",
     page: Number.isInteger(page) && page >= 1 ? page : 1,
     sort: PROJECT_SORTS.includes(sort as ProjectSort) ? (sort as ProjectSort) : DEFAULTS.sort,
     row: params.get("row") ?? DEFAULTS.row,
@@ -95,7 +90,6 @@ export const writeState = (state: WorkspaceState): URLSearchParams => {
   if (state.tab !== DEFAULTS.tab) params.set("tab", state.tab)
   if (state.unit !== DEFAULTS.unit) params.set("unit", state.unit)
   if (!state.selfExclusion) params.set("se", "0")
-  if (state.rows !== DEFAULTS.rows) params.set("rows", state.rows)
   if (state.page !== 1) params.set("page", String(state.page))
   if (state.sort !== DEFAULTS.sort) params.set("sort", state.sort)
   if (state.row !== DEFAULTS.row) params.set("row", state.row)

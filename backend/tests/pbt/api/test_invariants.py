@@ -57,10 +57,10 @@ def _q(ast: Node | None) -> str | None:
 
 def _count(client: TestClient, q: str | None, unit: str) -> int:
     params = {"q": q} if q else {}
-    if unit == "bioproject":
-        lines = client.get("/api/export/accessions/bioproject", params=params).text.splitlines()
-        return len(lines) - 1
-    return int(client.get(f"/api/entries/{unit}", params=params).json()["pagination"]["total"])
+    if unit == "biosample":
+        return int(client.get("/api/entries/biosample", params=params).json()["pagination"]["total"])
+    lines = client.get(f"/api/export/accessions/{unit}", params=params).text.splitlines()
+    return len(lines) - 1
 
 
 def _and(q: str | None, clauses: list[dict[str, str]]) -> str | None:

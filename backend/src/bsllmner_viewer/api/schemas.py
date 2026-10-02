@@ -12,7 +12,7 @@ ClauseJson = TypedDict(
 )
 
 type Unit = Literal["biosample", "sra-experiment", "bioproject"]
-type EntryType = Literal["biosample", "sra-experiment"]
+type EntryType = Literal["biosample"]
 type AccessionType = Literal["biosample", "sra-experiment", "sra-run", "bioproject"]
 
 
@@ -200,19 +200,6 @@ class TrendResponse(ApiModel):
     series: list[TrendSeries]
 
 
-class CompositionSegment(ApiModel):
-    kind: Literal["term", "other", "unmapped", "no_value"]
-    label: str | None
-    term_id: str | None
-    count: int
-
-
-class Composition(ApiModel):
-    field: str
-    total: int
-    segments: list[CompositionSegment]
-
-
 class Pagination(ApiModel):
     page: int
     per_page: int
@@ -227,7 +214,6 @@ class Project(ApiModel):
     experiment_count: int
     assays: list[str]
     clauses: list[Clause]
-    composition: list[Composition]
 
 
 class ProjectsResponse(ApiModel):
@@ -236,7 +222,6 @@ class ProjectsResponse(ApiModel):
     population_q: str | None
     facet_self_exclude: bool
     sort: str
-    composition_fields: list[str]
     pagination: Pagination
     items: list[Project]
 
@@ -249,9 +234,8 @@ class AnnotationValue(ApiModel):
 
 
 class EntryItem(ApiModel):
-    identifier: str = Field(description="BioSample accession for `biosample` rows, experiment accession otherwise")
+    identifier: str = Field(description="BioSample accession")
     type: EntryType
-    biosample: str
     experiments: list[str] = Field(description="Experiments of the BioSample that match the condition")
     title: str | None
     organism: Organism | None

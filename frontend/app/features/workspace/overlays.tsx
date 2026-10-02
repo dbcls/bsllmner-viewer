@@ -101,8 +101,6 @@ type ApiModalProps = {
   open: boolean
   onClose: () => void
   state: WorkspaceState
-  /** The annotation fields whose composition the Projects tab shows. */
-  compositionFields: readonly string[]
   onToast: (message: string) => void
 }
 
@@ -115,12 +113,12 @@ const TAB_LABELS: Record<WorkspaceState["tab"], string> = {
 }
 
 /** The api request that returns the current view. */
-export const apiRequestFor = (state: WorkspaceState, compositionFields: readonly string[]): string => {
+export const apiRequestFor = (state: WorkspaceState): string => {
   const q = state.q ?? undefined
   const facetSelfExclude = state.selfExclusion ? "true" : undefined
   switch (state.tab) {
     case "samples":
-      return apiUrl(`/api/entries/${state.rows}`, { q, page: state.page, perPage: TABLE_PER_PAGE })
+      return apiUrl("/api/entries/biosample", { q, page: state.page, perPage: TABLE_PER_PAGE })
     case "distribution":
       return apiUrl("/api/distribution", { q, field: "disease", unit: state.unit, facetSelfExclude })
     case "heatmap":
@@ -136,7 +134,7 @@ export const apiRequestFor = (state: WorkspaceState, compositionFields: readonly
     case "trend":
       return apiUrl("/api/trend", { q, field: state.trendField ?? undefined, unit: state.unit, facetSelfExclude, elements: state.trendTerms?.join(",") })
     case "projects":
-      return apiUrl("/api/projects", { q, sort: state.sort, page: state.page, perPage: TABLE_PER_PAGE, compositionFields: compositionFields.join(",") })
+      return apiUrl("/api/projects", { q, facetSelfExclude: "true", sort: state.sort, page: state.page, perPage: TABLE_PER_PAGE })
   }
 }
 
@@ -163,9 +161,9 @@ export const responseExcerpt = (text: string): string => {
 
 const BLOCK_HEADING = "mb-1.5 text-fs-body-sm font-semibold text-ink"
 
-export const ApiModal = ({ open, onClose, state, compositionFields, onToast }: ApiModalProps) => {
+export const ApiModal = ({ open, onClose, state, onToast }: ApiModalProps) => {
   const [response, setResponse] = useState<string>("")
-  const request = apiRequestFor(state, compositionFields)
+  const request = apiRequestFor(state)
   const url = typeof window === "undefined" ? request : `${window.location.origin}${request}`
   const curl = `curl -s "${url}" \\\n  -H "Accept: application/json"`
   useEffect(() => {

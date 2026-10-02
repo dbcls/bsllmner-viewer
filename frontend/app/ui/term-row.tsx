@@ -1,4 +1,5 @@
 import { cn } from "./cn"
+import { Skeleton } from "./skeleton"
 
 type TermRowProps = {
   label: string
@@ -32,4 +33,16 @@ export const TermRow = ({ label, id, detail, count, field, note, selected, onCli
     {note && <span className="shrink-0 text-fs-micro font-semibold text-brand">{note}</span>}
     <span className="ml-auto shrink-0 pl-2 text-right font-mono text-fs-label text-ink-mid">{count}</span>
   </button>
+)
+
+/** A term row before the search result arrives, as tall as a `TermRow`. */
+export const TermRowSkeleton = () => (
+  <div aria-hidden="true" className="flex items-baseline gap-2 border-b border-brand-soft px-3.5 py-1.5">
+    <span className="min-w-0 flex-1">
+      <Skeleton className="w-48" />
+    </span>
+    <span className="shrink-0 text-fs-label">
+      <Skeleton className="w-12" />
+    </span>
+  </div>
 )

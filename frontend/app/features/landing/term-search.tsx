@@ -7,7 +7,7 @@ import { formatCount } from "~/lib/format"
 import { fieldLabel } from "~/lib/labels"
 import { termDetail } from "~/lib/terms"
 import { workspaceSearch } from "~/lib/workspace-state"
-import { ACTION_ICON, Button, Card, CardHeader, Clickable, Select, TermRow, TextInput } from "~/ui"
+import { ACTION_ICON, busyClass, Button, Card, CardHeader, Clickable, cn, Select, Skeleton, TermRow, TermRowSkeleton, TextInput } from "~/ui"
 
 /** The field choice that searches every annotation field. */
 const ALL_FIELDS = "*"
@@ -77,7 +77,8 @@ export const TermSearch = () => {
                 Clear search
               </Button>
             </CardHeader>
-            <div className="max-h-picker-list overflow-auto">
+            <div aria-busy={!terms.data || terms.isPlaceholderData || undefined} className={cn("max-h-picker-list overflow-auto", busyClass(terms.isPlaceholderData))}>
+              {!terms.data && Array.from({ length: SKELETON_TERMS }, (_, index) => <TermRowSkeleton key={index} />)}
               {(terms.data?.terms ?? []).map((hit) => (
                 <TermRow
                   key={`${hit.field}:${hit.termId}`}
@@ -92,7 +93,6 @@ export const TermSearch = () => {
               {terms.data && terms.data.terms.length === 0 && (
                 <div className="px-6 py-6 text-center text-fs-body-sm text-ink-soft">No matching term. Try a synonym or a term ID.</div>
               )}
-              {!terms.data && <div className="px-6 py-6 text-center text-fs-body-sm text-ink-soft">Searching…</div>}
             </div>
           </Card>
         </div>
@@ -101,6 +101,7 @@ export const TermSearch = () => {
           <Card padding="sm">
             <div className="mb-1.5 font-semibold">Annotation terms</div>
             <div className="grid grid-cols-3 gap-x-5">
+              {dataset.data === undefined && Array.from({ length: SKELETON_FIELDS }, (_, index) => <FieldRowSkeleton key={index} />)}
               {fields.map((name) => (
                 <FieldRow key={name} field={name} total={total} onSelect={() => setField(name)} />
               ))}
@@ -111,6 +112,11 @@ export const TermSearch = () => {
     </div>
   )
 }
+
+/** The rows that hold the place of the result before it arrives. */
+const SKELETON_TERMS = 8
+/** The field rows drawn before the description of the dataset arrives, on the first visit only. */
+const SKELETON_FIELDS = 6
 
 type FieldRowProps = {
   field: string
@@ -133,7 +139,22 @@ const FieldRow = ({ field, total, onSelect }: FieldRowProps) => {
           <span className="block h-full bg-brand-light" style={{ width: `${total > 0 && mapped !== undefined ? (mapped / total) * 100 : 0}%` }} />
         </span>
       </span>
-      <span className="w-17 shrink-0 text-right font-mono text-fs-label text-ink-mid">{mapped === undefined ? "…" : formatCount(mapped)}</span>
+      <span className="flex w-17 shrink-0 justify-end font-mono text-fs-label text-ink-mid">{mapped === undefined ? <Skeleton className="w-12" /> : formatCount(mapped)}</span>
     </Clickable>
   )
 }
+
+/** A field row before the description of the dataset arrives, on the first visit only. */
+const FieldRowSkeleton = () => (
+  <div aria-hidden="true" className="flex items-center gap-2 py-1">
+    <span className="min-w-0 flex-1">
+      <span className="block text-fs-body-sm">
+        <Skeleton className="w-24" />
+      </span>
+      <Skeleton kind="block" className="mt-0.5 h-1.5 w-full" />
+    </span>
+    <span className="flex w-17 shrink-0 justify-end text-fs-label">
+      <Skeleton className="w-12" />
+    </span>
+  </div>
+)

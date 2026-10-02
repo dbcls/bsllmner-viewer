@@ -27,6 +27,7 @@ export type IconName =
   | "circle-help"
   | "arrow-up-narrow-wide"
   | "arrow-down-wide-narrow"
+  | "plus"
 
 const NODES: Record<IconName, ReactNode> = {
   "search": (
@@ -111,6 +112,12 @@ const NODES: Record<IconName, ReactNode> = {
       <path d="M11 12h4" />
     </>
   ),
+  "plus": (
+    <>
+      <path d="M5 12h14" />
+      <path d="M12 5v14" />
+    </>
+  ),
 }
 
 export const ICON_NAMES = Object.keys(NODES) as IconName[]
@@ -130,6 +137,8 @@ export const ACTION_ICON = {
   download: "download",
   openDialog: "app-window",
   showHelp: "circle-help",
+  /** Adds an element to the condition. Removing one is `clear`, as on a condition chip. */
+  add: "plus",
   /** The order that a sorted list runs in now, on the control that reverses the order. */
   ascendingOrder: "arrow-up-narrow-wide",
   descendingOrder: "arrow-down-wide-narrow",

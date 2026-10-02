@@ -9,7 +9,7 @@ bsllmner-mk2 extracts biological entities (cell line, cell type, tissue, disease
 - **Structured queries** over ontology terms, with descendant expansion over the ontology DAG, combined with assay, organism, submission date, and BioProject conditions
 - **Aggregations** of the matches as distributions, cross-tabulations, and yearly trends, counted by BioSample, SRA Experiment, or BioProject
 - **Annotation status** that distinguishes terms mapped by exact match, terms selected by the LLM, values without an adopted term, and fields without an extracted value
-- **Export** of matching BioSamples and experiments as TSV / NDJSON and as BioSample, SRA Experiment, SRA Run, and BioProject accession lists
+- **Export** of matching BioSamples as TSV / NDJSON, and of BioSample, SRA Experiment, SRA Run, and BioProject accession lists
 - **One condition language** shared by the UI, its URLs, and the API, so every result shown in the UI can be reproduced through the API. The API follows the conventions of the DDBJ Search API
 
 ```

@@ -32,7 +32,7 @@ describe("conditionLabels", () => {
       ],
     }
     const labels = { "MONDO:0007254": "breast cancer", "9606": "Homo sapiens", "7955": "Danio rerio", "UBERON:0002107": "liver" }
-    expect(conditionLabels(ast, labels)).toEqual(["breast cancer", "ATAC-seq", "Human", "Danio rerio", "“liver”", "2018 to 2022", "not liver"])
+    expect(conditionLabels(ast, labels)).toEqual(["breast cancer", "ATAC-seq", "Homo sapiens", "Danio rerio", "“liver”", "2018 to 2022", "not liver"])
   })
 
   test.prop([fc.array(leaf, { minLength: 1, maxLength: 6 }), fc.nat({ max: 4 })])(

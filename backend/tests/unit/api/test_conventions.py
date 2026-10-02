@@ -65,7 +65,6 @@ class TestCamelCase:
             client.get("/api/dataset"),
             client.get("/api/service-info"),
             client.get("/api/entries/biosample", params={"q": disease}),
-            client.get("/api/entries/sra-experiment", params={"q": disease}),
             client.get(f"/api/entries/biosample/{accession}"),
             client.get("/api/distribution", params={"field": "disease", "q": disease}),
             client.get("/api/distribution", params={"field": "disease_status", "expandedStatus": "true"}),
@@ -73,7 +72,7 @@ class TestCamelCase:
                 "/api/crosstab", params={"row": "disease", "col": "library_strategy", "rowElements": "MONDO:0007254"}
             ),
             client.get("/api/trend", params={"field": "disease", "q": disease}),
-            client.get("/api/projects", params={"compositionFields": "disease,drug", "q": disease}),
+            client.get("/api/projects", params={"q": disease}),
             client.get("/api/terms", params={"query": "breast", "q": disease}),
             client.get("/api/terms/children", params={"field": "disease", "termId": "MONDO:0004992"}),
             client.get("/api/dsl/parse", params={"q": f"{disease} AND date_created:[2015-01-01 TO 2020-12-31]"}),
@@ -199,7 +198,7 @@ class TestFacetSelfExclude:
 
 
 class TestPagination:
-    @pytest.mark.parametrize("path", ["/api/entries/biosample", "/api/entries/sra-experiment", "/api/projects"])
+    @pytest.mark.parametrize("path", ["/api/entries/biosample", "/api/projects"])
     @pytest.mark.parametrize("per_page", [0, 101, -1, 1000])
     def test_per_page_outside_one_to_one_hundred_is_rejected(
         self, client: TestClient, path: str, per_page: int
@@ -208,7 +207,7 @@ class TestPagination:
         assert response.status_code == 422
         assert response.json()["type"] == "about:blank"
 
-    @pytest.mark.parametrize("path", ["/api/entries/biosample", "/api/entries/sra-experiment", "/api/projects"])
+    @pytest.mark.parametrize("path", ["/api/entries/biosample", "/api/projects"])
     @pytest.mark.parametrize("per_page", [1, 100])
     def test_per_page_bounds_are_accepted(self, client: TestClient, path: str, per_page: int) -> None:
         body = _first(client, path, perPage=str(per_page))
@@ -219,7 +218,7 @@ class TestPagination:
     def test_page_zero_is_rejected(self, client: TestClient, path: str) -> None:
         assert client.get(path, params={"page": 0}).status_code == 422
 
-    @pytest.mark.parametrize("path", ["/api/entries/biosample", "/api/entries/sra-experiment", "/api/projects"])
+    @pytest.mark.parametrize("path", ["/api/entries/biosample", "/api/projects"])
     def test_last_page_has_no_next_and_the_page_after_is_empty(self, client: TestClient, path: str) -> None:
         total = _first(client, path, perPage="1")["pagination"]["total"]
         assert total > 2
@@ -246,20 +245,15 @@ class TestPagination:
         assert body["pagination"] == {"page": 1, "perPage": 25, "total": 0, "hasNext": False}
 
     @settings(max_examples=40)
-    @given(st.integers(1, 100), st.integers(1, 8), st.sampled_from(["biosample", "sra-experiment"]))
-    def test_pagination_describes_the_page(self, client: TestClient, per_page: int, page: int, kind: str) -> None:
-        body = _first(client, f"/api/entries/{kind}", perPage=str(per_page), page=str(page))
+    @given(st.integers(1, 100), st.integers(1, 8))
+    def test_pagination_describes_the_page(self, client: TestClient, per_page: int, page: int) -> None:
+        body = _first(client, "/api/entries/biosample", perPage=str(per_page), page=str(page))
         pagination = body["pagination"]
         total = pagination["total"]
         assert pagination["page"] == page
         assert pagination["perPage"] == per_page
         assert pagination["hasNext"] is (page * per_page < total)
         assert len(body["items"]) == max(0, min(per_page, total - (page - 1) * per_page))
-
-    def test_pages_of_experiments_do_not_overlap(self, client: TestClient) -> None:
-        first = _first(client, "/api/entries/sra-experiment", perPage="10", page="1")["items"]
-        second = _first(client, "/api/entries/sra-experiment", perPage="10", page="2")["items"]
-        assert {i["identifier"] for i in first}.isdisjoint({i["identifier"] for i in second})
 
 
 class TestPaths:
@@ -296,10 +290,6 @@ class TestPaths:
         body = response.json()
         assert body["type"] == "about:blank"
         assert "SAMN_NONE" in body["detail"]
-
-    def test_accession_of_a_biosample_is_not_an_experiment_entry(self, client: TestClient, synthetic: Any) -> None:
-        accession = synthetic.accessions[0]
-        assert client.get(f"/api/entries/sra-experiment/{accession}").status_code == 404
 
     def test_method_not_allowed_is_a_problem(self, client: TestClient) -> None:
         response = client.post("/api/entries/biosample")
@@ -389,11 +379,6 @@ class TestProblems:
                     params={"field": "disease", "elements": ",".join("a" * 1 + str(i) for i in range(501))},
                 ),
                 "too-many-elements",
-            ),
-            (client.get("/api/projects", params={"compositionFields": "title"}), "unknown-field"),
-            (
-                client.get("/api/projects", params={"compositionFields": "disease,drug,tissue,cell_line"}),
-                "too-many-fields",
             ),
             (client.get("/api/entries/biosample", params={"q": "nope:x"}), "unknown-field"),
         ]
@@ -644,10 +629,11 @@ class TestOpenApi:
             schema = parameter["schema"]
             if "$ref" in schema:
                 schema = spec["components"]["schemas"][schema["$ref"].rsplit("/", 1)[1]]
-            return list(schema["enum"])
+            # A type with one value is written as `const`, more than one as `enum`.
+            return list(schema["enum"]) if "enum" in schema else [schema["const"]]
 
-        assert values("/api/entries/{type}") == ["biosample", "sra-experiment"]
-        assert values("/api/export/entries/{type}") == ["biosample", "sra-experiment"]
+        assert values("/api/entries/{type}") == ["biosample"]
+        assert values("/api/export/entries/{type}") == ["biosample"]
         assert values("/api/export/accessions/{type}") == ["biosample", "sra-experiment", "sra-run", "bioproject"]
 
     def test_self_exclusion_parameter_is_named_facet_self_exclude_with_default_false(
@@ -675,13 +661,12 @@ class TestExport:
         assert _snake_case_keys(first) == []
 
     def test_tsv_media_type_and_camel_case_header(self, client: TestClient) -> None:
-        response = client.get("/api/export/entries/sra-experiment")
+        response = client.get("/api/export/entries/biosample")
         assert response.headers["content-type"].startswith("text/tab-separated-values")
         header = response.text.splitlines()[0].split("\t")
-        assert header[:11] == [
+        assert header[:10] == [
             "identifier",
             "type",
-            "biosample",
             "experiments",
             "title",
             "organismIdentifier",
@@ -691,15 +676,14 @@ class TestExport:
             "dateCreated",
             "chipAtlas",
         ]
-        assert header[11:] == ["cell_line", "disease", "tissue", "drug", "chip_antigen"]
+        assert header[10:] == ["cell_line", "disease", "tissue", "drug", "chip_antigen"]
 
     def test_default_format_is_tsv(self, client: TestClient) -> None:
         assert client.get("/api/export/entries/biosample").headers["content-type"].startswith("text/tab-separated")
 
-    @pytest.mark.parametrize("kind", ["biosample", "sra-experiment"])
-    def test_ndjson_line_count_equals_the_total(self, client: TestClient, kind: str) -> None:
-        total = _first(client, f"/api/entries/{kind}", perPage="1")["pagination"]["total"]
-        text = client.get(f"/api/export/entries/{kind}", params={"format": "ndjson"}).text
+    def test_ndjson_line_count_equals_the_total(self, client: TestClient) -> None:
+        total = _first(client, "/api/entries/biosample", perPage="1")["pagination"]["total"]
+        text = client.get("/api/export/entries/biosample", params={"format": "ndjson"}).text
         assert len(text.splitlines()) == total
 
     def test_accession_export_for_a_condition(self, client: TestClient) -> None:

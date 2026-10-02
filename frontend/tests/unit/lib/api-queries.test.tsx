@@ -67,13 +67,12 @@ describe.each([true, false])("queries with selfExclusion=%s", (selfExclusion) =>
     expect((await lastCall()).query["facetSelfExclude"]).toBe(expected)
   })
 
-  it("useProjects sends facetSelfExclude, perPage, and compositionFields", async () => {
-    renderHook(() => useProjects({ q: null, selfExclusion, sort: "identifier:asc", page: 2, perPage: 25, compositionFields: "disease" }), { wrapper })
+  it("useProjects sends facetSelfExclude, sort, and perPage", async () => {
+    renderHook(() => useProjects({ q: null, selfExclusion, sort: "experimentCount:asc", page: 2, perPage: 25 }), { wrapper })
     const url = await lastCall()
     expect(url.query["facetSelfExclude"]).toBe(expected)
-    expect(url.query["sort"]).toBe("identifier:asc")
+    expect(url.query["sort"]).toBe("experimentCount:asc")
     expect(url.query["perPage"]).toBe(25)
-    expect(url.query["compositionFields"]).toBe("disease")
   })
 
   it("useTerms sends facetSelfExclude", async () => {
@@ -90,11 +89,11 @@ describe.each([true, false])("queries with selfExclusion=%s", (selfExclusion) =>
 })
 
 describe("useEntries", () => {
-  it("requests the list of the entry type with camelCase paging", async () => {
-    renderHook(() => useEntries({ q: "a:b", type: "sra-experiment", page: 3, perPage: 25 }), { wrapper })
+  it("requests the list of BioSamples with camelCase paging", async () => {
+    renderHook(() => useEntries({ q: "a:b", page: 3, perPage: 25 }), { wrapper })
     const url = await lastCall()
     expect(url.path).toBe("/api/entries/{type}")
-    expect(url.pathParams["type"]).toBe("sra-experiment")
+    expect(url.pathParams["type"]).toBe("biosample")
     expect(url.query["perPage"]).toBe(25)
     expect(url.query["page"]).toBe(3)
   })
@@ -103,7 +102,7 @@ describe("useEntries", () => {
 describe("export URLs", () => {
   it("name the entry type in the path and the format in the query", () => {
     expect(exportEntriesUrl("biosample", "a:b", "ndjson")).toBe("/api/export/entries/biosample?q=a%3Ab&format=ndjson")
-    expect(exportEntriesUrl("sra-experiment", null, "tsv")).toBe("/api/export/entries/sra-experiment?format=tsv")
+    expect(exportEntriesUrl("biosample", null, "tsv")).toBe("/api/export/entries/biosample?format=tsv")
     expect(exportAccessionsUrl("sra-run", null)).toBe("/api/export/accessions/sra-run")
   })
 })

@@ -49,17 +49,16 @@ export type StatusGroup = "mapped" | "unmapped" | "no_value"
 
 export type StatusInfo = {
   label: string
-  glyph: string
   group: StatusGroup
 }
 
 export const STATUS_INFO: Record<StatusCode, StatusInfo> = {
-  mapped_exact: { label: "Exact match", glyph: "●", group: "mapped" },
-  mapped_selected: { label: "LLM selected", glyph: "◐", group: "mapped" },
-  unmapped_no_candidate: { label: "No candidate", glyph: "○", group: "unmapped" },
-  unmapped_rejected: { label: "Rejected", glyph: "⊘", group: "unmapped" },
-  not_stated: { label: "Not stated", glyph: "–", group: "no_value" },
-  extraction_failed: { label: "Extraction failed", glyph: "!", group: "no_value" },
+  mapped_exact: { label: "Exact match", group: "mapped" },
+  mapped_selected: { label: "LLM selected", group: "mapped" },
+  unmapped_no_candidate: { label: "No candidate", group: "unmapped" },
+  unmapped_rejected: { label: "Rejected", group: "unmapped" },
+  not_stated: { label: "Not stated", group: "no_value" },
+  extraction_failed: { label: "Extraction failed", group: "no_value" },
 }
 
 export const STATUS_ORDER: StatusCode[] = [
@@ -78,7 +77,7 @@ export const GROUP_LABELS: Record<StatusGroup, string> = {
 }
 
 export const statusInfo = (status: string): StatusInfo =>
-  STATUS_INFO[status as StatusCode] ?? { label: status, glyph: "?", group: "no_value" }
+  STATUS_INFO[status as StatusCode] ?? { label: status, group: "no_value" }
 
 export const statusLabel = (value: string): string =>
   value in GROUP_LABELS ? GROUP_LABELS[value as StatusGroup] : statusInfo(value).label
@@ -91,10 +90,8 @@ export const UNIT_LABELS: Record<string, string> = {
 
 export const unitLabel = (unit: string): string => UNIT_LABELS[unit] ?? unit
 
-export const ORGANISM_SHORT: Record<string, string> = {
-  "9606": "Human",
-  "10090": "Mouse",
-}
-
-export const organismLabel = (id: string, name: string | null | undefined): string =>
-  ORGANISM_SHORT[id] ?? name ?? id
+/**
+ * An organism by its NCBI Taxonomy scientific name, in full and in roman type. Names that are not binomials, such as
+ * "mixed sample" or "Homo sapiens/Mus musculus xenograft", have no abbreviation or italic form.
+ */
+export const organismLabel = (id: string, name: string | null | undefined): string => name ?? id

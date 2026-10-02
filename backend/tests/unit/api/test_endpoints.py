@@ -310,17 +310,14 @@ def test_default_elements_include_an_unannotated_term_with_a_zero_count(client: 
     assert named["label"] == "MONDO:9999999"
 
 
-def test_projects_lists_bioprojects_with_composition(client: TestClient) -> None:
-    body = client.get("/api/projects", params={"compositionFields": "disease,drug", "perPage": 5}).json()
+def test_projects_default_request_lists_bioprojects_with_their_clauses(client: TestClient) -> None:
+    body = client.get("/api/projects", params={"perPage": 5}).json()
     assert body["pagination"]["total"] > 0
     assert body["pagination"]["perPage"] == 5
     assert len(body["items"]) <= 5
     assert body["sort"] == "biosampleCount:desc"
     project = body["items"][0]
     assert project["clauses"] == [{"field": "bioproject", "value": project["identifier"]}]
-    assert [c["field"] for c in project["composition"]] == ["disease", "drug"]
-    assert all(sum(s["count"] for s in c["segments"]) == c["total"] for c in project["composition"])
-    assert all(c["total"] == project["biosampleCount"] for c in project["composition"])
 
 
 PROJECT_SORT_KEYS: dict[str, Callable[[dict[str, Any]], tuple[Any, ...]]] = {
@@ -328,23 +325,19 @@ PROJECT_SORT_KEYS: dict[str, Callable[[dict[str, Any]], tuple[Any, ...]]] = {
     "biosampleCount:asc": lambda p: (p["biosampleCount"], p["experimentCount"], p["identifier"]),
     "experimentCount:desc": lambda p: (-p["experimentCount"], -p["biosampleCount"], p["identifier"]),
     "experimentCount:asc": lambda p: (p["experimentCount"], p["biosampleCount"], p["identifier"]),
-    "identifier:asc": lambda p: (p["identifier"],),
 }
 
 
-@pytest.mark.parametrize("sort", [*PROJECT_SORT_KEYS, "identifier:desc"])
+@pytest.mark.parametrize("sort", list(PROJECT_SORT_KEYS))
 def test_projects_sort_each_key_and_direction_orders_all_items(client: TestClient, sort: str) -> None:
     body = client.get("/api/projects", params={"sort": sort, "perPage": 100}).json()
     assert body["sort"] == sort
     items = body["items"]
     assert len(items) == body["pagination"]["total"]
-    if sort == "identifier:desc":
-        assert [p["identifier"] for p in items] == sorted((p["identifier"] for p in items), reverse=True)
-    else:
-        assert items == sorted(items, key=PROJECT_SORT_KEYS[sort])
+    assert items == sorted(items, key=PROJECT_SORT_KEYS[sort])
 
 
-@pytest.mark.parametrize("sort", ["biosampleCount:asc", "identifier:desc"])
+@pytest.mark.parametrize("sort", ["biosampleCount:asc", "experimentCount:desc"])
 def test_projects_sort_pages_are_slices_of_one_order(client: TestClient, sort: str) -> None:
     whole = client.get("/api/projects", params={"sort": sort, "perPage": 6}).json()["items"]
     first = client.get("/api/projects", params={"sort": sort, "perPage": 3, "page": 1}).json()["items"]
@@ -352,7 +345,9 @@ def test_projects_sort_pages_are_slices_of_one_order(client: TestClient, sort: s
     assert first + second == whole
 
 
-@pytest.mark.parametrize("sort", ["biosample", "biosampleCount", "biosampleCount:up", "title:asc", ""])
+@pytest.mark.parametrize(
+    "sort", ["biosample", "biosampleCount", "biosampleCount:up", "title:asc", "identifier:asc", ""]
+)
 def test_projects_sort_unknown_value_is_rejected(client: TestClient, sort: str) -> None:
     assert client.get("/api/projects", params={"sort": sort}).status_code == 422
 
@@ -361,19 +356,34 @@ def test_entries_pages_are_disjoint_and_cover_the_total(client: TestClient) -> N
     first = client.get("/api/entries/biosample", params={"perPage": 7, "page": 1}).json()
     second = client.get("/api/entries/biosample", params={"perPage": 7, "page": 2}).json()
     assert len(first["items"]) == 7
-    assert {r["biosample"] for r in first["items"]}.isdisjoint({r["biosample"] for r in second["items"]})
-    by_experiment = client.get("/api/entries/sra-experiment", params={"perPage": 100}).json()
-    assert by_experiment["type"] == "sra-experiment"
-    assert by_experiment["pagination"]["total"] > 0
-    items = by_experiment["items"]
-    assert len(items) == min(100, by_experiment["pagination"]["total"])
-    assert all(r["type"] == "sra-experiment" and r["experiments"] == [r["identifier"]] for r in items)
+    assert {r["identifier"] for r in first["items"]}.isdisjoint({r["identifier"] for r in second["items"]})
+
+
+@pytest.mark.parametrize("kind", ["sra-experiment", "sra-run", "bioproject"])
+def test_entries_of_a_type_other_than_biosample_are_not_found(client: TestClient, kind: str) -> None:
+    assert client.get(f"/api/entries/{kind}").status_code == 404
+    assert client.get(f"/api/export/entries/{kind}").status_code == 404
+
+
+@pytest.mark.parametrize("q", [None, "library_strategy:RNA-Seq", "library_strategy:ChIP-Seq"])
+def test_entries_list_every_matching_experiment_in_the_item_of_its_biosample(client: TestClient, q: str | None) -> None:
+    params = {"q": q} if q else {}
+    listed: list[str] = []
+    page = 1
+    while True:
+        body = client.get("/api/entries/biosample", params={**params, "perPage": 100, "page": page}).json()
+        listed += [e for item in body["items"] for e in item["experiments"]]
+        if not body["pagination"]["hasNext"]:
+            break
+        page += 1
+    expected = client.get("/api/export/accessions/sra-experiment", params=params).text.splitlines()[1:]
+    assert sorted(listed) == expected
 
 
 def test_entries_rows_carry_annotations_for_every_field(client: TestClient) -> None:
     row = client.get("/api/entries/biosample", params={"perPage": 1}).json()["items"][0]
     assert row["type"] == "biosample"
-    assert row["identifier"] == row["biosample"]
+    assert row["identifier"].startswith("SAM")
     assert list(row["annotations"]) == ["cell_line", "disease", "tissue", "drug", "chip_antigen"]
     assert all(a["status"] for values in row["annotations"].values() for a in values)
     assert row["organism"] is None or set(row["organism"]) == {"identifier", "name"}
@@ -479,7 +489,8 @@ def test_export_accessions_lists_one_per_line(client: TestClient) -> None:
     runs = client.get("/api/export/accessions/sra-run").text.splitlines()[1:]
     assert all(r.startswith("SRR") for r in runs)
     experiments = client.get("/api/export/accessions/sra-experiment").text.splitlines()[1:]
-    assert len(experiments) == client.get("/api/entries/sra-experiment").json()["pagination"]["total"]
+    by_experiment = client.get("/api/distribution", params={"field": "library_strategy", "unit": "sra-experiment"})
+    assert len(experiments) == by_experiment.json()["total"]
 
 
 def test_export_accessions_with_an_unknown_type_is_not_found(client: TestClient) -> None:
@@ -495,7 +506,7 @@ def test_export_entries_tsv_and_ndjson(client: TestClient) -> None:
     assert tsv_response.headers["content-type"].startswith("text/tab-separated-values")
     tsv = tsv_response.text.splitlines()
     total = client.get("/api/entries/biosample", params={"q": q}).json()["pagination"]["total"]
-    assert tsv[0].split("\t")[:3] == ["identifier", "type", "biosample"]
+    assert tsv[0].split("\t")[:3] == ["identifier", "type", "experiments"]
     assert "libraryStrategy" in tsv[0].split("\t")
     assert len(tsv) - 1 == total
     assert {len(line.split("\t")) for line in tsv} == {len(tsv[0].split("\t"))}
@@ -505,15 +516,6 @@ def test_export_entries_tsv_and_ndjson(client: TestClient) -> None:
     assert len(lines) == total
     listed = client.get("/api/entries/biosample", params={"q": q, "perPage": 100}).json()["items"]
     assert lines[: len(listed)] == listed
-
-
-def test_export_entries_of_experiments_has_one_line_per_experiment(client: TestClient) -> None:
-    lines = [
-        orjson.loads(line)
-        for line in client.get("/api/export/entries/sra-experiment", params={"format": "ndjson"}).text.splitlines()
-    ]
-    assert lines
-    assert all(line["type"] == "sra-experiment" and line["experiments"] == [line["identifier"]] for line in lines)
 
 
 def test_export_entries_rejects_the_former_json_format(client: TestClient) -> None:

@@ -7,7 +7,7 @@ import { formatCount } from "~/lib/format"
 import { fieldLabel, organismLabel, unitLabel } from "~/lib/labels"
 import { MATRIX_PRESETS, type Preset, QUESTION_PRESETS } from "~/lib/presets"
 import { workspaceSearch } from "~/lib/workspace-state"
-import { ACTION_ICON, Caption, Card, Clickable, ExternalLink, Icon, PageHeading, SectionHeading, Tag } from "~/ui"
+import { ACTION_ICON, Caption, Card, Clickable, ExternalLink, Icon, PageHeading, SectionHeading, Skeleton, Tag } from "~/ui"
 
 import { TermSearch } from "./term-search"
 
@@ -101,13 +101,14 @@ const PresetLink = ({ preset, detail }: { preset: Preset; detail: PresetDetail }
 const Total = ({ unit, value }: { unit: Unit; value: number | undefined }) => (
   <div>
     <Caption>{unitLabel(unit)}</Caption>
-    <div className="mt-0.5 font-mono text-fs-h2 font-semibold text-ink">{value === undefined ? "…" : formatCount(value)}</div>
+    <div className="mt-0.5 font-mono text-fs-h2 font-semibold text-ink">{value === undefined ? <Skeleton className="w-24" /> : formatCount(value)}</div>
   </div>
 )
 
 const FieldStatistics = ({ field }: { field: (typeof STATISTICS_FIELDS)[number] }) => {
   const navigate = useNavigate()
-  const distribution = useDistribution({ field, q: null, unit: "biosample", selfExclusion: true, limit: field === "organism_id" ? 2 : 3 })
+  const limit = field === "organism_id" ? 2 : 3
+  const distribution = useDistribution({ field, q: null, unit: "biosample", selfExclusion: true, limit })
   const elements: Element[] = distribution.data?.elements ?? []
   const max = Math.max(1, ...elements.map((e) => e.count))
   const open = async (element: Element) => {
@@ -117,6 +118,20 @@ const FieldStatistics = ({ field }: { field: (typeof STATISTICS_FIELDS)[number] 
   return (
     <div className="mt-4 border-t border-border-soft pt-3.5">
       <div className="mb-1.5 font-semibold">{fieldLabel(field)}</div>
+      {distribution.data === undefined &&
+        Array.from({ length: limit }, (_, index) => (
+          <div key={index} aria-hidden="true" className="flex items-center gap-2 py-0.5">
+            <span className="min-w-0 flex-1">
+              <span className="block text-fs-body-sm">
+                <Skeleton className="w-24" />
+              </span>
+              <Skeleton kind="block" className="mt-0.5 h-1.5 w-full" />
+            </span>
+            <span className="flex w-17 shrink-0 justify-end text-fs-label">
+              <Skeleton className="w-14" />
+            </span>
+          </div>
+        ))}
       {elements.map((element) => (
         <Clickable
           key={element.value}

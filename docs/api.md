@@ -83,11 +83,11 @@ Unlike the DDBJ Search API, a keyword may appear anywhere in a condition, includ
 
 ## Entries
 
-An entry is a BioSample or an SRA experiment. `GET /api/entries/biosample` lists the BioSamples that match `q`, and `GET /api/entries/sra-experiment` lists the experiments that match `q`, in the sense of the counting units in [data-model.md](data-model.md). Each item has the accession of the entry as `identifier`, its type as `type`, and the BioSample's metadata and annotations. An entry list is always computed from `q` itself.
+An entry is a BioSample. `GET /api/entries/biosample` lists the BioSamples that match `q`, in the sense of the BioSample counting unit in [data-model.md](data-model.md). Each item has the accession of the BioSample as `identifier`, `biosample` as `type`, the BioSample's metadata and annotations, and the experiments of the BioSample that match `q` as `experiments`. The annotations belong to the BioSample, and a BioSample can have several experiments, so an experiment is listed in the item of its BioSample and is not an entry of its own. An entry list is always computed from `q` itself.
 
 `GET /api/entries/biosample/{accession}` returns one BioSample with its original attributes, its annotations with evidence, its experiments, and its BioProjects. The BioSample does not have to be in the population; its experiments show which of them are.
 
-The exports return every matching entry of a type as TSV or as newline-delimited JSON (`application/x-ndjson`), and every matching accession of a type as plain text with one accession per line. Accession lists also exist for `sra-run` and `bioproject`.
+The exports return every matching entry as TSV or as newline-delimited JSON (`application/x-ndjson`), and every matching accession of a type as plain text with one accession per line. Accession lists exist for `biosample`, `sra-experiment`, `sra-run`, and `bioproject`.
 
 ## Aggregations
 
@@ -103,7 +103,7 @@ With `facetSelfExclude=true`, an aggregation is computed without the conditions 
 
 The top-level conjuncts are the operands of the outermost `AND` after nested `AND` groups are merged. For example, `a AND (b AND c)` has three top-level conjuncts.
 
-Self-exclusion keeps every element of a dimension visible while one of its elements is selected, so that the selection can be compared with the alternatives. The UI computes the distributions, the cross-tabulations, and the trend with self-exclusion unless the user turns it off. The UI computes the project statistics without self-exclusion, as it computes the entry list, so that the project statistics show only the BioProjects of the entries that match `q`. Drilling down within a selected term is done by expanding the term into its child terms.
+Self-exclusion keeps every element of a dimension visible while one of its elements is selected, so that the selection can be compared with the alternatives. The UI computes the distributions, the cross-tabulations, and the trend with self-exclusion unless the user turns it off. The UI computes the project statistics with self-exclusion, so that the BioProjects in `q` stay listed with the other BioProjects that match the rest of `q`. The UI computes the entry list from `q` itself. Drilling down within a selected term is done by expanding the term into its child terms.
 
 A distribution on an annotation term dimension also returns the status composition of the field. The status composition is an aggregation on the status dimension of the same field. With self-exclusion, its population excludes the conjuncts on the term dimension and the conjuncts on the status dimension. A condition on a term of the field therefore does not reduce the composition to the mapped statuses.
 

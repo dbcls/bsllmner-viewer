@@ -62,4 +62,17 @@ describe("HelpHint", () => {
     fireEvent.mouseDown(screen.getByText("outside"))
     expect(screen.queryByRole("tooltip")).toBeNull()
   })
+
+  it("opens the bubble under the button, or above it when asked", () => {
+    const { rerender } = render(<HelpHint label="Below">text</HelpHint>)
+    fireEvent.mouseEnter(screen.getByRole("button", { name: "Below" }))
+    expect(screen.getByRole("tooltip").getAttribute("class")).toContain("top-full")
+    rerender(
+      <HelpHint label="Below" side="top">
+        text
+      </HelpHint>,
+    )
+    expect(screen.getByRole("tooltip").getAttribute("class")).toContain("bottom-full")
+    expect(screen.getByRole("tooltip").getAttribute("class")).not.toContain("top-full")
+  })
 })
