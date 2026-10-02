@@ -110,6 +110,6 @@ export const clauseLabel = (clause: Clause, labels: Record<string, string>): str
 
 /** Row label of a clause group in the visual condition. */
 export const groupLabel = (field: string): string => {
-  if (field === "date_created") return "Creation date"
+  if (field === "date_published") return "Publication date"
   return fieldLabel(field)
 }

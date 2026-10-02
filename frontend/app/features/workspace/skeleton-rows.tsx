@@ -12,7 +12,7 @@ type SkeletonTableRowsProps = {
 export const SkeletonTableRows = ({ columns, frozen = false }: SkeletonTableRowsProps) => (
   <>
     {Array.from({ length: TABLE_PER_PAGE }, (_, index) => (
-      <tr key={index} aria-hidden="true">
+      <tr key={index} aria-hidden="true" className="group">
         {columns.map((width, column) =>
           frozen && column === 0 ? (
             <FrozenTd key={column} className={SKELETON_CELL}>
@@ -29,5 +29,8 @@ export const SkeletonTableRows = ({ columns, frozen = false }: SkeletonTableRows
   </>
 )
 
-/** The rule is on the cells rather than the row, so that it is drawn in a table with separate borders as well. */
-const SKELETON_CELL = "border-b border-brand-soft px-2.5 py-1.5"
+/**
+ * The rule is on the cells rather than the row, so that it is drawn in a table with separate borders as well. The last row
+ * has none, so that it does not double the line over the footer.
+ */
+const SKELETON_CELL = "border-b border-brand-soft px-2.5 py-1.5 group-last:border-b-0"

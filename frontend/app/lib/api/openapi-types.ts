@@ -86,7 +86,7 @@ export interface paths {
         put?: never;
         /**
          * Replace the keywords of a condition
-         * @description Replaces the keywords among the top-level AND conjuncts of `q` with the keywords of `keyword`, read as a search box reads text: quoted parts are phrases, and the other words form one keyword. `AND`, `OR`, and `NOT` are ordinary words. An empty `keyword` removes the keywords.
+         * @description Replaces the keywords among the top-level AND conjuncts of `q` with the keywords of `keyword`, read as a search box reads text: quoted parts are phrases, and the other words form one keyword. A part is quoted by double quotes, or by a `'` at the start of a word and a `'` at the end of a word. A `'` inside a word or only at its end, as in `Alzheimer's` or `3'`, is part of the word. `AND`, `OR`, and `NOT` are ordinary words. An empty `keyword` removes the keywords.
          */
         post: operations["setKeyword"];
         delete?: never;
@@ -174,8 +174,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Counts of the condition per BioSample creation year
-         * @description `total` counts the condition per year, computed without the conjuncts on `date_created`. When `field` is given, `series` counts each element of that dimension per year, computed without the conjuncts on that dimension as well.
+         * Counts of the condition per BioSample publication year
+         * @description `total` counts the condition per year, computed without the conjuncts on `date_published`. When `field` is given, `series` counts each element of that dimension per year, computed without the conjuncts on that dimension as well.
          */
         get: operations["getTrend"];
         put?: never;
@@ -212,7 +212,7 @@ export interface paths {
         };
         /**
          * Search the terms annotated in a field, or in every annotation field
-         * @description Each hit is counted in the population of its own field: with `facetSelfExclude`, the condition without the conjuncts on that field.
+         * @description Hits are ordered by how they match `query`: a label or an ID equal to it, then a label or an ID that contains it, then only a synonym that contains it (`matchedSynonym`). Within each of these, hits are ordered by `count`. The hits within `limit` are the terms assigned directly to the most BioSamples, so that a broad term counted only through its descendants does not crowd out the terms in use. Each hit is counted in the population of its own field: with `facetSelfExclude`, the condition without the conjuncts on that field.
          */
         get: operations["searchTerms"];
         put?: never;
@@ -481,12 +481,10 @@ export interface components {
             /** Elements */
             elements: (components["schemas"]["TermElement"] | components["schemas"]["Element"])[];
             /**
-             * Status
-             * @description Status counts for annotation fields
+             * Withoutterm
+             * @description For an annotation term dimension, the count of the population whose BioSamples have no term of the field: the population combined by AND with `NOT <field>_status:mapped`, in the unit
              */
-            status?: components["schemas"]["Element"][] | null;
-            /** Statuspopulationq */
-            statusPopulationQ?: string | null;
+            withoutTerm?: number | null;
         };
         /** DslFieldDescription */
         DslFieldDescription: {
@@ -573,8 +571,8 @@ export interface components {
             libraryStrategy: string[];
             /** Bioprojects */
             bioprojects: string[];
-            /** Datecreated */
-            dateCreated: string | null;
+            /** Datepublished */
+            datePublished: string | null;
             /**
              * Chipatlas
              * @description Genome assemblies under which ChIP-Atlas processed the experiments
@@ -601,10 +599,8 @@ export interface components {
             /** Title */
             title: string | null;
             organism: components["schemas"]["Organism"] | null;
-            /** Datecreated */
-            dateCreated: string | null;
-            /** Datemodified */
-            dateModified: string | null;
+            /** Datepublished */
+            datePublished: string | null;
             /** Run */
             run: string;
             /** Attributes */
@@ -857,6 +853,11 @@ export interface components {
             descendantCount: number;
             /** Count */
             count: number;
+            /**
+             * Matchedsynonym
+             * @description The synonym that contains the query, when neither the label nor the ID contains it
+             */
+            matchedSynonym: string | null;
             /** Clauses */
             clauses: components["schemas"]["Clause-Output"][];
         };
@@ -1336,8 +1337,6 @@ export interface operations {
                 elements?: string | null;
                 /** @description Number of elements when they are not named */
                 limit?: number;
-                /** @description For status dimensions, the six statuses instead of the three groups */
-                expandedStatus?: boolean;
             };
             header?: never;
             path?: never;

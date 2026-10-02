@@ -85,7 +85,6 @@ def default_elements(
     pop_cte: str,
     pop_params: tuple[Any, ...],
     limit: int,
-    expanded_status: bool,
 ) -> list[str]:
     """Elements shown when the request does not name them."""
     if dim.kind == "term":
@@ -97,8 +96,6 @@ def default_elements(
         ).fetchall()
         return [str(r[0]) for r in rows]
     if dim.kind == "status":
-        if expanded_status:
-            return [s for group in STATUS_GROUPS.values() for s in group]
         return list(STATUS_GROUPS)
     if dim.kind == "assay":
         rows = cur.execute(

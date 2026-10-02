@@ -43,7 +43,7 @@ class FieldDef:
 _FIXED: tuple[FieldDef, ...] = (
     FieldDef("library_strategy", "assay"),
     FieldDef("organism_id", "organism"),
-    FieldDef("date_created", "date"),
+    FieldDef("date_published", "date"),
     FieldDef("bioproject", "bioproject"),
 )
 

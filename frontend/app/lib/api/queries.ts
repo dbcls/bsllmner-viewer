@@ -13,7 +13,6 @@ import type {
   ParseResponse,
   ProjectSort,
   ProjectsResponse,
-  TermChildrenResponse,
   TermsResponse,
   TrendResponse,
   Unit,
@@ -119,7 +118,6 @@ export type DistributionParams = {
   selfExclusion: boolean
   elements?: string
   limit?: number
-  expandedStatus?: boolean
 }
 
 export const useDistribution = (params: DistributionParams, enabled = true) =>
@@ -136,7 +134,6 @@ export const useDistribution = (params: DistributionParams, enabled = true) =>
               facetSelfExclude: params.selfExclusion,
               elements: params.elements,
               limit: params.limit,
-              expandedStatus: params.expandedStatus,
             }),
           },
         }),
@@ -301,30 +298,3 @@ export const useTerms = (params: TermsParams, enabled = true) =>
     placeholderData: (previous) => previous,
   })
 
-export type TermChildrenParams = {
-  field: string
-  termId: string
-  q: string | null
-  unit: Unit
-  selfExclusion: boolean
-}
-
-export const useTermChildren = (params: TermChildrenParams, enabled = true) =>
-  useQuery({
-    queryKey: ["term-children", params],
-    queryFn: async (): Promise<TermChildrenResponse> =>
-      unwrap(
-        await api.GET("/api/terms/children", {
-          params: {
-            query: defined({
-              field: params.field,
-              termId: params.termId,
-              q: q(params.q),
-              unit: params.unit,
-              facetSelfExclude: params.selfExclusion,
-            }),
-          },
-        }),
-      ),
-    enabled,
-  })

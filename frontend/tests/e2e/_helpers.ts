@@ -48,13 +48,12 @@ export const expectCounted = async (page: Page): Promise<void> => {
 
 export const conditionPanel = (page: Page): Locator => page.getByRole("complementary")
 
-export const termPicker = (page: Page): Locator => page.getByRole("dialog", { name: "Choose a term" })
+export const termPicker = (page: Page): Locator => page.getByRole("dialog", { name: /^Add (an annotation term|row terms|column terms)$/ })
 
 export const viewTabs = (page: Page): Locator => page.getByRole("navigation", { name: "Views" })
 
-/** The "+ Add" button of one annotation field in the condition panel. */
-export const addTermButton = (page: Page, fieldLabel: string): Locator =>
-  conditionPanel(page).locator("span").filter({ hasText: new RegExp(`^${fieldLabel}$`) }).locator("..").getByRole("button", { name: "+ Add" })
+/** The "Add term" button under the "Annotation terms" heading of the condition panel, which opens the term picker. */
+export const addTermButton = (page: Page): Locator => conditionPanel(page).getByRole("button", { name: "Add term", exact: true })
 
 /** A bar of the distribution tab, found by its exact label. */
 export const bar = (page: Page, label: string): Locator =>
@@ -82,25 +81,10 @@ export const choose = async (combobox: Locator, label: string): Promise<void> =>
   await combobox.page().getByRole("listbox").getByRole("option", { name: label, exact: true }).click()
 }
 
-const STATUS_LABELS: Record<string, string> = {
-  mapped: "Mapped",
-  unmapped: "Unmapped",
-  no_value: "No value",
-  mapped_exact: "Exact match",
-  mapped_selected: "LLM selected",
-  unmapped_no_candidate: "No candidate",
-  unmapped_rejected: "Rejected",
-  not_stated: "Not stated",
-  extraction_failed: "Extraction failed",
-}
-
-/** The label that the UI shows for a status or a status group of the api. */
-export const statusLabel = (value: string): string => STATUS_LABELS[value] ?? value
-
 const FIELD_LABELS: Record<string, string> = {
   library_strategy: "Assay",
   organism_id: "Organism",
-  date_created: "Year",
+  date_published: "Year",
   chip_antigen: "ChIP antigen",
 }
 

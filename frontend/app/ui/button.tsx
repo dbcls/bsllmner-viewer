@@ -3,7 +3,7 @@ import type { ButtonHTMLAttributes, ReactNode } from "react"
 import { cn } from "./cn"
 import { Icon, type IconName } from "./icons"
 
-type ButtonKind = "primary" | "secondary" | "quiet" | "ghost" | "inverse"
+type ButtonKind = "primary" | "outline" | "secondary" | "quiet" | "ghost" | "inverse"
 type ButtonSize = "2xs" | "xs" | "sm" | "md"
 
 type ButtonProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "className"> & {
@@ -20,6 +20,8 @@ type ButtonProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "className"> & 
 
 const kindClass: Record<ButtonKind, string> = {
   primary: "font-semibold bg-brand text-white border border-transparent hover:bg-brand-deep",
+  /** The main action of a pane that is always on screen: in the brand color like `primary`, without a filled block that draws the eye away from the results. */
+  outline: "font-semibold bg-surface text-brand border border-brand-light hover:bg-brand-soft",
   secondary: "font-semibold bg-surface text-ink border border-border-soft hover:bg-brand-soft",
   /** An action repeated on every row of a table: lighter than `secondary`, so that a column of them does not outweigh the data. */
   quiet: "font-medium bg-surface text-ink-mid border border-border-soft hover:bg-brand-soft hover:text-ink",

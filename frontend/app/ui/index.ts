@@ -1,7 +1,7 @@
 export { Button } from "./button"
 export { Card, CardFooter, CardHeader } from "./card"
 export { CheckboxRow } from "./checkbox-row"
-export { Chip } from "./chip"
+export { Chip, FieldChip } from "./chip"
 export { Clickable, DownloadLink } from "./clickable"
 export { cn } from "./cn"
 export { COPIED_MS, CopyButton } from "./copy-button"

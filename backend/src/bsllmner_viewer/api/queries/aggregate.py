@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
-from typing import Any
 
 import duckdb
 
@@ -138,7 +137,7 @@ def classify(observed: int, expected: float | None, residual: float | None) -> s
 
 
 def trend_total(cur: duckdb.DuckDBPyConnection, pop: Population, unit: Unit) -> dict[int, int]:
-    """Count of the population per creation year."""
+    """Count of the population per publication year."""
     rows = cur.execute(
         f"WITH {pop.cte()} SELECT p.year, {count_expr(unit)} FROM pop p {bp_join(unit)} "
         "WHERE p.year IS NOT NULL GROUP BY 1",
@@ -150,7 +149,7 @@ def trend_total(cur: duckdb.DuckDBPyConnection, pop: Population, unit: Unit) -> 
 def trend(
     cur: duckdb.DuckDBPyConnection, pop: Population, dim: FieldDef, elements: list[str], unit: Unit
 ) -> tuple[list[int], dict[tuple[str, int], int]]:
-    """Counts per (element, creation year) and the sorted years present in the population."""
+    """Counts per (element, publication year) and the sorted years present in the population."""
     years = [
         int(r[0])
         for r in cur.execute(
@@ -178,20 +177,3 @@ def status_counts(cur: duckdb.DuckDBPyConnection, pop: Population, field: str, u
         [*pop.params, field],
     ).fetchall()
     return {str(s): int(n) for s, n in rows}
-
-
-def group_status_counts(
-    cur: duckdb.DuckDBPyConnection, pop: Population, field: str, unit: Unit, groups: dict[str, tuple[str, ...]]
-) -> dict[str, int]:
-    """Count of units per status group. A unit with several statuses counts in each group it has."""
-    out: dict[str, int] = {}
-    for group, statuses in groups.items():
-        placeholders = ", ".join("?" for _ in statuses)
-        row: Any = cur.execute(
-            f"WITH {pop.cte()} SELECT {count_expr(unit)} FROM pop p "
-            "JOIN annotation a ON a.biosample = p.biosample AND a.field = ? "
-            f"AND a.status IN ({placeholders}) {bp_join(unit)}",
-            [*pop.params, field, *statuses],
-        ).fetchone()
-        out[group] = int(row[0]) if row else 0
-    return out

@@ -38,7 +38,7 @@ def test_like_pattern_escapes_wildcards_and_casefolds() -> None:
 
 
 def test_compile_date_range_and_bioproject() -> None:
-    pred = compile_condition(parse("date_created:[2015-01-01 TO 2020-12-31] AND bioproject:PRJNA1"), FIELDS)
+    pred = compile_condition(parse("date_published:[2015-01-01 TO 2020-12-31] AND bioproject:PRJNA1"), FIELDS)
     assert pred.params == ["2015-01-01", "2020-12-31", "PRJNA1"]
 
 

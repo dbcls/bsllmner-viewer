@@ -12,11 +12,10 @@ def derive(con: duckdb.DuckDBPyConnection, target_assays: list[str]) -> None:
     con.execute(
         """
         CREATE TABLE biosample AS
-        SELECT e.accession, e.run_id, e.organism_id, e.organism_name, e.title, e.date_created, e.date_modified,
-               e.attributes
+        SELECT e.accession, e.run_id, e.organism_id, e.organism_name, e.title, e.date_published, e.attributes
         FROM entry e JOIN run r USING (run_id)
         QUALIFY row_number() OVER (
-            PARTITION BY e.accession ORDER BY e.date_modified DESC NULLS LAST, r.manifest_index DESC
+            PARTITION BY e.accession ORDER BY r.manifest_index
         ) = 1
         ORDER BY e.accession
         """
@@ -142,8 +141,8 @@ def derive(con: duckdb.DuckDBPyConnection, target_assays: list[str]) -> None:
     con.execute(
         f"""
         CREATE TABLE population AS
-        SELECT be.biosample, be.experiment, e.library_strategy, b.organism_id, b.date_created,
-               year(b.date_created) AS year
+        SELECT be.biosample, be.experiment, e.library_strategy, b.organism_id, b.date_published,
+               year(b.date_published) AS year
         FROM biosample_experiment be
         JOIN experiment e ON e.accession = be.experiment
         JOIN biosample b ON b.accession = be.biosample

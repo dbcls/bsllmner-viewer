@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Annotated
 
 import duckdb
@@ -24,8 +25,8 @@ from bsllmner_viewer.api.schemas import (
     TrendSeries,
     Unit,
 )
-from bsllmner_viewer.dsl.ast import Node
-from bsllmner_viewer.dsl.fields import STATUS_GROUPS, STATUS_SUFFIX, FieldDef
+from bsllmner_viewer.dsl.ast import BoolOp, Node, and_, clause
+from bsllmner_viewer.dsl.fields import STATUS_SUFFIX, FieldDef
 from bsllmner_viewer.dsl.transform import named_values
 
 router = APIRouter(tags=["Aggregations"])
@@ -45,7 +46,6 @@ def _elements(
     ast: Node | None,
     pop: Population,
     limit: int,
-    expanded: bool,
 ) -> list[str]:
     """The named elements, or the default elements followed by the elements that the condition names."""
     elements = split_csv(named)
@@ -53,7 +53,7 @@ def _elements(
         raise ApiError("too-many-elements", 400, f"at most {MAX_ELEMENTS} elements per dimension")
     if elements:
         return elements
-    chosen = default_elements(cur, dim, pop.cte(), pop.params, limit, expanded)
+    chosen = default_elements(cur, dim, pop.cte(), pop.params, limit)
     if dim.kind in NAMED_BY_CONDITION:
         chosen.extend(value for value in named_values(ast, dim.name) if value not in chosen)
     return chosen
@@ -92,19 +92,13 @@ def get_distribution(
         str | None, Query(description="Comma-separated elements; omitted means the top elements")
     ] = None,
     limit: LimitParam = 10,
-    expanded_status: Annotated[
-        bool,
-        Query(
-            alias="expandedStatus", description="For status dimensions, the six statuses instead of the three groups"
-        ),
-    ] = False,
 ) -> DistributionResponse:
     dim = dimension(store.field_set, field)
     ast = parse_condition(store, q)
     pop_ast = aggregation_population(ast, [dim.name], facet_self_exclude)
     pop = population(pop_ast, store.field_set)
     with store.cursor() as cur:
-        chosen = _elements(cur, dim, elements, ast, pop, limit, expanded_status)
+        chosen = _elements(cur, dim, elements, ast, pop, limit)
         total = aggregate.population_total(cur, pop, unit)
         counts = aggregate.element_counts(cur, pop, dim, chosen, unit)
         if not split_csv(elements) and dim.kind in ("term", "assay", "organism"):
@@ -132,22 +126,11 @@ def get_distribution(
                 Element(value=e, label=labels.get(e, e), clauses=clauses_for(dim, e), count=counts.get(e, 0))
                 for e in chosen
             ]
-        status_elements: list[Element] | None = None
-        status_q: str | None = None
+        without_term: int | None = None
         if dim.kind == "term" and dim.annotation_field:
-            status_field = dim.annotation_field + STATUS_SUFFIX
-            status_dim = dimension(store.field_set, status_field)
-            status_ast = aggregation_population(ast, [status_field, dim.name], facet_self_exclude)
-            status_pop = population(status_ast, store.field_set)
-            status_q = q_of(status_ast)
-            groups: dict[str, tuple[str, ...]] = (
-                dict(STATUS_GROUPS) if not expanded_status else {s: (s,) for g in STATUS_GROUPS.values() for s in g}
-            )
-            group_counts = aggregate.group_status_counts(cur, status_pop, dim.annotation_field, unit, groups)
-            status_elements = [
-                Element(value=g, label=g.replace("_", " "), clauses=clauses_for(status_dim, g), count=n)
-                for g, n in group_counts.items()
-            ]
+            not_mapped = BoolOp("NOT", (clause(dim.annotation_field + STATUS_SUFFIX, "mapped"),))
+            without_ast = not_mapped if pop_ast is None else and_(pop_ast, not_mapped)
+            without_term = aggregate.population_total(cur, population(without_ast, store.field_set), unit)
     return DistributionResponse(
         dataset_version=version_ref(store),
         q=q_of(ast),
@@ -157,8 +140,7 @@ def get_distribution(
         facet_self_exclude=facet_self_exclude,
         total=total,
         elements=out,
-        status=status_elements,
-        status_population_q=status_q,
+        without_term=without_term,
     )
 
 
@@ -190,8 +172,8 @@ def get_crosstab(
     pop_ast = aggregation_population(ast, [row_dim.name, col_dim.name], facet_self_exclude)
     pop = population(pop_ast, store.field_set)
     with store.cursor() as cur:
-        rows_chosen = _elements(cur, row_dim, row_elements, ast, pop, limit, False)
-        cols_chosen = _elements(cur, col_dim, col_elements, ast, pop, limit, False)
+        rows_chosen = _elements(cur, row_dim, row_elements, ast, pop, limit)
+        cols_chosen = _elements(cur, col_dim, col_elements, ast, pop, limit)
         result = aggregate.crosstab(cur, pop, row_dim, rows_chosen, col_dim, cols_chosen, unit)
         row_labels = labels_for(cur, row_dim, rows_chosen, _organisms(store))
         col_labels = labels_for(cur, col_dim, cols_chosen, _organisms(store))
@@ -263,13 +245,19 @@ def _axis_elements(
     return out
 
 
+def _year_span(years: Iterable[int]) -> list[int]:
+    """Every year from the first to the last, so that a year without matches is a point with a count of 0."""
+    present = list(years)
+    return list(range(min(present), max(present) + 1)) if present else []
+
+
 @router.get(
     "/trend",
     operation_id="getTrend",
     response_model=TrendResponse,
-    summary="Counts of the condition per BioSample creation year",
+    summary="Counts of the condition per BioSample publication year",
     description=(
-        "`total` counts the condition per year, computed without the conjuncts on `date_created`. "
+        "`total` counts the condition per year, computed without the conjuncts on `date_published`. "
         "When `field` is given, `series` counts each element of that dimension per year, computed without the "
         "conjuncts on that dimension as well."
     ),
@@ -285,10 +273,10 @@ def get_trend(
     ] = None,
     limit: LimitParam = 5,
 ) -> TrendResponse:
-    date_dim = dimension(store.field_set, "date_created")
+    date_dim = dimension(store.field_set, "date_published")
     dim = None if field is None else dimension(store.field_set, field)
     if dim is not None and dim.kind == "date":
-        raise ApiError("invalid-dimension", 400, "the trend dimension cannot be date_created")
+        raise ApiError("invalid-dimension", 400, "the trend dimension cannot be date_published")
     ast = parse_condition(store, q)
     total_ast = aggregation_population(ast, [date_dim.name], facet_self_exclude)
     total_pop = population(total_ast, store.field_set)
@@ -298,12 +286,12 @@ def get_trend(
     series: list[TrendSeries] = []
     with store.cursor() as cur:
         total_counts = aggregate.trend_total(cur, total_pop, unit)
-        years = sorted(total_counts)
+        years = _year_span(total_counts)
         if dim is not None:
             pop = population(series_ast, store.field_set)
-            chosen = _elements(cur, dim, elements, ast, pop, limit, False)
+            chosen = _elements(cur, dim, elements, ast, pop, limit)
             series_years, counts = aggregate.trend(cur, pop, dim, chosen, unit)
-            years = sorted({*years, *series_years})
+            years = _year_span([*years, *series_years])
             labels = labels_for(cur, dim, chosen, _organisms(store))
             series = [
                 TrendSeries(

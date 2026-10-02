@@ -19,8 +19,14 @@ describe("workspace state in the URL", () => {
   })
 
   it("keeps the names of the parameters", () => {
-    const search = workspaceSearch({ rowTerms: ["A:1"], trendField: "disease", selfExclusion: false })
+    const search = workspaceSearch({ rowTerms: ["A:1"], trendField: "disease" })
     const params = new URLSearchParams(search)
-    expect([...params.keys()].sort()).toEqual(["row_terms", "se", "trend_field"])
+    expect([...params.keys()].sort()).toEqual(["row_terms", "trend_field"])
+  })
+
+  it("reads an old URL that turned self-exclusion off as any other URL, and does not write the parameter back", () => {
+    const state = readState(new URLSearchParams("se=0&unit=bioproject"))
+    expect(state).toEqual({ ...DEFAULTS, unit: "bioproject" })
+    expect(writeState(state).has("se")).toBe(false)
   })
 })

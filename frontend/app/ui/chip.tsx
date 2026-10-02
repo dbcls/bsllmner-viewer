@@ -49,3 +49,39 @@ export const Chip = ({ children, onRemove, title, kind = "tint", size = "md", le
     )}
   </span>
 )
+
+type FieldChipProps = {
+  /** The name of the field that the condition is on. */
+  field: string
+  /** The value of the condition, such as the label of a term. */
+  value: string
+  onRemove: () => void
+  title?: string
+}
+
+/**
+ * A condition on a field, in two segments: the field on a tint and the value on white. In a column of these chips, the
+ * field names start at one x, so that a reader sees which fields have a condition. The chip keeps to one line, and a
+ * value longer than the chip ends in an ellipsis, so that every condition in the column is as tall as the others.
+ *
+ * The whole chip is the button that removes the condition, so that a press anywhere on it removes it. The labels are
+ * trimmed to the height of their capitals (`text-trim-cap`), so that the capitals and the × sit in the middle of the
+ * chip; the labels keep room above and below for the descenders, which their overflow would otherwise clip.
+ */
+export const FieldChip = ({ field, value, onRemove, title }: FieldChipProps) => (
+  <button
+    type="button"
+    onClick={onRemove}
+    title={title}
+    aria-label={`Remove ${field}: ${value}`}
+    className="flex h-6 w-full cursor-pointer items-stretch overflow-hidden rounded-tag border border-border-soft bg-surface text-left text-fs-label whitespace-nowrap text-ink"
+  >
+    <span className="flex shrink-0 items-center border-r border-border-soft bg-brand-soft px-1.5 font-medium text-ink-mid">
+      <span className="py-1 text-trim-cap">{field}</span>
+    </span>
+    <span className="flex min-w-0 flex-1 items-center gap-1.5 px-1.5">
+      <span className="min-w-0 truncate py-1 text-trim-cap">{value}</span>
+      <Icon name={ACTION_ICON.clear} size="sm" className="ml-auto text-ink-soft" />
+    </span>
+  </button>
+)

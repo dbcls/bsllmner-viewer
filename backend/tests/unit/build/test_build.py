@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import datetime
 import json
 from pathlib import Path
 
@@ -28,21 +29,80 @@ def test_build_stores_exactly_one_selected_run_per_biosample(
     ] == (0,)
 
 
-def test_build_selects_the_run_with_the_latest_modification_date(
+def test_build_selects_the_first_run_in_the_manifest_that_has_the_biosample(
     store_con: duckdb.DuckDBPyConnection, synthetic: Synthetic
 ) -> None:
-    by_accession: dict[str, list[tuple[str, object]]] = {}
-    for (run, accession), modified in synthetic.truth.modified.items():
-        by_accession.setdefault(accession, []).append((run, modified))
     order = {name: i for i, name in enumerate(synthetic.run_names)}
-    for accession, candidates in by_accession.items():
-        expected = max(
-            candidates, key=lambda c: ((c[1] is not None), c[1] or __import__("datetime").datetime.min, order[c[0]])
-        )[0]
-        selected = _rows(
-            store_con, "SELECT r.name FROM biosample b JOIN run r USING (run_id) WHERE b.accession = ?", accession
-        )[0][0]
-        assert selected == expected, accession
+    runs_of: dict[str, list[str]] = {}
+    for run, accession in synthetic.truth.modified:
+        runs_of.setdefault(accession, []).append(run)
+    selected = {
+        str(a): str(r)
+        for a, r in _rows(store_con, "SELECT b.accession, r.name FROM biosample b JOIN run r USING (run_id)")
+    }
+    assert selected == {a: min(runs, key=order.__getitem__) for a, runs in runs_of.items()}
+
+
+def test_build_synthetic_data_distinguishes_the_first_run_from_the_latest_update(synthetic: Synthetic) -> None:
+    order = {name: i for i, name in enumerate(synthetic.run_names)}
+    runs_of: dict[str, list[str]] = {}
+    for run, accession in synthetic.truth.modified:
+        runs_of.setdefault(accession, []).append(run)
+    shared = {a: sorted(r, key=order.__getitem__) for a, r in runs_of.items() if len(r) > 1}
+    assert shared
+    modified = synthetic.truth.modified
+    assert any(max(runs, key=lambda run: modified[(run, accession)]) != runs[0] for accession, runs in shared.items())
+
+
+def test_build_date_published_is_the_publication_date_in_utc_of_the_selected_run(
+    store_con: duckdb.DuckDBPyConnection, synthetic: Synthetic
+) -> None:
+    stored = {
+        str(a): (str(r), d)
+        for a, r, d in _rows(
+            store_con, "SELECT b.accession, r.name, b.date_published FROM biosample b JOIN run r USING (run_id)"
+        )
+    }
+    assert stored
+    assert any(d is None for _, d in stored.values())
+    assert any(d is not None for _, d in stored.values())
+    for accession, (run, date) in stored.items():
+        assert date == synthetic.truth.published[(run, accession)], accession
+
+
+def test_build_publication_dates_before_2005_or_after_the_run_start_are_unknown(
+    store_con: duckdb.DuckDBPyConnection, synthetic: Synthetic
+) -> None:
+    stored = {
+        (str(r), str(a)): d
+        for a, r, d in _rows(
+            store_con, "SELECT b.accession, r.name, b.date_published FROM biosample b JOIN run r USING (run_id)"
+        )
+    }
+    early = [k for k in stored if (d := synthetic.truth.published_input[k]) and d < datetime.date(2005, 1, 1)]
+    late = [k for k in stored if (d := synthetic.truth.published_input[k]) and d > datetime.date(2026, 1, 1)]
+    bounds = [
+        k
+        for k in stored
+        if synthetic.truth.published_input[k] in (datetime.date(2005, 1, 1), datetime.date(2026, 1, 1))
+    ]
+    assert early, "the generator must produce publication dates before 2005"
+    assert late, "the generator must produce publication dates after the run start"
+    assert bounds, "the generator must produce publication dates on the bounds"
+    assert all(stored[k] is None for k in [*early, *late])
+    assert all(stored[k] == synthetic.truth.published_input[k] for k in bounds)
+
+
+def test_build_biosample_table_has_no_date_created_or_date_modified_column(
+    store_con: duckdb.DuckDBPyConnection,
+) -> None:
+    for table in ("entry", "biosample"):
+        columns = {
+            str(r[0])
+            for r in _rows(store_con, f"SELECT column_name FROM duckdb_columns() WHERE table_name = '{table}'")
+        }
+        assert "date_published" in columns
+        assert not columns & {"date_created", "date_modified"}
 
 
 def test_build_annotations_match_the_documented_status_rules(

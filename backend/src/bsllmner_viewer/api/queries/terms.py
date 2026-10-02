@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, NamedTuple
 
 import duckdb
 
@@ -15,12 +15,24 @@ from bsllmner_viewer.dsl.fields import FieldDef
 MAX_PATH = 8
 
 
-def search_terms(
-    cur: duckdb.DuckDBPyConnection, fields: list[str], query: str, limit: int
-) -> list[tuple[str, str, str | None, str]]:
-    """Annotated terms of the fields whose label, synonym, or ID contains the query, as (field, term, label, ontology).
+class Candidate(NamedTuple):
+    """A term found by a search, before it is counted."""
 
-    Best matches first: an exact label or ID, then the terms assigned directly to the most BioSamples.
+    field: str
+    term_id: str
+    label: str | None
+    ontology: str
+    tier: int
+    """How the term matches: 0 when its label or ID is the query, 1 when one of them contains it, 2 otherwise."""
+    synonym: str | None
+    """For tier 2, the synonym that contains the query."""
+
+
+def search_terms(cur: duckdb.DuckDBPyConnection, fields: list[str], query: str, limit: int) -> list[Candidate]:
+    """Annotated terms of the fields whose label, synonym, or ID contains the query, best tier first.
+
+    Within a tier, the terms assigned directly to the most BioSamples come first. A broad term that is counted only
+    through its descendants is therefore not chosen ahead of the terms in use.
     """
     if not fields:
         return []
@@ -30,30 +42,57 @@ def search_terms(
     if not text:
         rows = cur.execute(
             f"""
-            SELECT c.field, t.term_id, t.label, t.ontology
+            SELECT c.field, t.term_id, t.label, t.ontology, 0 AS tier
             FROM field_term_count c JOIN term t ON t.term_id = c.term_id JOIN field f ON f.name = c.field
             WHERE c.field IN ({marks})
             ORDER BY {order} LIMIT ?
             """,
             [*fields, limit],
         ).fetchall()
-    else:
-        exact = text.casefold()
-        rows = cur.execute(
-            f"""
-            SELECT c.field, t.term_id, t.label, t.ontology
-            FROM (
-                SELECT DISTINCT field, term_id FROM term_search
-                WHERE field IN ({marks}) AND text LIKE ? ESCAPE '\\'
-            ) s
-            JOIN field_term_count c ON c.field = s.field AND c.term_id = s.term_id
-            JOIN term t ON t.term_id = s.term_id
-            JOIN field f ON f.name = c.field
-            ORDER BY (lower(t.label) = ?) DESC, (lower(t.term_id) = ?) DESC, {order} LIMIT ?
-            """,
-            [*fields, like_pattern(text), exact, exact, limit],
-        ).fetchall()
-    return [(str(field), str(t), label, str(ontology)) for field, t, label, ontology in rows]
+        return [Candidate(str(f), str(t), label, str(o), 0, None) for f, t, label, o, _ in rows]
+    exact = text.casefold()
+    pattern = like_pattern(text)
+    rows = cur.execute(
+        f"""
+        SELECT c.field, t.term_id, t.label, t.ontology,
+               CASE WHEN lower(t.label) = ? OR lower(t.term_id) = ? THEN 0
+                    WHEN lower(t.label) LIKE ? ESCAPE '\\' OR lower(t.term_id) LIKE ? ESCAPE '\\' THEN 1
+                    ELSE 2 END AS tier
+        FROM (
+            SELECT DISTINCT field, term_id FROM term_search
+            WHERE field IN ({marks}) AND text LIKE ? ESCAPE '\\'
+        ) s
+        JOIN field_term_count c ON c.field = s.field AND c.term_id = s.term_id
+        JOIN term t ON t.term_id = s.term_id
+        JOIN field f ON f.name = c.field
+        ORDER BY tier, {order} LIMIT ?
+        """,
+        [exact, exact, pattern, pattern, *fields, pattern, limit],
+    ).fetchall()
+    synonyms = _matched_synonyms(cur, sorted({str(t) for _, t, _, _, tier in rows if tier == 2}), pattern)
+    return [
+        Candidate(str(f), str(t), label, str(o), int(tier), synonyms.get(str(t)) if tier == 2 else None)
+        for f, t, label, o, tier in rows
+    ]
+
+
+def _matched_synonyms(cur: duckdb.DuckDBPyConnection, term_ids: list[str], pattern: str) -> dict[str, str]:
+    """For each term, its shortest synonym that matches the pattern, in the synonym's own case."""
+    if not term_ids:
+        return {}
+    marks = ", ".join("?" for _ in term_ids)
+    rows = cur.execute(
+        f"""
+        SELECT term_id, synonym FROM term_synonym
+        WHERE term_id IN ({marks}) AND lower(synonym) LIKE ? ESCAPE '\\'
+        ORDER BY term_id, length(synonym), synonym
+        """,
+        [*term_ids, pattern],
+    ).fetchall()
+    found: dict[str, str] = {}
+    for term_id, synonym in rows:
+        found.setdefault(str(term_id), str(synonym))
+    return found
 
 
 def children_of(cur: duckdb.DuckDBPyConnection, field: str, term_id: str) -> list[tuple[str, str | None]]:

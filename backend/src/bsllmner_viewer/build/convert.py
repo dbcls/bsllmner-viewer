@@ -10,7 +10,7 @@ import orjson
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from bsllmner_viewer.build.inputs import read_input
+from bsllmner_viewer.build.inputs import plausible_publication_date, read_input
 from bsllmner_viewer.build.selectresult import RunMetadata, iter_entries, load_select_result
 
 ENTRY_SCHEMA = pa.schema(
@@ -20,8 +20,7 @@ ENTRY_SCHEMA = pa.schema(
         ("organism_id", pa.int32()),
         ("organism_name", pa.string()),
         ("title", pa.string()),
-        ("date_created", pa.date32()),
-        ("date_modified", pa.timestamp("us")),
+        ("date_published", pa.date32()),
         ("attributes", pa.string()),
     ]
 )
@@ -85,8 +84,7 @@ def convert_run(task: ConvertTask) -> ConvertResult:
         entries["organism_id"].append(doc.organism_id)
         entries["organism_name"].append(doc.organism_name)
         entries["title"].append(doc.title)
-        entries["date_created"].append(doc.date_created)
-        entries["date_modified"].append(doc.date_modified)
+        entries["date_published"].append(plausible_publication_date(doc.date_published, metadata.start_time))
         entries["attributes"].append(
             orjson.dumps(
                 [{"name": a.name, "value": a.value, "harmonized_name": a.harmonized_name} for a in doc.attributes]

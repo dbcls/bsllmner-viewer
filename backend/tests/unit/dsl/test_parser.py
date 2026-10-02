@@ -29,13 +29,13 @@ def test_parse_single_quoted_phrase_is_a_phrase() -> None:
 
 
 def test_parse_range_gives_range_value() -> None:
-    node = _leaf(parse("date_created:[2015-01-01 TO 2020-12-31]"))
+    node = _leaf(parse("date_published:[2015-01-01 TO 2020-12-31]"))
     assert node.value_kind == "range"
     assert node.value == Range(from_="2015-01-01", to="2020-12-31")
 
 
 def test_parse_date_gives_date_kind() -> None:
-    assert _leaf(parse("date_created:2020-01-01")).value_kind == "date"
+    assert _leaf(parse("date_published:2020-01-01")).value_kind == "date"
 
 
 def test_parse_and_binds_tighter_than_or() -> None:

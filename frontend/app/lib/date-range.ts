@@ -1,6 +1,6 @@
-/** Date ranges of the creation-date condition: relative windows that end today, and their labels. */
+/** Date ranges of the publication-date condition: relative windows that end today, and their labels. */
 
-/** The windows, in years before today, that the creation-date condition offers. */
+/** The windows, in years before today, that the publication-date condition offers. */
 export const RECENT_YEARS = [1, 5, 10] as const
 
 export type RecentYears = (typeof RECENT_YEARS)[number]

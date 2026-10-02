@@ -5,7 +5,7 @@ import { estimatedRows } from "~/features/workspace/condition-bar"
 describe("estimatedRows", () => {
   it("counts each field that the condition names once", () => {
     expect(estimatedRows('(bioproject:PRJNA1 OR bioproject:PRJNA2) AND cell_type:"EFO:0004038"')).toBe(2)
-    expect(estimatedRows("library_strategy:ATAC-seq AND organism_id:9606 AND date_created:[2016-10-02 TO 2026-10-02]")).toBe(3)
+    expect(estimatedRows("library_strategy:ATAC-seq AND organism_id:9606 AND date_published:[2016-10-02 TO 2026-10-02]")).toBe(3)
   })
 
   it("does not take a term ID for a field, in quotes or after a field", () => {

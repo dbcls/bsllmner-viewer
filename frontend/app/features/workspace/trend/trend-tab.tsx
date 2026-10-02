@@ -2,7 +2,7 @@ import { useRef } from "react"
 import { useNavigate } from "react-router"
 
 import { useDataset, useTrend } from "~/lib/api/queries"
-import type { Clause } from "~/lib/api/types"
+import type { Clause, Unit } from "~/lib/api/types"
 import { token } from "~/lib/color"
 import { downloadPng, downloadSvg, downloadTsv } from "~/lib/export"
 import { formatCount } from "~/lib/format"
@@ -11,6 +11,7 @@ import { Card, InlineLabel, LinkButton, Select, Skeleton, Tag } from "~/ui"
 
 import { workspaceSearch, type WorkspaceState } from "../state"
 import type { Condition } from "../use-condition"
+import { ViewControls } from "../view-controls"
 import { splitFieldOf, trendFields } from "./field"
 import { gridLines, PLOT, showYearLabel, xForIndex, yForValue, yMax } from "./scale"
 
@@ -24,10 +25,11 @@ type TrendTabProps = {
   state: WorkspaceState
   condition: Condition
   onSplit: (field: string | null) => void
+  onUnit: (unit: Unit) => void
 }
 
-/** Counts of the condition per BioSample creation year, optionally split by the elements of one field. */
-export const TrendTab = ({ state, condition, onSplit }: TrendTabProps) => {
+/** Counts of the condition per BioSample publication year, optionally split by the elements of one field. */
+export const TrendTab = ({ state, condition, onSplit, onUnit }: TrendTabProps) => {
   const svgRef = useRef<SVGSVGElement>(null)
   const navigate = useNavigate()
   const dataset = useDataset()
@@ -38,7 +40,7 @@ export const TrendTab = ({ state, condition, onSplit }: TrendTabProps) => {
     ...(split ? { field: split } : {}),
     q: state.q,
     unit: state.unit,
-    selfExclusion: state.selfExclusion,
+    selfExclusion: true,
     ...(state.trendTerms ? { elements: state.trendTerms.join(",") } : {}),
     limit: 5,
   })
@@ -88,134 +90,137 @@ export const TrendTab = ({ state, condition, onSplit }: TrendTabProps) => {
   }
 
   return (
-    <Card padding="sm" busy={trend.isPlaceholderData}>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="font-semibold">{state.unit === "biosample" ? "Per BioSample creation year" : `${unit} per BioSample creation year`}</span>
-          {yearUnfiltered && <Tag kind="warn">Not filtered by Year</Tag>}
-          {splitUnfiltered && split && <Tag kind="warn">Split lines are not filtered by {fieldLabel(split)}</Tag>}
-          <span className="inline-flex items-center gap-1.5 text-fs-label text-ink-soft">
-            <InlineLabel>Split by</InlineLabel>
-            <Select
-              size="sm"
-              placeholder="None"
-              options={splitOptions}
-              value={split ?? NO_SPLIT}
-              onChange={(value) => onSplit(value === NO_SPLIT ? null : value)}
-              aria-label="Split by"
-            />
-          </span>
-        </div>
-        <div className="flex shrink-0 items-center gap-3">
-          <LinkButton mono tone="soft" onClick={exportTsv}>TSV</LinkButton>
-          <LinkButton mono tone="soft" onClick={exportSvg}>SVG</LinkButton>
-          <LinkButton mono tone="soft" onClick={exportPng}>PNG</LinkButton>
-        </div>
-      </div>
-      {years.length > 0 ? (
-        <>
-          <svg ref={svgRef} viewBox="0 0 960 320" className="mt-3 w-full max-w-chart-max font-mono" role="img" aria-label={`${unit} per year`}>
-            {gridLines(max).map((line) => (
-              <g key={line.value}>
-                <line x1={PLOT.left} x2={PLOT.right} y1={line.y} y2={line.y} stroke={token("--color-grid")} />
-                <text
-                  x={GRID_LABEL_X}
-                  y={line.y}
-                  textAnchor="end"
-                  dominantBaseline="middle"
-                  className="text-fs-micro"
-                  fill={token("--color-ink-soft")}
-                >
-                  {formatCount(line.value)}
-                </text>
-              </g>
-            ))}
-            <line x1={PLOT.left} x2={PLOT.right} y1={PLOT.bottom} y2={PLOT.bottom} stroke={token("--color-border-soft")} />
-            {years.map((year, index) =>
-              showYearLabel(index, years.length) ? (
-                <text
-                  key={year}
-                  x={xForIndex(index, years.length)}
-                  y={YEAR_LABEL_Y}
-                  textAnchor="middle"
-                  className="text-fs-micro"
-                  fill={token("--color-ink-soft")}
-                >
-                  {year}
-                </text>
-              ) : null,
-            )}
-            {series.map((s, seriesIndex) => {
-              const color = colorOf(seriesIndex)
-              const points = s.points.map((point, index) => ({ point, x: xForIndex(index, years.length), y: yForValue(point.count, max) }))
-              return (
-                <g key={s.value} data-series={s.value}>
-                  <polyline points={points.map(({ x, y }) => `${x},${y}`).join(" ")} fill="none" stroke={color} strokeWidth={2} />
-                  {points.map(({ point, x, y }) => (
-                    <circle
-                      key={point.year}
-                      cx={x}
-                      cy={y}
-                      r={4}
-                      fill={token("--color-surface")}
-                      stroke={color}
-                      strokeWidth={2}
-                      className={point.count > 0 ? "cursor-pointer" : undefined}
-                      onClick={point.count > 0 ? () => void openPoint(point.clauses) : undefined}
-                    >
-                      <title>{`${seriesLabel(s.value, s.label)} · ${point.year}: ${formatCount(point.count)} ${unit}`}</title>
-                    </circle>
-                  ))}
-                </g>
-              )
-            })}
-            <g data-series="condition">
-              <polyline
-                points={total.map((point, index) => `${xForIndex(index, years.length)},${yForValue(point.count, max)}`).join(" ")}
-                fill="none"
-                stroke={totalColor}
-                strokeWidth={3}
+    <div>
+      <ViewControls unit={state.unit} onUnit={onUnit} />
+      <Card padding="sm" busy={trend.isPlaceholderData}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="font-semibold">{state.unit === "biosample" ? "Per BioSample publication year" : `${unit} per BioSample publication year`}</span>
+            {yearUnfiltered && <Tag kind="warn">Not filtered by Year</Tag>}
+            {splitUnfiltered && split && <Tag kind="warn">Split lines are not filtered by {fieldLabel(split)}</Tag>}
+            <span className="inline-flex items-center gap-1.5 text-fs-label text-ink-soft">
+              <InlineLabel>Split by</InlineLabel>
+              <Select
+                size="sm"
+                placeholder="None"
+                options={splitOptions}
+                value={split ?? NO_SPLIT}
+                onChange={(value) => onSplit(value === NO_SPLIT ? null : value)}
+                aria-label="Split by"
               />
-              {total.map((point, index) => {
-                const selected = condition.isSelected(point.clauses)
-                return (
-                  <circle
-                    key={point.year}
-                    cx={xForIndex(index, years.length)}
-                    cy={yForValue(point.count, max)}
-                    r={selected ? 6.5 : 4.5}
-                    fill={selected ? token("--color-selection") : token("--color-surface")}
-                    stroke={totalColor}
-                    strokeWidth={3}
-                    className="cursor-pointer"
-                    onClick={() => void condition.toggle(point.clauses)}
+            </span>
+          </div>
+          <div className="flex shrink-0 items-center gap-3">
+            <LinkButton mono tone="soft" onClick={exportTsv}>TSV</LinkButton>
+            <LinkButton mono tone="soft" onClick={exportSvg}>SVG</LinkButton>
+            <LinkButton mono tone="soft" onClick={exportPng}>PNG</LinkButton>
+          </div>
+        </div>
+        {years.length > 0 ? (
+          <>
+            <svg ref={svgRef} viewBox="0 0 960 320" className="mt-3 w-full max-w-chart-max font-mono" role="img" aria-label={`${unit} per year`}>
+              {gridLines(max).map((line) => (
+                <g key={line.value}>
+                  <line x1={PLOT.left} x2={PLOT.right} y1={line.y} y2={line.y} stroke={token("--color-grid")} />
+                  <text
+                    x={GRID_LABEL_X}
+                    y={line.y}
+                    textAnchor="end"
+                    dominantBaseline="middle"
+                    className="text-fs-micro"
+                    fill={token("--color-ink-soft")}
                   >
-                    <title>{`${totalLabel} · ${point.year}: ${formatCount(point.count)} ${unit}`}</title>
-                  </circle>
+                    {formatCount(line.value)}
+                  </text>
+                </g>
+              ))}
+              <line x1={PLOT.left} x2={PLOT.right} y1={PLOT.bottom} y2={PLOT.bottom} stroke={token("--color-border-soft")} />
+              {years.map((year, index) =>
+                showYearLabel(index, years.length) ? (
+                  <text
+                    key={year}
+                    x={xForIndex(index, years.length)}
+                    y={YEAR_LABEL_Y}
+                    textAnchor="middle"
+                    className="text-fs-micro"
+                    fill={token("--color-ink-soft")}
+                  >
+                    {year}
+                  </text>
+                ) : null,
+              )}
+              {series.map((s, seriesIndex) => {
+                const color = colorOf(seriesIndex)
+                const points = s.points.map((point, index) => ({ point, x: xForIndex(index, years.length), y: yForValue(point.count, max) }))
+                return (
+                  <g key={s.value} data-series={s.value}>
+                    <polyline points={points.map(({ x, y }) => `${x},${y}`).join(" ")} fill="none" stroke={color} strokeWidth={2} />
+                    {points.map(({ point, x, y }) => (
+                      <circle
+                        key={point.year}
+                        cx={x}
+                        cy={y}
+                        r={4}
+                        fill={token("--color-surface")}
+                        stroke={color}
+                        strokeWidth={2}
+                        className={point.count > 0 ? "cursor-pointer" : undefined}
+                        onClick={point.count > 0 ? () => void openPoint(point.clauses) : undefined}
+                      >
+                        <title>{`${seriesLabel(s.value, s.label)} · ${point.year}: ${formatCount(point.count)} ${unit}`}</title>
+                      </circle>
+                    ))}
+                  </g>
                 )
               })}
-            </g>
-          </svg>
-          <div className="mt-2 flex flex-wrap gap-3.5">
-            <LegendItem color={totalColor} width={3} label={totalLabel} strong />
-            {series.map((s, seriesIndex) => (
-              <LegendItem
-                key={s.value}
-                color={colorOf(seriesIndex)}
-                width={2}
-                label={seriesLabel(s.value, s.label)}
-                {...(split !== "library_strategy" && split !== "organism_id" ? { id: s.value } : {})}
-                {...(condition.isSelected(s.clauses) ? { note: "✓ in condition" } : {})}
-              />
-            ))}
-          </div>
-        </>
-      ) : data ? (
-        <div className="py-10 text-center text-fs-body-sm text-ink-soft">No entries with a creation year match this condition.</div>
-      ) : (
-        <SkeletonChart />
-      )}
-    </Card>
+              <g data-series="condition">
+                <polyline
+                  points={total.map((point, index) => `${xForIndex(index, years.length)},${yForValue(point.count, max)}`).join(" ")}
+                  fill="none"
+                  stroke={totalColor}
+                  strokeWidth={3}
+                />
+                {total.map((point, index) => {
+                  const selected = condition.isSelected(point.clauses)
+                  return (
+                    <circle
+                      key={point.year}
+                      cx={xForIndex(index, years.length)}
+                      cy={yForValue(point.count, max)}
+                      r={selected ? 6.5 : 4.5}
+                      fill={selected ? token("--color-selection") : token("--color-surface")}
+                      stroke={totalColor}
+                      strokeWidth={3}
+                      className="cursor-pointer"
+                      onClick={() => void condition.toggle(point.clauses)}
+                    >
+                      <title>{`${totalLabel} · ${point.year}: ${formatCount(point.count)} ${unit}`}</title>
+                    </circle>
+                  )
+                })}
+              </g>
+            </svg>
+            <div className="mt-2 flex flex-wrap gap-3.5">
+              <LegendItem color={totalColor} width={3} label={totalLabel} strong />
+              {series.map((s, seriesIndex) => (
+                <LegendItem
+                  key={s.value}
+                  color={colorOf(seriesIndex)}
+                  width={2}
+                  label={seriesLabel(s.value, s.label)}
+                  {...(split !== "library_strategy" && split !== "organism_id" ? { id: s.value } : {})}
+                  {...(condition.isSelected(s.clauses) ? { note: "✓ in condition" } : {})}
+                />
+              ))}
+            </div>
+          </>
+        ) : data ? (
+          <div className="py-10 text-center text-fs-body-sm text-ink-soft">No entries with a publication year match this condition.</div>
+        ) : (
+          <SkeletonChart />
+        )}
+      </Card>
+    </div>
   )
 }
 

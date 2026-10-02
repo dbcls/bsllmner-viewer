@@ -35,7 +35,7 @@ def entry_rows(
     details = {
         str(r[0]): r
         for r in cur.execute(
-            "SELECT accession, title, organism_id, organism_name, date_created FROM biosample "
+            "SELECT accession, title, organism_id, organism_name, date_published FROM biosample "
             f"WHERE accession IN ({placeholders})",
             accessions,
         ).fetchall()
@@ -82,7 +82,7 @@ def entry_rows(
                 organism=organism_of(detail[2], detail[3]) if detail else None,
                 library_strategy=sorted({e[1] for e in shown if e[1]}),
                 bioprojects=bioprojects.get(bs, []),
-                date_created=detail[4].isoformat() if detail and detail[4] else None,
+                date_published=detail[4].isoformat() if detail and detail[4] else None,
                 chip_atlas=sorted({a for e in shown for a in assemblies.get(e[0], [])}),
                 annotations={f: annotations.get(bs, {}).get(f, []) for f in fields},
             )

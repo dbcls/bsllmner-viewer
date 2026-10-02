@@ -64,10 +64,10 @@ def test_select_element_with_two_clauses_adds_missing_and_removes_when_all_prese
 
 
 def test_select_element_keeps_other_conjuncts_intact() -> None:
-    ast = parse("title:x AND date_created:[2015-01-01 TO 2020-12-31]")
+    ast = parse("title:x AND date_published:[2015-01-01 TO 2020-12-31]")
     out = select_element(ast, [clause("disease", "A")])
     assert out is not None
-    assert structurally_equal(out, parse("title:x AND date_created:[2015-01-01 TO 2020-12-31] AND disease:A"))
+    assert structurally_equal(out, parse("title:x AND date_published:[2015-01-01 TO 2020-12-31] AND disease:A"))
 
 
 def test_narrow_adds_every_clause_as_a_new_conjunct() -> None:
@@ -111,7 +111,7 @@ def test_named_values_ignores_negated_mixed_and_nested_clauses() -> None:
 
 
 def test_named_values_ignores_ranges_and_repeated_values() -> None:
-    assert named_values(parse("date_created:[2015-01-01 TO 2020-12-31]"), "date_created") == []
+    assert named_values(parse("date_published:[2015-01-01 TO 2020-12-31]"), "date_published") == []
     assert named_values(parse('disease:"MONDO:1" AND disease:"MONDO:1"'), "disease") == ["MONDO:1"]
 
 

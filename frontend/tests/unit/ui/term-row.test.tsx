@@ -20,6 +20,20 @@ describe("TermRow", () => {
     expect(screen.getByRole("button")).not.toHaveAttribute("title")
   })
 
+  it("marks each occurrence of the searched text in the label and the synonym, compared without case", () => {
+    const { container } = render(
+      <TermRow label="Cell cycle cell" synonym="nerve CELL" id="GO:0007049" detail="" count="3" highlight="cell" onClick={vi.fn()} />,
+    )
+    expect([...container.querySelectorAll("mark")].map((mark) => mark.textContent)).toEqual(["Cell", "cell", "CELL"])
+    expect(screen.getByRole("button")).toHaveTextContent("Cell cycle cellnerve CELLGO:0007049")
+  })
+
+  it("marks nothing when no text was searched, and shows no synonym when the search did not match one", () => {
+    const { container } = render(<TermRow label="neuron" id="CL:0000540" detail="" count="3" highlight=" " onClick={vi.fn()} />)
+    expect(container.querySelector("mark")).toBeNull()
+    expect(screen.getByRole("button")).toHaveTextContent("neuronCL:0000540")
+  })
+
   it("reports a click", async () => {
     const user = userEvent.setup()
     const onClick = vi.fn()

@@ -14,10 +14,11 @@ import { Card, CardFooter, CardHeader, Clickable, cn, InlineLabel, LinkButton, S
 import { expectedElements } from "../expected-elements"
 import { type HeatmapColor, type Patch, workspaceSearch, type WorkspaceState } from "../state"
 import type { Condition } from "../use-condition"
+import { ViewControls } from "../view-controls"
 import { AxisCard, type AxisSide } from "./axis-card"
 import { type MatrixCell, matrixSvg, matrixSvgSize } from "./matrix-svg"
 
-const AXIS_DIMENSIONS = ["library_strategy", "organism_id", "date_created"]
+const AXIS_DIMENSIONS = ["library_strategy", "organism_id", "date_published"]
 
 /** The number of elements per axis when the view names none. */
 const LIMIT = 10
@@ -47,7 +48,7 @@ export const HeatmapTab = ({ state, condition, update, onOpenPicker, onAxisEleme
     col: state.col,
     q: state.q,
     unit: state.unit,
-    selfExclusion: state.selfExclusion,
+    selfExclusion: true,
     ...(state.rowTerms ? { rowElements: state.rowTerms.join(",") } : {}),
     ...(state.colTerms ? { colElements: state.colTerms.join(",") } : {}),
     limit: LIMIT,
@@ -118,7 +119,7 @@ export const HeatmapTab = ({ state, condition, update, onOpenPicker, onAxisEleme
             termId: value,
             ...(state.q ? { q: state.q } : {}),
             unit: state.unit,
-            facetSelfExclude: state.selfExclusion,
+            facetSelfExclude: true,
           },
         },
       }),
@@ -218,6 +219,7 @@ export const HeatmapTab = ({ state, condition, update, onOpenPicker, onAxisEleme
 
   return (
     <div>
+      <ViewControls unit={state.unit} onUnit={(unit) => update({ unit })} />
       <div className="mb-4 grid grid-cols-2 gap-4">
         {(["row", "col"] as const).map((side) => (
           <AxisCard

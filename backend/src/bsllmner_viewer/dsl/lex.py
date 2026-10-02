@@ -12,5 +12,15 @@ RESERVED: Final[frozenset[str]] = frozenset({"AND", "OR", "NOT"})
 
 
 def needs_quote(value: str) -> bool:
-    """True when a bare value would be lexed as a higher-priority token (date, operator, wildcard)."""
-    return DATE_RE.match(value) is not None or value in RESERVED or WILDCARD_RE.match(value) is not None
+    """True when a bare value would be lexed as a higher-priority token (date, operator, wildcard, phrase).
+
+    A value that starts with `'` opens a single-quoted phrase, which runs to the next `'` anywhere after it, across
+    spaces and clauses. A `'` inside a value, as in `5'-UTR`, is part of the word, because a token starts only at its
+    first character.
+    """
+    return (
+        value.startswith("'")
+        or DATE_RE.match(value) is not None
+        or value in RESERVED
+        or WILDCARD_RE.match(value) is not None
+    )

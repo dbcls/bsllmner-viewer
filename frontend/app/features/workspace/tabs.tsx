@@ -1,12 +1,8 @@
 import { Link } from "react-router"
 
-import type { Unit } from "~/lib/api/types"
-import { cn, InlineLabel, Segmented, Toggle } from "~/ui"
+import { cn } from "~/ui"
 
 import { type Tab, TABS, workspaceSearch,type WorkspaceState } from "./state"
-
-/** The tables list the entries of the full condition, so the counting unit and self-exclusion of the charts do not apply. */
-const TABLES: readonly Tab[] = ["samples", "projects"]
 
 const TAB_LABELS: Record<Tab, string> = {
   samples: "Samples",
@@ -16,13 +12,8 @@ const TAB_LABELS: Record<Tab, string> = {
   projects: "Projects",
 }
 
-type TabsProps = {
-  state: WorkspaceState
-  onUnit: (unit: Unit) => void
-  onSelfExclusion: () => void
-}
-
-export const Tabs = ({ state, onUnit, onSelfExclusion }: TabsProps) => (
+/** The row of view tabs. It only switches views; the controls of a view are in the view. */
+export const Tabs = ({ state }: { state: WorkspaceState }) => (
   <div className="flex items-end justify-between border-b border-border-soft bg-surface px-workspace-gutter">
     <nav className="flex gap-0.5" aria-label="Views">
       {TABS.map((tab) => {
@@ -43,28 +34,5 @@ export const Tabs = ({ state, onUnit, onSelfExclusion }: TabsProps) => (
         )
       })}
     </nav>
-    {!TABLES.includes(state.tab) && (
-      <div className="flex items-center gap-4 pb-2 text-fs-label text-ink-soft">
-        <span className="inline-flex items-center gap-1.5">
-          <InlineLabel>Count</InlineLabel>
-          <Segmented
-            ariaLabel="Counting unit"
-            options={[
-              { value: "biosample", label: "BioSamples" },
-              { value: "sra-experiment", label: "SRA Experiments" },
-              { value: "bioproject", label: "BioProjects" },
-            ]}
-            value={state.unit}
-            onChange={onUnit}
-          />
-        </span>
-        <Toggle
-          checked={state.selfExclusion}
-          onChange={onSelfExclusion}
-          label={state.selfExclusion ? "Each view ignores its own filter" : "Each view applies its own filter"}
-          title="Each chart is computed without its own field's condition, so unselected values stay visible for comparison."
-        />
-      </div>
-    )}
   </div>
 )

@@ -115,24 +115,23 @@ const TAB_LABELS: Record<WorkspaceState["tab"], string> = {
 /** The api request that returns the current view. */
 export const apiRequestFor = (state: WorkspaceState): string => {
   const q = state.q ?? undefined
-  const facetSelfExclude = state.selfExclusion ? "true" : undefined
   switch (state.tab) {
     case "samples":
       return apiUrl("/api/entries/biosample", { q, page: state.page, perPage: TABLE_PER_PAGE })
     case "distribution":
-      return apiUrl("/api/distribution", { q, field: "disease", unit: state.unit, facetSelfExclude })
+      return apiUrl("/api/distribution", { q, field: "disease", unit: state.unit, facetSelfExclude: "true" })
     case "heatmap":
       return apiUrl("/api/crosstab", {
         q,
         row: state.row,
         col: state.col,
         unit: state.unit,
-        facetSelfExclude,
+        facetSelfExclude: "true",
         rowElements: state.rowTerms?.join(","),
         colElements: state.colTerms?.join(","),
       })
     case "trend":
-      return apiUrl("/api/trend", { q, field: state.trendField ?? undefined, unit: state.unit, facetSelfExclude, elements: state.trendTerms?.join(",") })
+      return apiUrl("/api/trend", { q, field: state.trendField ?? undefined, unit: state.unit, facetSelfExclude: "true", elements: state.trendTerms?.join(",") })
     case "projects":
       return apiUrl("/api/projects", { q, facetSelfExclude: "true", sort: state.sort, page: state.page, perPage: TABLE_PER_PAGE })
   }

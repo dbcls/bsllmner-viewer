@@ -91,8 +91,10 @@ def select_dsl(store: StoreDep, body: SelectRequest) -> ConditionResponse:
     summary="Replace the keywords of a condition",
     description=(
         "Replaces the keywords among the top-level AND conjuncts of `q` with the keywords of `keyword`, read as a "
-        "search box reads text: quoted parts are phrases, and the other words form one keyword. `AND`, `OR`, and "
-        "`NOT` are ordinary words. An empty `keyword` removes the keywords."
+        "search box reads text: quoted parts are phrases, and the other words form one keyword. A part is quoted by "
+        "double quotes, or by a `'` at the start of a word and a `'` at the end of a word. A `'` inside a word or only "
+        "at its end, as in `Alzheimer's` or `3'`, is part of the word. `AND`, `OR`, and `NOT` are ordinary words. An "
+        "empty `keyword` removes the keywords."
     ),
 )
 def keyword_dsl(store: StoreDep, body: KeywordRequest) -> ConditionResponse:

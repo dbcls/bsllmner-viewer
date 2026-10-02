@@ -69,7 +69,7 @@ def list_entries(
 def get_entry(store: StoreDep, accession: str) -> EntryResponse:
     with store.cursor() as cur:
         row = cur.execute(
-            "SELECT b.accession, b.title, b.organism_id, b.organism_name, b.date_created, b.date_modified, "
+            "SELECT b.accession, b.title, b.organism_id, b.organism_name, b.date_published, "
             "b.attributes, r.name FROM biosample b JOIN run r USING (run_id) WHERE b.accession = ?",
             [accession],
         ).fetchone()
@@ -99,7 +99,7 @@ def get_entry(store: StoreDep, accession: str) -> EntryResponse:
         ).fetchall()
     attributes = [
         Attribute(name=str(a.get("name")), value=str(a.get("value")), harmonized_name=a.get("harmonized_name"))
-        for a in attributes_of(row[6])
+        for a in attributes_of(row[5])
     ]
     searchable: list[tuple[str, int, str]] = [(TITLE_ATTRIBUTE, -1, row[1])] if row[1] else []
     searchable += [(a.name, i, a.value) for i, a in enumerate(attributes)]
@@ -124,9 +124,8 @@ def get_entry(store: StoreDep, accession: str) -> EntryResponse:
         type="biosample",
         title=row[1],
         organism=organism_of(row[2], row[3]),
-        date_created=row[4].isoformat() if row[4] else None,
-        date_modified=row[5].isoformat() if row[5] else None,
-        run=str(row[7]),
+        date_published=row[4].isoformat() if row[4] else None,
+        run=str(row[6]),
         attributes=attributes,
         annotations=annotations,
         experiments=[

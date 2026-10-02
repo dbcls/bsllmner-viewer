@@ -43,6 +43,7 @@ The grammar is the Lucene subset used by the DDBJ Search API search DSL (the `/d
 
 - `field:value`, `field:"phrase"`, and `field:[a TO b]`
 - keywords without a field: `hypoxia organoid` and `"breast cancer"`
+- phrases in double or single quotes: `"breast cancer"` and `'breast cancer'`. Inside a phrase, a backslash makes the next character part of the phrase.
 - `AND`, `OR`, and `NOT` (upper case), and grouping with `( )`
 - The JSON representation of the AST has the same shape, with node types discriminated by `op`.
 
@@ -58,7 +59,7 @@ Compatibility covers the grammar and the AST shape. The set of fields and the ev
 | Annotation status | `disease_status:unmapped` | the field has the given status, or a status under the given group |
 | Assay | `library_strategy:ATAC-seq` | the experiment has the given `library_strategy` |
 | Organism | `organism_id:9606` | the BioSample's organism has the given NCBI Taxonomy ID |
-| Creation date | `date_created:[2015-01-01 TO 2020-12-31]` | the BioSample's creation date is in the range |
+| Publication date | `date_published:[2015-01-01 TO 2020-12-31]` | the BioSample's publication date is in the range |
 | BioProject | `bioproject:PRJNA123456` | the BioSample belongs to the given BioProject |
 
 - Annotation field names are the field names of the select configuration. `_status` is a suffix appended to a field name.
@@ -91,9 +92,11 @@ The exports return every matching entry as TSV or as newline-delimited JSON (`ap
 
 ## Aggregations
 
-An aggregation counts the matches of `q` per element along one or two **dimensions**, in a counting unit. A dimension is a DSL field, such as `disease`, `disease_status`, `library_strategy`, `date_created`, or `bioproject`. Every element carries a clause on each dimension of the aggregation that represents it, for example `disease:"MONDO:0007254"` for a bar of a distribution, or one clause per axis for a cell of a cross-tabulation.
+An aggregation counts the matches of `q` per element along one or two **dimensions**, in a counting unit. A dimension is a DSL field, such as `disease`, `disease_status`, `library_strategy`, `date_published`, or `bioproject`. Every element carries a clause on each dimension of the aggregation that represents it, for example `disease:"MONDO:0007254"` for a bar of a distribution, or one clause per axis for a cell of a cross-tabulation.
 
 The bucket of an element has `value`, `label`, and `count`, as a facet bucket of the DDBJ Search API, and the element's `clauses` in addition.
+
+A distribution on an annotation term dimension also returns `withoutTerm`, the count of its population that has no term of the field: the population combined by `AND` with `NOT <field>_status:mapped`, in the same counting unit. The elements count only the matches that have a term, so `withoutTerm` shows how much of the population they cannot count. For example, if most BioSamples of a condition state no disease, then the bars of the disease distribution cover a small part of the condition.
 
 ### Self-exclusion
 
@@ -103,9 +106,7 @@ With `facetSelfExclude=true`, an aggregation is computed without the conditions 
 
 The top-level conjuncts are the operands of the outermost `AND` after nested `AND` groups are merged. For example, `a AND (b AND c)` has three top-level conjuncts.
 
-Self-exclusion keeps every element of a dimension visible while one of its elements is selected, so that the selection can be compared with the alternatives. The UI computes the distributions, the cross-tabulations, and the trend with self-exclusion unless the user turns it off. The UI computes the project statistics with self-exclusion, so that the BioProjects in `q` stay listed with the other BioProjects that match the rest of `q`. The UI computes the entry list from `q` itself. Drilling down within a selected term is done by expanding the term into its child terms.
-
-A distribution on an annotation term dimension also returns the status composition of the field. The status composition is an aggregation on the status dimension of the same field. With self-exclusion, its population excludes the conjuncts on the term dimension and the conjuncts on the status dimension. A condition on a term of the field therefore does not reduce the composition to the mapped statuses.
+Self-exclusion keeps every element of a dimension visible while one of its elements is selected, so that the selection can be compared with the alternatives. The UI computes the distributions, the cross-tabulations, and the trend with self-exclusion. The counts that the UI shows next to the values that a condition can take, in the condition panel and in the term search, are also computed with self-exclusion. The UI computes the project statistics with self-exclusion, so that the BioProjects in `q` stay listed with the other BioProjects that match the rest of `q`. The UI computes the entry list from `q` itself.
 
 ### Default elements
 
@@ -117,7 +118,7 @@ If a request does not name the elements of a dimension, then the api chooses the
 
 ### Trend
 
-A trend counts the condition for each creation year of the BioSample. With self-exclusion, the population of these counts is `q` without the conjuncts on `date_created`.
+A trend counts the condition for each publication year of the BioSample. It returns every year from the first to the last year in which its population has a match, with a count of 0 for a year without one. With self-exclusion, the population of these counts is `q` without the conjuncts on `date_published`.
 
 If a request names a dimension, then the trend also counts each element of the dimension for each year. With self-exclusion, the population of these counts also excludes the conjuncts on that dimension.
 
@@ -168,7 +169,7 @@ Each UI view (entry list, distribution, cross-tabulation, trend, project statist
 
 The UI has three pages: `/` is the start page, `/entries` is the page that shows the entries and aggregations of a condition, and `/entries/{accession}` is the page of one BioSample.
 
-The state of `/entries` is represented only by `q` and view parameters (entry type, counting unit, cross-tabulation axes, self-exclusion, and similar), and all of them are part of the URL. The same URL returns the same result against the same store version.
+The state of `/entries` is represented only by `q` and view parameters (view tab, counting unit, cross-tabulation axes, and similar), and all of them are part of the URL. The same URL returns the same result against the same store version.
 
 The `q` in a URL is the same string as the `q` of the API.
 

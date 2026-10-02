@@ -27,7 +27,7 @@ describe("conditionLabels", () => {
         { field: "organism_id", op: "eq", value: "9606" },
         { field: "organism_id", op: "eq", value: "7955" },
         { op: "free_text", value: "liver" },
-        { field: "date_created", op: "between", from: "2018", to: "2022" },
+        { field: "date_published", op: "between", from: "2018", to: "2022" },
         { op: "NOT", rules: [{ field: "tissue", op: "eq", value: "UBERON:0002107" }] },
       ],
     }

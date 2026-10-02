@@ -76,7 +76,7 @@ def test_searchable_text_adds_the_joined_form_of_a_word_with_symbols(store_con: 
     assert rows
     for (text,) in rows:
         assert " mcf 7 " in text
-        assert " mcf7 " in text.split(" | ")[-1] + " "
+        assert " mcf7 " in " " + text.split(" | ")[-1] + " "
 
 
 @pytest.fixture

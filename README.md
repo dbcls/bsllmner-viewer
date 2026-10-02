@@ -6,7 +6,7 @@ bsllmner-viewer is a web application and HTTP API for querying, aggregating, and
 
 bsllmner-mk2 extracts biological entities (cell line, cell type, tissue, disease, drug, genetic perturbations, ChIP antigen) from free-text BioSample attributes with an LLM and maps each extracted value to an ontology term. bsllmner-viewer ingests those results, links each BioSample to its SRA experiments and BioProjects, and serves the combined data through a query API and a browser UI.
 
-- **Structured queries** over ontology terms, with descendant expansion over the ontology DAG, combined with assay, organism, submission date, and BioProject conditions
+- **Structured queries** over ontology terms, with descendant expansion over the ontology DAG, combined with assay, organism, publication date, and BioProject conditions
 - **Aggregations** of the matches as distributions, cross-tabulations, and yearly trends, counted by BioSample, SRA Experiment, or BioProject
 - **Annotation status** that distinguishes terms mapped by exact match, terms selected by the LLM, values without an adopted term, and fields without an extracted value
 - **Export** of matching BioSamples as TSV / NDJSON, and of BioSample, SRA Experiment, SRA Run, and BioProject accession lists

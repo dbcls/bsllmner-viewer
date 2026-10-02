@@ -38,23 +38,32 @@ test.describe("workspace navigation", () => {
     await expectParam(page, "unit", "sra-experiment")
   })
 
+  test("the condition panel counts BioSamples whatever the counting unit of the views", async ({ page, request }) => {
+    const { q } = await topDiseaseCondition(request)
+    const [assay] = (await distribution(request, "library_strategy", { q, selfExclude: true })).elements
+    if (!assay) throw new Error("the condition has no assay")
+    const projects = (await distribution(request, "library_strategy", { q, unit: "bioproject", selfExclude: true })).elements
+    test.skip(projects.find((e) => e.value === assay.value)?.count === assay.count, "the assay has as many BioProjects as BioSamples")
+    await page.goto(workspaceUrl({ q, tab: "distribution", unit: "bioproject" }))
+    await expect(page.getByRole("radio", { name: "BioProjects" })).toHaveAttribute("aria-checked", "true")
+    await expect(conditionPanel(page).getByText(formatCount(assay.count), { exact: true })).toBeVisible()
+  })
+
   test("the header links to the API documentation served by the server", async ({ page }) => {
     await page.goto("/")
     await expect(page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: /^API/ })).toHaveAttribute("href", "/api")
   })
 
-  test("a URL restores the condition, the unit, self-exclusion, and the status expansion", async ({ page, request }) => {
+  test("a URL restores the condition, the view, and the unit", async ({ page, request }) => {
     const { term, q: termQ } = await topDiseaseCondition(request)
     const assay = (await dataset(request)).targetAssays[0]
     if (!assay) throw new Error("the dataset has no target assay")
     const q = await select(request, termQ, [{ field: "library_strategy", value: assay }])
-    await page.goto(workspaceUrl({ q, tab: "distribution", unit: "bioproject", se: "0", states: "6" }))
+    await page.goto(workspaceUrl({ q, tab: "distribution", unit: "bioproject" }))
     await expect(conditionRegion(page).getByTitle(term.value)).toContainText(term.label)
     await expect(conditionPanel(page).getByRole("checkbox", { name: new RegExp(assay) })).toBeChecked()
     await expect(viewTabs(page).getByRole("link", { name: "Distribution" })).toHaveAttribute("aria-current", "page")
     await expect(page.getByRole("radio", { name: "BioProjects" })).toHaveAttribute("aria-checked", "true")
-    await expect(page.getByRole("switch")).not.toBeChecked()
-    await expect(page.getByRole("main").getByRole("button", { name: "3 groups" }).first()).toBeVisible()
   })
 
   test("a URL restores the page of the entry list", async ({ page, request }) => {
@@ -88,6 +97,23 @@ test.describe("workspace navigation", () => {
     await expect(page).toHaveURL((url) => url.pathname === "/entries")
     await expectQ(page, q)
     await expectParam(page, "unit", "bioproject")
+  })
+
+  test("a BioProject of a row of the entry list opens its DDBJ Search page and keeps the entry list", async ({ page, request }) => {
+    const { q } = await topDiseaseCondition(request)
+    const first = (await entries(request, q)).items.find((item) => item.bioprojects.length > 0)
+    const bioproject = first?.bioprojects[0]
+    if (!first || !bioproject) throw new Error("no BioSample of the condition has a BioProject")
+    const href = `https://ddbj.nig.ac.jp/search/entry/bioproject/${bioproject}`
+    await page.context().route(href, (route) => route.fulfill({ contentType: "text/html", body: "" }))
+    await page.goto(workspaceUrl({ q }))
+    const link = page.getByRole("main").locator("tbody tr").filter({ hasText: first.identifier }).getByRole("link", { name: bioproject })
+    await expect(link).toHaveAttribute("href", href)
+    const [popup] = await Promise.all([page.waitForEvent("popup"), link.click()])
+    expect(popup.url()).toBe(href)
+    await popup.close()
+    await expect(page).toHaveURL((url) => url.pathname === "/entries")
+    await expectQ(page, q)
   })
 
   test("a term on the sample page searches for the samples annotated with it", async ({ page, request }) => {

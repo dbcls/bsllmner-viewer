@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,6 +20,7 @@ class RunMetadata(BaseModel):
     run_name: str
     model: str
     status: Literal["running", "completed", "failed", "interrupted"]
+    start_time: datetime.datetime | None = None
 
 
 @dataclass(slots=True)

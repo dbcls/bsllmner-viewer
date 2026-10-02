@@ -8,7 +8,7 @@ export type Element = { value: string; label: string; clauses: Clause[]; count: 
 
 export type TermElement = Element & { countExact: number; countSelected: number; hasChildren: boolean }
 
-export type Distribution = { q: string | null; populationQ: string | null; total: number; elements: TermElement[]; status: Element[] }
+export type Distribution = { q: string | null; populationQ: string | null; total: number; elements: TermElement[]; withoutTerm: number | null }
 
 export type Crosstab = {
   q: string | null
@@ -53,11 +53,11 @@ export const get = async <T>(request: APIRequestContext, path: string, params: P
 
 export const dataset = (request: APIRequestContext): Promise<Dataset> => get(request, "/api/dataset")
 
-/** A distribution as the UI requests it: ten elements, with self-exclusion unless turned off. */
+/** A distribution as the UI requests it: ten elements, with self-exclusion. `selfExclude: false` counts the condition itself. */
 export const distribution = (
   request: APIRequestContext,
   field: string,
-  options: { q?: string | null; unit?: Unit; selfExclude?: boolean; limit?: number; expandedStatus?: boolean } = {},
+  options: { q?: string | null; unit?: Unit; selfExclude?: boolean; limit?: number } = {},
 ): Promise<Distribution> =>
   get(request, "/api/distribution", {
     field,
@@ -65,7 +65,6 @@ export const distribution = (
     unit: options.unit ?? "biosample",
     facetSelfExclude: options.selfExclude ?? true,
     limit: options.limit ?? 10,
-    expandedStatus: options.expandedStatus,
   })
 
 export const crosstab = (
@@ -97,9 +96,6 @@ export const trend = (
 
 export const terms = async (request: APIRequestContext, field: string, text: string): Promise<Term[]> =>
   (await get<{ terms: Term[] }>(request, "/api/terms", { field, query: text, facetSelfExclude: true, limit: 30 })).terms
-
-export const children = async (request: APIRequestContext, field: string, termId: string, q?: string | null): Promise<TermElement[]> =>
-  (await get<{ children: TermElement[] }>(request, "/api/terms/children", { field, termId, q, facetSelfExclude: true })).children
 
 /** The condition that the api derives from selecting clauses, as the UI derives it. */
 export const select = async (
@@ -138,7 +134,7 @@ export const smallProjects = async (request: APIRequestContext): Promise<Project
   return small
 }
 
-export type EntryItem = { identifier: string; title: string | null }
+export type EntryItem = { identifier: string; title: string | null; bioprojects: string[] }
 
 export type EntryList = { pagination: { page: number; perPage: number; total: number }; items: EntryItem[] }
 

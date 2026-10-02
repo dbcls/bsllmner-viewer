@@ -11,6 +11,7 @@ const hit = (overrides: Partial<TermHit>): TermHit => ({
   path: [],
   descendantCount: 0,
   count: 1,
+  matchedSynonym: null,
   clauses: [],
   ...overrides,
 })

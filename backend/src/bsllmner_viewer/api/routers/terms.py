@@ -31,8 +31,11 @@ def _term_dimension(store: StoreDep, field: str):  # type: ignore[no-untyped-def
     response_model=TermsResponse,
     summary="Search the terms annotated in a field, or in every annotation field",
     description=(
-        "Each hit is counted in the population of its own field: with `facetSelfExclude`, the condition without the "
-        "conjuncts on that field."
+        "Hits are ordered by how they match `query`: a label or an ID equal to it, then a label or an ID that contains "
+        "it, then only a synonym that contains it (`matchedSynonym`). Within each of these, hits are ordered by "
+        "`count`. The hits within `limit` are the terms assigned directly to the most BioSamples, so that a broad term "
+        "counted only through its descendants does not crowd out the terms in use. Each hit is counted in the "
+        "population of its own field: with `facetSelfExclude`, the condition without the conjuncts on that field."
     ),
 )
 def search_terms(
@@ -56,14 +59,16 @@ def search_terms(
     with store.cursor() as cur:
         hits = tq.search_terms(cur, list(by_field), query, limit)
         for name, dim in by_field.items():
-            ids = [t for f, t, _, _ in hits if f == name]
+            ids = [hit.term_id for hit in hits if hit.field == name]
             if not ids:
                 continue
             assert dim.annotation_field is not None
             found = element_counts(cur, population(populations[name], store.field_set), dim, ids, unit)
             counts.update({(name, t): n for t, n in found.items()})
             descendants.update({(name, t): n for t, n in tq.descendant_counts(cur, dim.annotation_field, ids).items()})
-        paths = tq.path_labels(cur, sorted({t for _, t, _, _ in hits}))
+        paths = tq.path_labels(cur, sorted({hit.term_id for hit in hits}))
+    # Candidates come in tier order; within a tier, the shown count decides, and ties keep the candidate order.
+    ordered = sorted(hits, key=lambda hit: (hit.tier, -counts.get((hit.field, hit.term_id), 0)))
     return TermsResponse(
         dataset_version=version_ref(store),
         field=field if field is None else dims[0].name,
@@ -72,16 +77,17 @@ def search_terms(
         unit=unit,
         terms=[
             TermHit(
-                field=f,
-                term_id=t,
-                label=label,
-                ontology=ontology,
-                path=paths.get(t, []),
-                descendant_count=descendants.get((f, t), 0),
-                count=counts.get((f, t), 0),
-                clauses=clauses_for(by_field[f], t),
+                field=hit.field,
+                term_id=hit.term_id,
+                label=hit.label,
+                ontology=hit.ontology,
+                path=paths.get(hit.term_id, []),
+                descendant_count=descendants.get((hit.field, hit.term_id), 0),
+                count=counts.get((hit.field, hit.term_id), 0),
+                matched_synonym=hit.synonym,
+                clauses=clauses_for(by_field[hit.field], hit.term_id),
             )
-            for f, t, label, ontology in hits
+            for hit in ordered
         ],
     )
 

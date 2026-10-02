@@ -147,8 +147,13 @@ class DistributionResponse(ApiModel):
     facet_self_exclude: bool
     total: int = Field(description="Count of the population in the unit")
     elements: list[TermElement | Element]
-    status: list[Element] | None = Field(default=None, description="Status counts for annotation fields")
-    status_population_q: str | None = None
+    without_term: int | None = Field(
+        default=None,
+        description=(
+            "For an annotation term dimension, the count of the population whose BioSamples have no term of the field: "
+            "the population combined by AND with `NOT <field>_status:mapped`, in the unit"
+        ),
+    )
 
 
 class Cell(ApiModel):
@@ -241,7 +246,7 @@ class EntryItem(ApiModel):
     organism: Organism | None
     library_strategy: list[str]
     bioprojects: list[str]
-    date_created: str | None
+    date_published: str | None
     chip_atlas: list[str] = Field(description="Genome assemblies under which ChIP-Atlas processed the experiments")
     annotations: dict[str, list[AnnotationValue]]
 
@@ -296,8 +301,7 @@ class EntryResponse(ApiModel):
     type: Literal["biosample"]
     title: str | None
     organism: Organism | None
-    date_created: str | None
-    date_modified: str | None
+    date_published: str | None
     run: str
     attributes: list[Attribute]
     annotations: list[EntryAnnotation]
@@ -313,6 +317,9 @@ class TermHit(ApiModel):
     path: list[str] = Field(description="Labels of the ancestors along one path from a root, nearest last")
     descendant_count: int = Field(description="Descendant terms annotated in the population")
     count: int
+    matched_synonym: str | None = Field(
+        description="The synonym that contains the query, when neither the label nor the ID contains it"
+    )
     clauses: list[Clause]
 
 

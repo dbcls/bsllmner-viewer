@@ -49,7 +49,7 @@ The SRA experiment and BioProject sources may be a directory, in which case ever
 
 ## Appending runs
 
-Add the new runs to the end of the run list of the manifest and run `append` with the current store:
+Add the new runs to the end of the list of runs of the manifest and run `append` with the current store:
 
 ```
 docker compose run --rm --no-deps api uv run bsllmner-viewer-build append \

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useNavigate } from "react-router"
 
 import { selectElement, useDataset, useDistribution, useTerms } from "~/lib/api/queries"
@@ -44,6 +44,11 @@ export const TermSearch = () => {
     active,
   )
   const options = [{ value: ALL_FIELDS, label: "All fields" }, ...fields.map((f) => ({ value: f, label: fieldLabel(f) }))]
+  // The results of another search start at the top, instead of where the previous results were scrolled to.
+  const list = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    if (list.current) list.current.scrollTop = 0
+  }, [terms.data?.query, terms.data?.field])
 
   const clear = () => {
     setField(ALL_FIELDS)
@@ -77,7 +82,11 @@ export const TermSearch = () => {
                 Clear search
               </Button>
             </CardHeader>
-            <div aria-busy={!terms.data || terms.isPlaceholderData || undefined} className={cn("max-h-picker-list overflow-auto", busyClass(terms.isPlaceholderData))}>
+            <div
+              ref={list}
+              aria-busy={!terms.data || terms.isPlaceholderData || undefined}
+              className={cn("max-h-picker-list overflow-auto", busyClass(terms.isPlaceholderData))}
+            >
               {!terms.data && Array.from({ length: SKELETON_TERMS }, (_, index) => <TermRowSkeleton key={index} />)}
               {(terms.data?.terms ?? []).map((hit) => (
                 <TermRow
@@ -87,6 +96,8 @@ export const TermSearch = () => {
                   detail={termDetail(hit)}
                   count={formatCount(hit.count)}
                   {...(everyField ? { field: fieldLabel(hit.field) } : {})}
+                  {...(hit.matchedSynonym ? { synonym: hit.matchedSynonym } : {})}
+                  highlight={terms.data?.query ?? ""}
                   onClick={() => void open(hit)}
                 />
               ))}

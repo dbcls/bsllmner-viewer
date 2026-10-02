@@ -3,16 +3,16 @@ import { describe, expect, it } from "vitest"
 import { apiRequestFor } from "~/features/workspace/overlays"
 import { DEFAULTS, type Tab,TABLE_PER_PAGE } from "~/lib/workspace-state"
 
-const TABS_WITH_SELF_EXCLUSION: Tab[] = ["distribution", "heatmap", "trend"]
+const TABS_WITH_SELF_EXCLUSION: Tab[] = ["distribution", "heatmap", "trend", "projects"]
 
 describe("apiRequestFor", () => {
-  it.each(TABS_WITH_SELF_EXCLUSION)("includes facetSelfExclude=true on the %s tab when self-exclusion is on", (tab) => {
+  it.each(TABS_WITH_SELF_EXCLUSION)("always includes facetSelfExclude=true on the %s tab", (tab) => {
     const url = new URL(apiRequestFor({ ...DEFAULTS, tab, q: "a:b" }), "http://localhost")
     expect(url.searchParams.get("facetSelfExclude")).toBe("true")
   })
 
-  it.each(TABS_WITH_SELF_EXCLUSION)("omits facetSelfExclude on the %s tab when self-exclusion is off", (tab) => {
-    const url = new URL(apiRequestFor({ ...DEFAULTS, tab, selfExclusion: false }), "http://localhost")
+  it("omits facetSelfExclude on the samples tab, whose entries match the condition itself", () => {
+    const url = new URL(apiRequestFor({ ...DEFAULTS, tab: "samples", q: "a:b" }), "http://localhost")
     expect(url.searchParams.has("facetSelfExclude")).toBe(false)
   })
 
@@ -34,10 +34,5 @@ describe("apiRequestFor", () => {
     expect(url.searchParams.get("sort")).toBe("experimentCount:asc")
     expect(url.searchParams.get("page")).toBe("3")
     expect(url.searchParams.get("perPage")).toBe(String(TABLE_PER_PAGE))
-  })
-
-  it.each([true, false])("includes facetSelfExclude=true on the projects tab whatever the self-exclusion toggle is (%s)", (selfExclusion) => {
-    const url = new URL(apiRequestFor({ ...DEFAULTS, tab: "projects", q: "a:b", selfExclusion }), "http://localhost")
-    expect(url.searchParams.get("facetSelfExclude")).toBe("true")
   })
 })

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react"
+import { Fragment, type ReactNode } from "react"
 import { useNavigate } from "react-router"
 
 import { useDataset, useEntries } from "~/lib/api/queries"
@@ -24,8 +24,11 @@ const ANNOTATION_WIDTH = "w-36 min-w-36 max-w-36"
 /** The width of the first column, which stays put when the table scrolls sideways. It holds the longest accession. */
 const FROZEN_WIDTH = "w-36 min-w-36 max-w-36"
 
-/** The rule is on the cells rather than the row: the table has separate borders, which the frozen column needs. */
-const TD = "border-b border-brand-soft px-2.5 py-1.5"
+/**
+ * The rule is on the cells rather than the row: the table has separate borders, which the frozen column needs. The last row
+ * has none, so that it does not double the line over the footer.
+ */
+const TD = "border-b border-brand-soft px-2.5 py-1.5 group-last:border-b-0"
 
 type SamplesTabProps = {
   state: WorkspaceState
@@ -63,7 +66,7 @@ export const SamplesTab = ({ state, onPage, search }: SamplesTabProps) => {
               <Th width={FROZEN_WIDTH} frozen>
                 BioSample
               </Th>
-              {["Title", "Organism", "Assay", "BioProject", "Year"].map((column) => (
+              {["Title", "Organism", "Assay", "BioProject", "Published"].map((column) => (
                 <Th key={column}>{column}</Th>
               ))}
               {fields.map((field) => (
@@ -90,8 +93,10 @@ export const SamplesTab = ({ state, onPage, search }: SamplesTabProps) => {
                 <td className={cn(TD, "whitespace-nowrap")}>
                   <AssayTags assays={row.libraryStrategy} targetAssays={dataset.data?.targetAssays ?? []} />
                 </td>
-                <td className={cn(TD, "font-mono text-fs-label whitespace-nowrap")}>{row.bioprojects.join(", ")}</td>
-                <td className={cn(TD, "font-mono text-fs-label")}>{row.dateCreated?.slice(0, 4)}</td>
+                <td className={cn(TD, "font-mono text-fs-label whitespace-nowrap")}>
+                  <BioProjectLinks accessions={row.bioprojects} />
+                </td>
+                <td className={cn(TD, "font-mono text-fs-label whitespace-nowrap")}>{row.datePublished}</td>
                 {fields.map((field) => {
                   const values = (row.annotations[field] ?? []).filter(hasValue)
                   return (
@@ -118,7 +123,7 @@ export const SamplesTab = ({ state, onPage, search }: SamplesTabProps) => {
 }
 
 /** The widths of the skeletons of the columns before the annotation columns, near the widths of their values. */
-const LEAD_SKELETONS = ["w-24", "w-48", "w-24", "w-16", "w-20", "w-8"]
+const LEAD_SKELETONS = ["w-24", "w-48", "w-24", "w-16", "w-20", "w-20"]
 
 const STATUS_MEANING: Record<string, string> = {
   mapped_exact: "The value matched an ontology label or synonym exactly.",
@@ -134,6 +139,7 @@ const STATUS_HELP = (
         <StatusPill status={status} label={statusInfo(status).label} size="sm" /> {STATUS_MEANING[status]}
       </span>
     ))}
+    <span className="mt-1.5 block">A value in quotes is the extracted text, for which no term was adopted.</span>
     <span className="mt-1.5 block">An empty cell has no extracted value.</span>
   </>
 )
@@ -166,7 +172,7 @@ const AnnotationCell = ({ values }: { values: AnnotationValue[] }) => {
             <span className="mr-1">
               <StatusGlyph status={value.status} label={info.label} />
             </span>
-            <span className={value.termId ? "text-ink" : "text-ink-mid italic"}>{text}</span>
+            <span className={value.termId ? "text-ink" : "text-ink-soft"}>{text}</span>
           </span>
         )
       })}
@@ -181,6 +187,15 @@ const annotationTitle = (field: string, values: AnnotationValue[]): string =>
       return `${fieldLabel(field)}: extracted “${value.value ?? ""}” → ${target} · ${statusInfo(value.status).label}`
     })
     .join("\n")
+
+/** The pages of the row's BioProjects in DDBJ Search. */
+const BioProjectLinks = ({ accessions }: { accessions: string[] }) =>
+  accessions.map((accession, index) => (
+    <Fragment key={accession}>
+      {index > 0 && ", "}
+      <ExternalLink href={`https://ddbj.nig.ac.jp/search/entry/bioproject/${accession}`}>{accession}</ExternalLink>
+    </Fragment>
+  ))
 
 /** The pages of the row's BioSample in DDBJ Search and NCBI. */
 const RowLinks = ({ row }: { row: EntryItem }) => (

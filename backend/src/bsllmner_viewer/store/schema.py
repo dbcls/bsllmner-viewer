@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import duckdb
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 RAW_TABLES: tuple[str, ...] = (
     "store_meta",
@@ -80,8 +80,7 @@ CREATE TABLE entry (
     organism_id INTEGER,
     organism_name VARCHAR,
     title VARCHAR,
-    date_created DATE,
-    date_modified TIMESTAMP,
+    date_published DATE,
     attributes JSON NOT NULL
 );
 

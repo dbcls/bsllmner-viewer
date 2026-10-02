@@ -29,7 +29,7 @@ TSV_COLUMNS = (
     "organismName",
     "libraryStrategy",
     "bioprojects",
-    "dateCreated",
+    "datePublished",
     "chipAtlas",
 )
 
@@ -111,7 +111,7 @@ def export_entries(
                             (item.organism.name or "") if item.organism else "",
                             ";".join(item.library_strategy),
                             ";".join(item.bioprojects),
-                            item.date_created or "",
+                            item.date_published or "",
                             ";".join(item.chip_atlas),
                         ]
                         for f in fields:

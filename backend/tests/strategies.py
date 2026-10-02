@@ -6,7 +6,7 @@ from functools import reduce
 
 from hypothesis import strategies as st
 
-from bsllmner_viewer.dsl.ast import BoolOp, FieldClause, FreeText, Node, Range
+from bsllmner_viewer.dsl.ast import BoolOp, FieldClause, FreeText, Node, Range, clause
 from bsllmner_viewer.dsl.fields import STATUS_GROUPS, STATUSES, FieldSet
 from bsllmner_viewer.dsl.keyword import word_matches
 from bsllmner_viewer.dsl.lex import needs_quote
@@ -21,6 +21,20 @@ _word_chars = st.characters(
     max_codepoint=0x24F,
 )
 words = st.text(_word_chars, min_size=1, max_size=12).filter(lambda s: s not in ("AND", "OR", "NOT"))
+
+
+def _with_apostrophe(word: str, where: str) -> str:
+    if where == "start":
+        return "'" + word
+    if where == "end":
+        return word + "'"
+    middle = max(len(word) // 2, 1)
+    return word[:middle] + "'" + word[middle:]
+
+
+# Words with a `'` at the start, inside, or at the end, as in `'s`, `5'-UTR`, and `3'`. A `'` that starts a token
+# opens a single-quoted phrase in the grammar.
+apostrophe_words = st.builds(_with_apostrophe, words, st.sampled_from(("start", "inside", "end")))
 phrases = st.text(
     st.characters(blacklist_categories=("Cs", "Cc"), max_codepoint=0x24F),
     min_size=1,
@@ -44,14 +58,19 @@ def _status_clause(field: str) -> st.SearchStrategy[FieldClause]:
 
 
 def _date_clause() -> st.SearchStrategy[FieldClause]:
-    single = st.builds(lambda d: FieldClause(field="date_created", value_kind="date", value=d), dates)
+    single = st.builds(lambda d: FieldClause(field="date_published", value_kind="date", value=d), dates)
     pair = st.tuples(dates, dates).map(sorted)
     between = st.builds(
-        lambda p: FieldClause(field="date_created", value_kind="range", value=Range(from_=p[0], to=p[1])),
+        lambda p: FieldClause(field="date_published", value_kind="range", value=Range(from_=p[0], to=p[1])),
         pair,
     )
     return st.one_of(single, between)
 
+
+# Annotation clauses on any text, whose kind (`word` or `phrase`) follows from whether the value can be written bare.
+text_clauses: st.SearchStrategy[FieldClause] = st.builds(
+    clause, st.sampled_from(ANNOTATION_FIELDS), st.one_of(words, apostrophe_words)
+)
 
 clauses: st.SearchStrategy[FieldClause] = st.one_of(
     *[_term_clause(f) for f in ANNOTATION_FIELDS],
@@ -75,13 +94,13 @@ def _bool(children: st.SearchStrategy[Node]) -> st.SearchStrategy[Node]:
     )
 
 
-_bare_words = words.filter(lambda w: not needs_quote(w))
+_bare_words = st.one_of(words, apostrophe_words).filter(lambda w: not needs_quote(w))
 keywords: st.SearchStrategy[FreeText] = st.one_of(
     st.lists(_bare_words, min_size=1, max_size=3).map(lambda ws: FreeText(" ".join(ws))),
     phrases.map(lambda p: FreeText(p, is_phrase=True)),
 ).filter(lambda k: bool(word_matches(k)))
 
-asts: st.SearchStrategy[Node] = st.recursive(st.one_of(clauses, keywords), _bool, max_leaves=8)
+asts: st.SearchStrategy[Node] = st.recursive(st.one_of(clauses, text_clauses, keywords), _bool, max_leaves=8)
 
 # Conditions built by element selection alone: clause groups joined by AND, same-field clauses joined by OR.
 flat_asts: st.SearchStrategy[Node | None] = st.lists(clauses, max_size=6).map(lambda cs: reduce(add_clause, cs, None))

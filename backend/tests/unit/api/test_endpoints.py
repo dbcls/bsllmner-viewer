@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import datetime
 from collections.abc import Callable
 from typing import Any
 
+import duckdb
 import orjson
 import pytest
 from fastapi.testclient import TestClient
+from hypothesis import HealthCheck, given, settings
+from hypothesis import strategies as st
 
 from tests.synthetic import Synthetic
 
@@ -60,7 +64,7 @@ def test_parse_returns_ast_and_normalized_q(client: TestClient) -> None:
 
 def test_serialize_accepts_a_parse_result(client: TestClient) -> None:
     parsed = client.get(
-        "/api/dsl/parse", params={"q": "date_created:[2015-01-01 TO 2020-12-31] AND NOT organism_id:9606"}
+        "/api/dsl/parse", params={"q": "date_published:[2015-01-01 TO 2020-12-31] AND NOT organism_id:9606"}
     ).json()
     body = client.post("/api/dsl/serialize", json={"ast": parsed["ast"]}).json()
     assert body["dsl"] == parsed["q"]
@@ -81,9 +85,9 @@ def test_select_builds_the_documented_condition(client: TestClient) -> None:
     assert removed["dsl"] == "disease:B AND library_strategy:ATAC-seq"
     year = client.post(
         "/api/dsl/select",
-        json={"q": None, "clauses": [{"field": "date_created", "from": "2020-01-01", "to": "2020-12-31"}]},
+        json={"q": None, "clauses": [{"field": "date_published", "from": "2020-01-01", "to": "2020-12-31"}]},
     ).json()
-    assert year["dsl"] == "date_created:[2020-01-01 TO 2020-12-31]"
+    assert year["dsl"] == "date_published:[2020-01-01 TO 2020-12-31]"
 
 
 def test_invalid_conditions_are_problem_documents(client: TestClient) -> None:
@@ -119,7 +123,7 @@ def test_invalid_query_parameters_are_problem_documents(client: TestClient) -> N
     assert invalid["type"] == "https://ddbj.nig.ac.jp/problems/invalid-dimension"
 
 
-def test_distribution_returns_elements_with_clauses_and_status(client: TestClient) -> None:
+def test_distribution_returns_elements_with_clauses_and_the_count_without_a_term(client: TestClient) -> None:
     body = client.get("/api/distribution", params={"field": "disease", "unit": "biosample"}).json()
     assert body["field"] == "disease"
     assert body["populationQ"] is None
@@ -128,9 +132,17 @@ def test_distribution_returns_elements_with_clauses_and_status(client: TestClien
     first = body["elements"][0]
     assert first["clauses"] == [{"field": "disease", "value": first["value"]}]
     assert first["count"] >= first["countExact"] + 0
-    assert {s["value"] for s in body["status"]} == {"mapped", "unmapped", "no_value"}
-    expanded = client.get("/api/distribution", params={"field": "disease", "expandedStatus": "true"}).json()
-    assert len(expanded["status"]) == 6
+    assert 0 < body["withoutTerm"] < body["total"]
+    assert "status" not in body
+    assays = client.get("/api/distribution", params={"field": "library_strategy"}).json()
+    assert assays["withoutTerm"] is None
+
+
+def test_distribution_without_term_counts_the_population_of_the_bars(client: TestClient) -> None:
+    q = "disease_status:mapped AND library_strategy:RNA-Seq"
+    body = client.get("/api/distribution", params={"field": "disease", "q": q, "facetSelfExclude": "true"}).json()
+    assert body["populationQ"] == q
+    assert body["withoutTerm"] == 0
 
 
 def test_distribution_self_exclusion_drops_own_conjunct(client: TestClient) -> None:
@@ -141,7 +153,7 @@ def test_distribution_self_exclusion_drops_own_conjunct(client: TestClient) -> N
     assert off["facetSelfExclude"] is False
     assert on["populationQ"] == "library_strategy:RNA-Seq"
     assert off["populationQ"] == q
-    assert on["statusPopulationQ"] == "library_strategy:RNA-Seq"
+    assert off["withoutTerm"] == 0
 
 
 def test_redundant_parentheses_do_not_change_the_population(client: TestClient) -> None:
@@ -166,10 +178,10 @@ def test_redundant_parentheses_do_not_change_the_population(client: TestClient) 
 
 
 def test_distribution_year_elements_carry_range_clauses(client: TestClient) -> None:
-    body = client.get("/api/distribution", params={"field": "date_created"}).json()
+    body = client.get("/api/distribution", params={"field": "date_published"}).json()
     element = body["elements"][0]
     assert element["clauses"] == [
-        {"field": "date_created", "from": f"{element['value']}-01-01", "to": f"{element['value']}-12-31"}
+        {"field": "date_published", "from": f"{element['value']}-01-01", "to": f"{element['value']}-12-31"}
     ]
 
 
@@ -192,7 +204,7 @@ def test_trend_returns_points_per_year(client: TestClient) -> None:
     assert len(body["series"]) <= 2
     for series in body["series"]:
         assert [p["year"] for p in series["points"]] == body["years"]
-        assert series["points"][0]["clauses"][1]["field"] == "date_created"
+        assert series["points"][0]["clauses"][1]["field"] == "date_published"
     assert [p["year"] for p in body["total"]] == body["years"]
 
 
@@ -203,16 +215,38 @@ def test_trend_without_a_field_counts_the_condition_per_year(client: TestClient)
     assert body["totalPopulationQ"] is None
     assert body["populationQ"] is None
     assert [p["year"] for p in body["total"]] == body["years"]
-    assert all(p["count"] > 0 for p in body["total"])
+    assert body["years"] == list(range(body["years"][0], body["years"][-1] + 1))
     point = body["total"][0]
     assert point["clauses"] == [
-        {"field": "date_created", "from": f"{point['year']}-01-01", "to": f"{point['year']}-12-31"}
+        {"field": "date_published", "from": f"{point['year']}-01-01", "to": f"{point['year']}-12-31"}
     ]
-    assert sum(p["count"] for p in body["total"]) == client.get("/api/entries/biosample").json()["pagination"]["total"]
+    dated = client.get("/api/entries/biosample", params={"q": "date_published:[1000-01-01 TO 2999-12-31]"}).json()
+    assert sum(p["count"] for p in body["total"]) == dated["pagination"]["total"]
+
+
+def test_trend_returns_every_year_between_the_first_and_the_last_with_zero_counts(
+    client: TestClient, store_con: duckdb.DuckDBPyConnection
+) -> None:
+    rows = store_con.execute(
+        "SELECT biosample, year(date_published) FROM population WHERE date_published IS NOT NULL ORDER BY 2, 1"
+    ).fetchall()
+    (first, first_year), (last, last_year) = rows[0], rows[-1]
+    assert last_year - first_year >= 2
+    q = f"{first} OR {last}"
+    years = list(range(first_year, last_year + 1))
+    body = client.get("/api/trend", params={"q": q}).json()
+    assert body["years"] == years
+    counts = {p["year"]: p["count"] for p in body["total"]}
+    assert counts[first_year] >= 1
+    assert counts[last_year] >= 1
+    assert all(counts[y] == 0 for y in years[1:-1])
+    split = client.get("/api/trend", params={"q": q, "field": "tissue"}).json()
+    assert split["years"] == years
+    assert all([p["year"] for p in series["points"]] == years for series in split["series"])
 
 
 def test_trend_populations_exclude_the_year_and_the_series_dimension(client: TestClient) -> None:
-    q = 'disease:"MONDO:0007254" AND library_strategy:RNA-Seq AND date_created:[2015-01-01 TO 2016-12-31]'
+    q = 'disease:"MONDO:0007254" AND library_strategy:RNA-Seq AND date_published:[2015-01-01 TO 2016-12-31]'
     on = client.get("/api/trend", params={"q": q, "field": "disease", "facetSelfExclude": "true"}).json()
     assert on["totalPopulationQ"] == 'disease:"MONDO:0007254" AND library_strategy:RNA-Seq'
     assert on["populationQ"] == "library_strategy:RNA-Seq"
@@ -223,7 +257,7 @@ def test_trend_populations_exclude_the_year_and_the_series_dimension(client: Tes
 
 
 def test_trend_rejects_the_year_as_its_dimension(client: TestClient) -> None:
-    response = client.get("/api/trend", params={"field": "date_created"})
+    response = client.get("/api/trend", params={"field": "date_published"})
     assert response.status_code == 400
     assert response.json()["type"] == "https://ddbj.nig.ac.jp/problems/invalid-dimension"
 
@@ -399,7 +433,8 @@ def test_entry_returns_attributes_annotations_and_evidence(client: TestClient, s
     assert body["type"] == "biosample"
     assert "accession" not in body
     assert body["attributes"][0]["name"] == "sample_name"
-    assert [a["field"] for a in body["annotations"][:5]] == ["cell_line", "disease", "tissue", "drug", "chip_antigen"]
+    fields = list(dict.fromkeys(a["field"] for a in body["annotations"]))
+    assert fields == ["cell_line", "disease", "tissue", "drug", "chip_antigen"]
     for annotation in body["annotations"]:
         if annotation["value"]:
             assert annotation["evidence"], annotation
@@ -520,3 +555,57 @@ def test_export_entries_tsv_and_ndjson(client: TestClient) -> None:
 
 def test_export_entries_rejects_the_former_json_format(client: TestClient) -> None:
     assert client.get("/api/export/entries/biosample", params={"format": "json"}).status_code == 422
+
+
+def test_entry_detail_has_date_published_and_neither_date_created_nor_date_modified(
+    client: TestClient, store_con: duckdb.DuckDBPyConnection
+) -> None:
+    rows = store_con.execute("SELECT accession, date_published FROM biosample ORDER BY accession").fetchall()
+    assert any(d is None for _, d in rows)
+    for accession, published in (rows[0], next(r for r in rows if r[1] is None), next(r for r in rows if r[1])):
+        body = client.get(f"/api/entries/biosample/{accession}").json()
+        assert body["datePublished"] == (published.isoformat() if published else None)
+        assert "dateCreated" not in body
+        assert "dateModified" not in body
+
+
+def test_entry_list_items_have_date_published_and_no_date_created(client: TestClient) -> None:
+    items = client.get("/api/entries/biosample", params={"perPage": "50"}).json()["items"]
+    assert items
+    assert all("datePublished" in item and "dateCreated" not in item for item in items)
+
+
+@pytest.mark.parametrize("path", ["/api/entries/biosample", "/api/dsl/parse"])
+def test_query_with_date_created_is_rejected_as_an_unknown_field(client: TestClient, path: str) -> None:
+    response = client.get(path, params={"q": "date_created:[2015-01-01 TO 2020-12-31]"})
+    assert response.status_code == 400
+    assert "date_created" in response.text
+
+
+@given(
+    low=st.dates(datetime.date(2009, 1, 1), datetime.date(2023, 12, 31)),
+    span=st.integers(0, 4000),
+)
+@settings(max_examples=25, suppress_health_check=[HealthCheck.function_scoped_fixture])
+def test_date_published_range_selects_exactly_the_biosamples_published_in_the_range(
+    client: TestClient, store_con: duckdb.DuckDBPyConnection, low: datetime.date, span: int
+) -> None:
+    high = low + datetime.timedelta(days=span)
+    q = f"date_published:[{low.isoformat()} TO {high.isoformat()}]"
+    expected = {
+        str(a)
+        for (a,) in store_con.execute(
+            "SELECT b.accession FROM biosample b WHERE b.date_published BETWEEN ? AND ? "
+            "AND b.accession IN (SELECT biosample FROM population)",
+            [low, high],
+        ).fetchall()
+    }
+    got: set[str] = set()
+    page = 1
+    while True:
+        body = client.get("/api/entries/biosample", params={"q": q, "perPage": "100", "page": str(page)}).json()
+        got |= {item["identifier"] for item in body["items"]}
+        if page * 100 >= body["pagination"]["total"]:
+            break
+        page += 1
+    assert got == expected

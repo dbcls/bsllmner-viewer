@@ -16,11 +16,11 @@ import { ProjectsTab } from "./projects/projects-tab"
 import { SamplesTab } from "./samples/samples-tab"
 import { useWorkspaceState } from "./state"
 import { Tabs } from "./tabs"
-import { type PickerMode, type PickerRequest, TermPicker } from "./term-picker/term-picker"
+import { ALL_FIELDS, type PickerMode, type PickerRequest, TermPicker } from "./term-picker/term-picker"
 import { TrendTab } from "./trend/trend-tab"
 import { useCondition } from "./use-condition"
 
-const AXIS_DIMENSIONS = ["library_strategy", "organism_id", "date_created"]
+const AXIS_DIMENSIONS = ["library_strategy", "organism_id", "date_published"]
 
 export const WorkspacePage = () => {
   const [state, update] = useWorkspaceState()
@@ -91,9 +91,9 @@ export const WorkspacePage = () => {
         exportMenu={<ExportMenu open={exportOpen} onClose={() => setExportOpen(false)} q={state.q} totalEntries={entries.data?.pagination.total} />}
       />
       <div className="flex min-h-0 flex-1 items-stretch">
-        <ConditionPanel q={state.q} unit={state.unit} condition={condition} onAddTerm={(field) => setPicker({ field, mode: "condition" })} />
+        <ConditionPanel q={state.q} condition={condition} onAddTerm={() => setPicker({ field: ALL_FIELDS, mode: "condition" })} />
         <main className="min-w-0 flex-1 pb-4">
-          <Tabs state={state} onUnit={(unit) => update({ unit })} onSelfExclusion={() => update({ selfExclusion: !state.selfExclusion })} />
+          <Tabs state={state} />
           <div className="px-workspace-gutter pt-4">
             {state.tab === "samples" && (
               <SamplesTab state={state} onPage={(page) => update({ page })} search={location.search} />
@@ -102,8 +102,7 @@ export const WorkspacePage = () => {
               <DistributionTab
                 state={state}
                 condition={condition}
-                onExpandedStatus={() => update({ expandedStatus: !state.expandedStatus })}
-                onExpanded={(expanded) => update({ expanded })}
+                onUnit={(unit) => update({ unit })}
               />
             )}
             {state.tab === "heatmap" && (
@@ -117,7 +116,12 @@ export const WorkspacePage = () => {
               />
             )}
             {state.tab === "trend" && (
-              <TrendTab state={state} condition={condition} onSplit={(field) => update({ trendField: field, trendTerms: null })} />
+              <TrendTab
+                state={state}
+                condition={condition}
+                onSplit={(field) => update({ trendField: field, trendTerms: null })}
+                onUnit={(unit) => update({ unit })}
+              />
             )}
             {state.tab === "projects" && (
               <ProjectsTab state={state} condition={condition} onPage={(page) => update({ page })} onSort={(sort) => update({ sort, page: 1 })} />
@@ -131,8 +135,6 @@ export const WorkspacePage = () => {
         fields={fields}
         dimensions={dimensions}
         q={state.q}
-        unit={state.unit}
-        selfExclusion={state.selfExclusion}
         isSelected={isPicked}
         onPick={onPick}
         onField={onPickerField}

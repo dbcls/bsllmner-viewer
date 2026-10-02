@@ -69,12 +69,26 @@ ORGANISMS = [(9606, "Homo sapiens"), (10090, "Mus musculus")]
 STATUS_KINDS = ("mapped_exact", "mapped_selected", "unmapped_no_candidate", "unmapped_rejected", "not_stated")
 
 
+RUN_START = datetime.datetime(2026, 1, 1)
+"""The start time (UTC) of every generated run. A later publication date is not the day a BioSample became public."""
+
+PUBLICATION_BOUNDARIES = (
+    datetime.datetime(2005, 1, 1),
+    datetime.datetime(2005, 1, 2),
+    datetime.datetime(2026, 1, 2),
+    datetime.datetime(2026, 1, 3),
+)
+"""Local (+09:00) midnights around the bounds, whose UTC dates are 2004-12-31, 2005-01-01, 2026-01-01, 2026-01-02."""
+
+
 @dataclass(slots=True)
 class Truth:
     """What the generator decided, keyed for assertions."""
 
     annotations: dict[tuple[str, str, str], list[tuple[str | None, str, str | None]]] = field(default_factory=dict)
-    modified: dict[tuple[str, str], datetime.datetime | None] = field(default_factory=dict)
+    modified: dict[tuple[str, str], datetime.datetime] = field(default_factory=dict)
+    published: dict[tuple[str, str], datetime.date | None] = field(default_factory=dict)
+    published_input: dict[tuple[str, str], datetime.date | None] = field(default_factory=dict)
     experiments: dict[str, list[tuple[str, str]]] = field(default_factory=dict)
     bioprojects: dict[str, list[str]] = field(default_factory=dict)
 
@@ -183,13 +197,27 @@ def _write_run(root: Path, name: str, members: list[str], rng: random.Random, tr
     inputs: list[str] = []
     for accession in members:
         organism = rng.choice(ORGANISMS)
-        modified = (
-            None
-            if rng.random() < 0.05
-            else datetime.datetime(2020, 1, 1) + datetime.timedelta(days=rng.randrange(2000))
-        )
+        modified = datetime.datetime(2020, 1, 1) + datetime.timedelta(days=rng.randrange(2000))
+        roll = rng.random()
+        if roll < 0.05:
+            published_local = datetime.datetime(1999, 1, 1) + datetime.timedelta(days=rng.randrange(2000))
+        elif roll < 0.10:
+            published_local = RUN_START + datetime.timedelta(days=rng.randrange(2, 4000))
+        elif roll < 0.15:
+            published_local = rng.choice(PUBLICATION_BOUNDARIES)
+        else:
+            published_local = datetime.datetime(2010, 1, 1) + datetime.timedelta(days=rng.randrange(5000))
+        submitted = published_local + datetime.timedelta(days=rng.randrange(-30, 400))
         truth.modified[(name, accession)] = modified
-        created = datetime.date(2010, 1, 1) + datetime.timedelta(days=rng.randrange(5000))
+        has_published = rng.random() >= 0.05
+        # The publication date is written at local midnight (+09:00), so its UTC date is the previous day.
+        published_utc = (published_local - datetime.timedelta(hours=9)).date() if has_published else None
+        truth.published_input[(name, accession)] = published_utc
+        truth.published[(name, accession)] = (
+            published_utc
+            if published_utc is not None and datetime.date(2005, 1, 1) <= published_utc <= RUN_START.date()
+            else None
+        )
         attributes = [{"attribute_name": "sample_name", "content": f"sample {accession}"}]
         title = f"{name} sample of {accession}"
         failed = rng.random() < 0.03
@@ -256,17 +284,16 @@ def _write_run(root: Path, name: str, members: list[str], rng: random.Random, tr
                 "ambiguous_fields": {},
             }
         )
-        body = {
+        body: dict[str, object] = {
             "access": "public",
-            "publication_date": created.isoformat() + "T00:00:00+09:00",
-            "last_update": modified.isoformat() + "+00:00" if modified else None,
-            "submission_date": created.isoformat() + "T00:00:00",
+            "last_update": modified.isoformat() + "+00:00",
+            "submission_date": submitted.isoformat(),
             "Ids": {"Id": [{"namespace": "BioSample", "content": accession}]},
             "Description": {"Title": title, "Organism": {"taxonomy_id": str(organism[0]), "OrganismName": organism[1]}},
             "Attributes": {"Attribute": attributes},
         }
-        if body["last_update"] is None:
-            del body["last_update"]
+        if has_published:
+            body["publication_date"] = published_local.isoformat() + "+09:00"
         wrapped = (
             {"BioSample": body, "accession": accession} if rng.random() < 0.5 else {**body, "accession": accession}
         )
@@ -279,7 +306,7 @@ def _write_run(root: Path, name: str, members: list[str], rng: random.Random, tr
                     "run_name": name,
                     "model": "synthetic-model:1",
                     "thinking": False,
-                    "start_time": "2026-01-01T00:00:00Z",
+                    "start_time": RUN_START.isoformat() + "Z",
                     "end_time": "2026-01-01T01:00:00Z",
                     "status": "completed",
                     "processing_time_sec": 3600.0,

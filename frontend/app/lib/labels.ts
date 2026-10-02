@@ -12,7 +12,7 @@ export const FIELD_LABELS: Record<string, string> = {
   chip_antigen: "ChIP antigen",
   library_strategy: "Assay",
   organism_id: "Organism",
-  date_created: "Year",
+  date_published: "Year",
   bioproject: "BioProject",
 }
 

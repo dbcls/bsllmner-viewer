@@ -56,7 +56,7 @@ test.describe("trend", () => {
     const disease = await topDisease(request)
     const q = await select(request, null, disease.clauses)
     const [firstYear] = (await trend(request, { q })).total
-    if (!firstYear) throw new Error("the condition has no creation year")
+    if (!firstYear) throw new Error("the condition has no publication year")
     const withYear = await select(request, q, firstYear.clauses)
     await page.goto(workspaceUrl({ tab: "trend", q }))
     const point = page.getByRole("main").locator('svg g[data-series="condition"] circle').first()

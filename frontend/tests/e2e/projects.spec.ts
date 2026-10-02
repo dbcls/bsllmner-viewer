@@ -76,10 +76,9 @@ test.describe("projects", () => {
     await expectQ(page, null)
   })
 
-  test("the view tabs show no counting unit and no self-exclusion with the projects", async ({ page }) => {
+  test("the projects show no counting unit", async ({ page }) => {
     await page.goto(workspaceUrl({ tab: "projects" }))
     await expect(page.getByRole("main").locator("tbody tr").first()).toBeVisible()
     await expect(page.getByRole("radiogroup", { name: "Counting unit" })).toHaveCount(0)
-    await expect(page.getByRole("switch")).toHaveCount(0)
   })
 })

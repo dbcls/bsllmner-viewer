@@ -75,8 +75,8 @@ def _clause(clause: FieldClause, fields: FieldSet, alias: str) -> Predicate:
     if field_def.kind == "date":
         if op == "between":
             assert isinstance(value, Range)
-            return Predicate(f"{alias}.date_created BETWEEN ? AND ?", [value.from_, value.to])
-        return Predicate(f"{alias}.date_created = ?", [value])
+            return Predicate(f"{alias}.date_published BETWEEN ? AND ?", [value.from_, value.to])
+        return Predicate(f"{alias}.date_published = ?", [value])
     return Predicate(
         f"{alias}.biosample IN (SELECT biosample FROM biosample_bioproject WHERE bioproject = ?)",
         [value],

@@ -21,7 +21,7 @@ describe("expectedElements", () => {
 
   it("expects the limit for the other dimensions and before the dataset is known", () => {
     expect(expectedElements("disease", dataset, 10)).toBe(10)
-    expect(expectedElements("date_created", dataset, 10)).toBe(10)
+    expect(expectedElements("date_published", dataset, 10)).toBe(10)
     expect(expectedElements("library_strategy", undefined, 10)).toBe(10)
   })
 })

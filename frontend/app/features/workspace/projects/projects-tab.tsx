@@ -4,7 +4,7 @@ import { useDataset, useProjects } from "~/lib/api/queries"
 import type { Project, ProjectSort } from "~/lib/api/types"
 import { formatCount } from "~/lib/format"
 import { TABLE_PER_PAGE } from "~/lib/workspace-state"
-import { ACTION_ICON, Button, Card, CardFooter, CardHeader, cn, ExternalLink, Pager, SortChooser, type SortDirection, type SortKey } from "~/ui"
+import { ACTION_ICON, Button, Card, CardFooter, CardHeader, cn, ExternalLink, Pager, SortChooser, type SortDirection, type SortKey, TableScroller } from "~/ui"
 
 import { AssayTags } from "../assay-tags"
 import { SkeletonTableRows } from "../skeleton-rows"
@@ -48,8 +48,8 @@ export const ProjectsTab = ({ state, condition, onPage, onSort }: ProjectsTabPro
           <Pager page={state.page} perPage={TABLE_PER_PAGE} total={total} onChange={onPage} />
         </div>
       </CardHeader>
-      <div className="overflow-auto">
-        <table className="w-full min-w-projects-min border-collapse text-fs-body-sm">
+      <TableScroller>
+        <table className="w-full min-w-projects-min border-separate border-spacing-0 text-fs-body-sm">
           <thead>
             <tr className="bg-surface-subtle">
               <Th>BioProject</Th>
@@ -68,7 +68,7 @@ export const ProjectsTab = ({ state, condition, onPage, onSort }: ProjectsTabPro
             ))}
           </tbody>
         </table>
-      </div>
+      </TableScroller>
       <CardFooter>
         <div className="ml-auto">
           <Pager page={state.page} perPage={TABLE_PER_PAGE} total={total} onChange={table.onFootPage} />
@@ -89,6 +89,12 @@ const Th = ({ children, align = "left" }: { children: ReactNode; align?: "left" 
   </th>
 )
 
+/**
+ * The rule is on the cells rather than the row, as in the Samples table. The last row has none, so that it does not double
+ * the line over the footer.
+ */
+const TD = "border-b border-brand-soft px-2.5 py-1.5 group-last:border-b-0"
+
 type ProjectRowProps = {
   project: Project
   condition: Condition
@@ -98,20 +104,20 @@ type ProjectRowProps = {
 const ProjectRow = ({ project, condition, targetAssays }: ProjectRowProps) => {
   const selected = condition.isSelected(project.clauses)
   return (
-    <tr className={cn("border-b border-brand-soft", selected && "bg-brand-soft")}>
-      <td className="px-2.5 py-1.5 font-mono text-fs-label whitespace-nowrap text-brand">{project.identifier}</td>
-      <td className="w-full max-w-0 truncate px-2.5 py-1.5" title={project.title ?? ""}>
+    <tr className={cn("group", selected && "bg-brand-soft")}>
+      <td className={cn(TD, "font-mono text-fs-label whitespace-nowrap")}>{project.identifier}</td>
+      <td className={cn(TD, "w-full max-w-0 truncate")} title={project.title ?? ""}>
         {project.title}
       </td>
-      <td className="px-2.5 py-1.5 text-right font-mono text-fs-label">{formatCount(project.biosampleCount)}</td>
-      <td className="px-2.5 py-1.5 text-right font-mono text-fs-label">{formatCount(project.experimentCount)}</td>
-      <td className="px-2.5 py-1.5 whitespace-nowrap">
+      <td className={cn(TD, "text-right font-mono text-fs-label")}>{formatCount(project.biosampleCount)}</td>
+      <td className={cn(TD, "text-right font-mono text-fs-label")}>{formatCount(project.experimentCount)}</td>
+      <td className={cn(TD, "whitespace-nowrap")}>
         <AssayTags assays={project.assays} targetAssays={targetAssays} />
       </td>
-      <td className="px-2.5 py-1.5 text-fs-label whitespace-nowrap">
+      <td className={cn(TD, "text-fs-label whitespace-nowrap")}>
         <ProjectLinks identifier={project.identifier} />
       </td>
-      <td className="px-2.5 py-1.5 whitespace-nowrap">
+      <td className={cn(TD, "whitespace-nowrap")}>
         {/*
           One width for both labels, so the columns do not move when a project is added or removed. The negative margin
           keeps the button, a little taller than a line of text, from making the row taller than a row of the Samples table.

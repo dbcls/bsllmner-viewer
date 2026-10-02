@@ -23,7 +23,7 @@ DIMENSIONS = (
     "disease_status",
     "library_strategy",
     "organism_id",
-    "date_created",
+    "date_published",
 )
 
 
@@ -39,7 +39,7 @@ clauses = st.one_of(
         [_clause(f"{f}_status", s) for f in ANNOTATED for s in ("mapped", "unmapped", "no_value", "mapped_exact")]
     ),
     st.builds(
-        lambda y: FieldClause("date_created", "range", Range(f"{y}-01-01", f"{y + 3}-12-31")), st.integers(2010, 2022)
+        lambda y: FieldClause("date_published", "range", Range(f"{y}-01-01", f"{y + 3}-12-31")), st.integers(2010, 2022)
     ),
 )
 keywords = st.lists(
@@ -206,6 +206,23 @@ def test_term_hits_match_counts_in_the_population_of_their_field(
             },
         ).json()
         assert hit["count"] == _count(client, _and(single["populationQ"], hit["clauses"]), unit), hit
+
+
+@settings(max_examples=25)
+@given(conditions, st.sampled_from(sorted(ANNOTATED)), st.sampled_from(UNITS), st.booleans())
+def test_without_term_equals_the_population_without_a_mapped_value_of_the_field(
+    client: TestClient, ast: Node | None, field: str, unit: str, excl: bool
+) -> None:
+    body = client.get(
+        "/api/distribution",
+        params={"field": field, "unit": unit, "q": _q(ast) or "", "facetSelfExclude": str(excl).lower()},
+    ).json()
+    pop = body["populationQ"]
+    not_mapped = f"NOT {field}_status:mapped"
+    assert body["withoutTerm"] == _count(client, not_mapped if pop is None else f"({pop}) AND {not_mapped}", unit)
+    if unit != "bioproject":
+        with_term = _count(client, _and(pop, [{"field": f"{field}_status", "value": "mapped"}]), unit)
+        assert body["withoutTerm"] + with_term == body["total"]
 
 
 @settings(max_examples=20)

@@ -4,7 +4,7 @@ import re
 from collections import Counter
 
 import pytest
-from hypothesis import given
+from hypothesis import example, given
 from hypothesis import strategies as st
 
 from bsllmner_viewer.dsl.ast import BoolOp, FreeText, Node, normalize, structurally_equal
@@ -39,6 +39,8 @@ def test_typed_keywords_without_wildcards_never_raise_and_keep_every_word(text: 
 
 
 @given(_no_wildcard)
+@example("' '0")
+@example("' 0'")
 def test_typed_keywords_results_are_valid_keywords_that_survive_serialization(text: str) -> None:
     keywords = typed_keywords(text)
     for keyword in keywords:

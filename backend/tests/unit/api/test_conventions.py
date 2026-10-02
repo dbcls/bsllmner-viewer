@@ -67,7 +67,7 @@ class TestCamelCase:
             client.get("/api/entries/biosample", params={"q": disease}),
             client.get(f"/api/entries/biosample/{accession}"),
             client.get("/api/distribution", params={"field": "disease", "q": disease}),
-            client.get("/api/distribution", params={"field": "disease_status", "expandedStatus": "true"}),
+            client.get("/api/distribution", params={"field": "disease_status"}),
             client.get(
                 "/api/crosstab", params={"row": "disease", "col": "library_strategy", "rowElements": "MONDO:0007254"}
             ),
@@ -75,7 +75,7 @@ class TestCamelCase:
             client.get("/api/projects", params={"q": disease}),
             client.get("/api/terms", params={"query": "breast", "q": disease}),
             client.get("/api/terms/children", params={"field": "disease", "termId": "MONDO:0004992"}),
-            client.get("/api/dsl/parse", params={"q": f"{disease} AND date_created:[2015-01-01 TO 2020-12-31]"}),
+            client.get("/api/dsl/parse", params={"q": f"{disease} AND date_published:[2015-01-01 TO 2020-12-31]"}),
             client.post("/api/dsl/serialize", json={"ast": {"field": "organism_id", "op": "eq", "value": "9606"}}),
             client.post("/api/dsl/select", json={"q": None, "clauses": [{"field": "cell_line", "value": "A"}]}),
         ]
@@ -99,9 +99,9 @@ class TestCamelCase:
         assert paged["pagination"]["perPage"] == 25
 
     def test_dsl_names_stay_snake_case_inside_conditions(self, client: TestClient) -> None:
-        body = _first(client, "/api/dsl/parse", q="organism_id:9606 AND date_created:[2015-01-01 TO 2016-01-01]")
-        assert body["q"] == "organism_id:9606 AND date_created:[2015-01-01 TO 2016-01-01]"
-        assert [r["field"] for r in body["ast"]["rules"]] == ["organism_id", "date_created"]
+        body = _first(client, "/api/dsl/parse", q="organism_id:9606 AND date_published:[2015-01-01 TO 2016-01-01]")
+        assert body["q"] == "organism_id:9606 AND date_published:[2015-01-01 TO 2016-01-01]"
+        assert [r["field"] for r in body["ast"]["rules"]] == ["organism_id", "date_published"]
         assert body["ast"]["rules"][1]["from"] == "2015-01-01"
         assert set(body["labels"]) == {"9606"}
 
@@ -147,7 +147,7 @@ class TestDatasetVersion:
 
 
 class TestFacetSelfExclude:
-    Q = 'disease:"MONDO:0007254" AND library_strategy:RNA-Seq AND date_created:[2015-01-01 TO 2020-12-31]'
+    Q = 'disease:"MONDO:0007254" AND library_strategy:RNA-Seq AND date_published:[2015-01-01 TO 2020-12-31]'
 
     @pytest.mark.parametrize(
         ("path", "params", "own"),
@@ -175,7 +175,7 @@ class TestFacetSelfExclude:
 
     def test_crosstab_true_drops_both_axes(self, client: TestClient) -> None:
         on = _first(client, "/api/crosstab", row="disease", col="library_strategy", q=self.Q, facetSelfExclude="true")
-        assert on["populationQ"] == "date_created:[2015-01-01 TO 2020-12-31]"
+        assert on["populationQ"] == "date_published:[2015-01-01 TO 2020-12-31]"
 
     def test_projects_true_drops_bioproject_conjuncts_only(self, client: TestClient) -> None:
         project = _first(client, "/api/projects", perPage="1")["items"][0]["identifier"]
@@ -364,7 +364,7 @@ class TestProblems:
     def test_api_specific_errors_use_the_problem_namespace(self, client: TestClient) -> None:
         cases = [
             (client.get("/api/distribution", params={"field": "title"}), "invalid-dimension"),
-            (client.get("/api/trend", params={"field": "date_created"}), "invalid-dimension"),
+            (client.get("/api/trend", params={"field": "date_published"}), "invalid-dimension"),
             (
                 client.get("/api/terms/children", params={"field": "library_strategy", "termId": "x"}),
                 "invalid-dimension",
@@ -673,7 +673,7 @@ class TestExport:
             "organismName",
             "libraryStrategy",
             "bioprojects",
-            "dateCreated",
+            "datePublished",
             "chipAtlas",
         ]
         assert header[10:] == ["cell_line", "disease", "tissue", "drug", "chip_antigen"]

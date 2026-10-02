@@ -24,7 +24,6 @@ import {
   useDistribution,
   useEntries,
   useProjects,
-  useTermChildren,
   useTerms,
   useTrend,
 } from "~/lib/api/queries"
@@ -78,13 +77,6 @@ describe.each([true, false])("queries with selfExclusion=%s", (selfExclusion) =>
   it("useTerms sends facetSelfExclude", async () => {
     renderHook(() => useTerms({ query: "liver", q: null, unit: "biosample", selfExclusion }), { wrapper })
     expect((await lastCall()).query["facetSelfExclude"]).toBe(expected)
-  })
-
-  it("useTermChildren sends facetSelfExclude and termId", async () => {
-    renderHook(() => useTermChildren({ field: "disease", termId: "MONDO:1", q: null, unit: "biosample", selfExclusion }), { wrapper })
-    const url = await lastCall()
-    expect(url.query["facetSelfExclude"]).toBe(expected)
-    expect(url.query["termId"]).toBe("MONDO:1")
   })
 })
 

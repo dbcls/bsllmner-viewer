@@ -23,7 +23,7 @@ A BioSample analyzed by a run but linked to no experiment of a target assay is k
 
 | Entity | Attributes | Relationships |
 |---|---|---|
-| BioSample | Accession, organism, title, creation date, original attributes | 1:N with SRA Experiment, N:M with BioProject |
+| BioSample | Accession, organism, title, publication date, original attributes | 1:N with SRA Experiment, N:M with BioProject |
 | SRA Experiment | Accession, `library_strategy` | N:1 with BioSample, 1:N with SRA Run |
 | SRA Run | Accession | N:1 with SRA Experiment |
 | BioProject | Accession, title | N:M with BioSample |
@@ -71,7 +71,7 @@ A condition on a term matches the term itself and all of its descendants.
 
 A condition is evaluated on a BioSample of the population together with one of its experiments, once for each experiment.
 
-- Clauses on annotations, organism, creation date, and BioProject are evaluated against the BioSample.
+- Clauses on annotations, organism, publication date, and BioProject are evaluated against the BioSample.
 - Clauses on `library_strategy` are evaluated against the experiment.
 - Keywords are evaluated against the searchable text of the BioSample. A word in the form of an accession is evaluated against the accessions of the BioSample, its BioProjects, the experiment, and the experiment's runs.
 - A clause on a field is true when at least one value of that field satisfies it. A clause on a field-level or BioSample-level status (`not_stated`, `extraction_failed`) is evaluated against the field as a whole.

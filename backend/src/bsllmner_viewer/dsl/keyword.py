@@ -84,7 +84,9 @@ def word_matches(keyword: FreeText) -> list[WordMatch]:
     return matches
 
 
-_TYPED = re.compile(r'"((?:[^"\\]|\\.)*)"|(\S+)')
+# A phrase in double quotes; a phrase from a `'` that starts a word to a `'` that ends a word, which may hold a `'`
+# inside a word (`'Alzheimer's disease'`); or a word.
+_TYPED = re.compile(r'"((?:[^"\\]|\\.)*)"|(?<!\S)\'((?:[^\'\\]|\\.|\'(?=\S))*)\'(?!\S)|(\S+)')
 _ESCAPE = re.compile(r"\\(.)")
 
 
@@ -92,14 +94,17 @@ def typed_keywords(text: str) -> list[FreeText]:
     """The keywords of text typed into a keyword box, as a search engine reads it.
 
     Quoted parts are phrases, and the other words form one keyword, so `breast "cell line" cancer` is the keyword
-    `breast cancer` and the phrase `"cell line"`. A word that the condition DSL cannot write bare, such as `HIF-1/2`,
+    `breast cancer` and the phrase `"cell line"`. A part is quoted by double quotes, or by a `'` at the start of a word
+    and a `'` at the end of a word, as in `'cell line'`. A `'` inside a word or only at its end, as in `Alzheimer's`,
+    `5'-UTR`, or `3'`, is part of the word. A word that the condition DSL cannot write bare, such as `HIF-1/2` or `'s`,
     becomes a phrase of its own, which matches its parts in sequence like any word with symbols. `AND`, `OR`, and `NOT`
     are ordinary words here. Wildcards are rejected, and parts without a letter or a digit are dropped.
     """
     words: list[str] = []
     phrases: list[FreeText] = []
     for match in _TYPED.finditer(text):
-        quoted, word = match.group(1), match.group(2)
+        quoted = match.group(1) if match.group(1) is not None else match.group(2)
+        word = match.group(3)
         if quoted is not None:
             phrases.append(FreeText(value=" ".join(_ESCAPE.sub(r"\1", quoted).split()), is_phrase=True))
             continue

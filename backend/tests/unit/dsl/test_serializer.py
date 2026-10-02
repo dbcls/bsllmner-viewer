@@ -33,7 +33,8 @@ def test_serialize_word_that_is_an_operator_literal_is_quoted() -> None:
 
 def test_serialize_range() -> None:
     assert (
-        serialize(range_clause("date_created", "2015-01-01", "2020-12-31")) == "date_created:[2015-01-01 TO 2020-12-31]"
+        serialize(range_clause("date_published", "2015-01-01", "2020-12-31"))
+        == "date_published:[2015-01-01 TO 2020-12-31]"
     )
 
 
@@ -67,7 +68,7 @@ def test_serialize_then_parse_round_trips_spec_examples() -> None:
         'disease:"MONDO:0007254" AND library_strategy:ATAC-seq AND organism_id:9606',
         '(cell_line:"CVCL:0027" OR cell_line:"CVCL:0030") AND drug:"CHEBI:28748"',
         'disease_status:unmapped AND tissue:"UBERON:0002107"',
-        "date_created:[2015-01-01 TO 2020-12-31] AND (title:cancer OR title:tumor)",
+        "date_published:[2015-01-01 TO 2020-12-31] AND (title:cancer OR title:tumor)",
         'NOT (disease:"MONDO:1" OR disease:"MONDO:2") AND identifier:SAMN00000001',
     ]
     for dsl in examples:
@@ -77,6 +78,25 @@ def test_serialize_then_parse_round_trips_spec_examples() -> None:
 
 
 def test_range_value_type_is_kept() -> None:
-    ast = parse("date_created:[2020-01-01 TO 2020-12-31]")
+    ast = parse("date_published:[2020-01-01 TO 2020-12-31]")
     assert isinstance(ast, FieldClause)
     assert isinstance(ast.value, Range)
+
+
+def test_serialize_value_starting_with_a_single_quote_is_quoted_because_it_would_open_a_phrase() -> None:
+    node = clause("tissue", "'x")
+    assert node.value_kind == "phrase"
+    assert serialize(node) == 'tissue:"\'x"'
+    assert structurally_equal(parse(serialize(node)), node)
+    assert serialize(FreeText("x 's")) == '"x \'s"'
+
+
+def test_serialize_single_quote_inside_or_at_the_end_of_a_word_stays_bare() -> None:
+    assert serialize(FreeText("5'-UTR 3' Alzheimer's")) == "5'-UTR 3' Alzheimer's"
+    assert serialize(clause("tissue", "b'")) == "tissue:b'"
+
+
+def test_serialize_then_parse_round_trips_clauses_that_together_hold_a_pair_of_single_quotes() -> None:
+    ast = and_(clause("tissue", "'a"), clause("disease", "b'"), FreeText("'s", is_phrase=True), FreeText("Crohn's"))
+    assert serialize(ast) == "tissue:\"'a\" AND disease:b' AND \"'s\" AND Crohn's"
+    assert structurally_equal(parse(serialize(ast)), ast)

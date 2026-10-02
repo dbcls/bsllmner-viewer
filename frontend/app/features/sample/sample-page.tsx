@@ -65,9 +65,9 @@ export const SamplePage = ({ accession }: SamplePageProps) => {
               {data.title && <div className="mt-1.5 text-fs-h2 text-ink">{data.title}</div>}
               <div className="mt-1.5 flex gap-3.5 text-fs-body-sm text-ink-soft">
                 {data.organism?.name && <span>{data.organism.name}</span>}
-                {data.dateCreated && (
+                {data.datePublished && (
                   <span>
-                    Created <span className="font-mono">{data.dateCreated.slice(0, 10)}</span>
+                    Published <span className="font-mono">{data.datePublished}</span>
                   </span>
                 )}
               </div>
@@ -274,7 +274,7 @@ const AnnotationRow = ({
     >
       <span className="text-ink-mid">{fieldLabel(annotation.field)}</span>
       <span className="flex min-w-0 flex-wrap items-center gap-1.5">
-        <span className={cn("italic", annotation.value ? "text-ink" : "text-ink-soft")}>{annotation.value ?? "—"}</span>
+        <span className={annotation.value ? "text-ink" : "text-ink-soft"}>{annotation.value ? `“${annotation.value}”` : "—"}</span>
         {annotation.termId && (
           <>
             <span className="text-ink-soft">→</span>

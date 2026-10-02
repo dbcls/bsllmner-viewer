@@ -4,9 +4,6 @@ import { formatCount } from "~/lib/format"
 export type BarDatum = {
   label: string
   count: number
-  exact: number
-  selected: number
-  depth: number
 }
 
 const escape = (text: string): string =>
@@ -28,13 +25,11 @@ export const barsSvg = (title: string, unit: string, rows: BarDatum[]): string =
   ]
   rows.forEach((row, index) => {
     const y = 40 + index * rowHeight
-    const x = barLeft + row.depth * 14
-    const total = (row.count / max) * (barWidth - row.depth * 14)
-    const exact = row.count > 0 ? (row.exact / (row.exact + row.selected || 1)) * total : 0
+    const x = barLeft
+    const total = (row.count / max) * barWidth
     parts.push(`<text x="${x}" y="${y + 10}" fill="${token("--color-ink")}">${escape(row.label)}</text>`)
-    parts.push(`<rect x="${x}" y="${y + 15}" width="${barWidth - row.depth * 14}" height="8" rx="2" fill="${token("--color-brand-soft")}"/>`)
-    parts.push(`<rect x="${x}" y="${y + 15}" width="${exact.toFixed(1)}" height="8" fill="${token("--color-brand")}"/>`)
-    parts.push(`<rect x="${(x + exact).toFixed(1)}" y="${y + 15}" width="${(total - exact).toFixed(1)}" height="8" fill="${token("--color-brand-light")}"/>`)
+    parts.push(`<rect x="${x}" y="${y + 15}" width="${barWidth}" height="8" rx="2" fill="${token("--color-brand-soft")}"/>`)
+    parts.push(`<rect x="${x}" y="${y + 15}" width="${total.toFixed(1)}" height="8" rx="2" fill="${token("--color-brand")}"/>`)
     parts.push(`<text x="${width - 12}" y="${y + 22}" text-anchor="end" font-family="IBM Plex Mono, monospace" fill="${token("--color-ink-mid")}">${formatCount(row.count)}</text>`)
   })
   parts.push("</svg>")

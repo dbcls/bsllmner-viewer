@@ -8,18 +8,15 @@ const state: fc.Arbitrary<WorkspaceState> = fc.record({
   q: fc.option(fc.stringMatching(/^[a-z_]+:"?[A-Za-z0-9:.-]+"?( AND [a-z_]+:[A-Za-z0-9]+)*$/), { nil: null }),
   tab: fc.constantFrom(...TABS),
   unit: fc.constantFrom("biosample", "sra-experiment", "bioproject"),
-  selfExclusion: fc.boolean(),
   page: fc.integer({ min: 1, max: 9999 }),
   sort: fc.constantFrom(...PROJECT_SORTS),
   row: fc.constantFrom("cell_line", "disease", "library_strategy"),
-  col: fc.constantFrom("tissue", "drug", "date_created"),
+  col: fc.constantFrom("tissue", "drug", "date_published"),
   rowTerms: fc.option(fc.uniqueArray(term, { minLength: 1, maxLength: 5 }), { nil: null }),
   colTerms: fc.option(fc.uniqueArray(term, { minLength: 1, maxLength: 5 }), { nil: null }),
   color: fc.constantFrom("count", "residual"),
   trendField: fc.option(fc.constantFrom("disease", "tissue"), { nil: null }),
   trendTerms: fc.option(fc.uniqueArray(term, { minLength: 1, maxLength: 3 }), { nil: null }),
-  expandedStatus: fc.boolean(),
-  expanded: fc.uniqueArray(fc.tuple(fc.constantFrom("disease", "tissue"), term).map(([f, t]) => `${f}:${t}`), { maxLength: 4 }),
 })
 
 describe("workspace state in the URL", () => {
@@ -31,7 +28,7 @@ describe("workspace state in the URL", () => {
     const params = writeState(original)
     for (const [key, value] of Object.entries(DEFAULTS)) {
       if (original[key as keyof WorkspaceState] === value) {
-        expect(params.has(key === "selfExclusion" ? "se" : key)).toBe(false)
+        expect(params.has(key)).toBe(false)
       }
     }
   })

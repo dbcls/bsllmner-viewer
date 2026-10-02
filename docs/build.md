@@ -8,14 +8,14 @@ build reads three kinds of input: a manifest, runs, and reference data.
 
 ### Manifest
 
-A manifest defines a dataset. It contains:
+A manifest is the YAML file that defines a dataset and that every build operation reads. It contains:
 
 - the dataset name,
 - the target assays, as a list of SRA `library_strategy` values,
-- the ordered list of runs, each given as a result file, an input file, a select configuration, and the bsllmner-mk2 version used, and
+- the list of runs in order, each run given as a result file, an input file, a select configuration, and the bsllmner-mk2 version used, and
 - the location and snapshot date of each reference data source, with the ontology files listed per ontology.
 
-The manifest is a YAML file; paths in it are relative to the manifest's directory. The format is defined by the manifest model in the build package.
+Paths in a manifest are relative to the manifest's directory. The format is defined by the manifest model in the build package.
 
 ### Runs
 
@@ -27,7 +27,11 @@ A run is one execution of `bsllmner2_select` of bsllmner-mk2.
 | Input | BioSample JSONL given to the execution: one NCBI BioSample entry per line as exported from BioSample XML (`Ids`, `Description`, `Attributes`, `submission_date`, `publication_date`, `last_update`), either wrapped as `{"BioSample": {...}, "accession": ...}` or with the same members at the top level next to `accession` |
 | Select configuration | The select configuration JSON given to the execution, mapping each field to an ontology file |
 
-From an input entry, build takes the organism (`Description.Organism`), the title, the creation date (`submission_date`, or `publication_date` when absent), the modification date (`last_update`), and the attributes (`Attributes.Attribute`).
+From an input entry, build takes the organism (`Description.Organism`), the title, the publication date (`publication_date`), and the attributes (`Attributes.Attribute`).
+
+The publication date is the only date that build takes, because it is the only date that means the same for every BioSample. Every entry has `publication_date`, whether NCBI, EBI, or DDBJ registered the BioSample. `submission_date` is absent from DDBJ entries (`SAMD`), and in EBI entries (`SAME`) it is usually later than the publication date. build stores the date in UTC, as the DDBJ Search API does.
+
+build treats a publication date as unknown when it cannot be the day on which the BioSample became public. A date after the day on which the run started (`run_metadata.start_time`) is a planned release date, because the run analyzed the BioSample after it had become public. A date before 2005-01-01 is a placeholder, such as 2000-01-01, because the sequencing assays of a dataset produced no data that early. A BioSample with an unknown date matches no condition on the date and is not counted in trends. The DDBJ Search API keeps such dates, so a condition on the date can select different BioSamples in the two APIs.
 
 ### Reference data
 
@@ -69,12 +73,9 @@ The extracted values of a field are the string in `extract.extracted[field]`, or
 
 ## BioSamples in multiple runs
 
-A BioSample can appear in more than one run, for example when its metadata is updated and the BioSample is analyzed again in a later run. The store keeps the annotations of exactly one run per BioSample, selected as follows:
+A BioSample can appear in more than one run when the dataset combines sources whose BioSamples overlap. For example, a BioSample with both ChIP-Seq and RNA-Seq experiments is analyzed in a run of ChIP-Atlas and in a run of RNA-Seq, so that the results of each source are complete on their own.
 
-1. The run whose input entry for the BioSample has the latest modification date (`last_update`) is selected. An entry without a modification date is treated as older than any entry with one.
-2. Among runs with the same modification date, the run listed last in the manifest is selected.
-
-All annotations and attributes of the BioSample are taken from the selected run; values from different runs are never combined. The selection depends only on the set of runs and their order in the manifest, not on the order of ingestion.
+The store keeps the annotations of exactly one run per BioSample: of the runs that have the BioSample, the run that comes first in the list of runs of the manifest. All annotations, attributes, and the date of the BioSample are taken from that run; values from different runs are never combined. The selection depends only on the order of the list of runs, not on the contents of the runs or on the order of ingestion. An append adds runs after every existing run, so it never changes a BioSample that is already in the store.
 
 ## Operations
 
@@ -83,7 +84,7 @@ Every operation leaves its input store unchanged and writes a new store file.
 | Operation | Input | Effect |
 |---|---|---|
 | Full build | Manifest | Ingests all runs and reference data, and derives query-ready data |
-| Append | Store, manifest with additional runs appended to the run list | Ingests the runs not yet in the store, reads the reference data of the manifest, applies the BioSample selection over all runs, and re-derives query-ready data |
+| Append | Store, manifest with additional runs added to the end of the list of runs | Ingests the runs not yet in the store, reads the reference data of the manifest, applies the BioSample selection over all runs, and re-derives query-ready data |
 | Reference refresh | Store, manifest with updated reference data or target assays | Replaces reference data and re-derives query-ready data, without re-ingesting runs |
 
 Derived data comprises everything computable from runs and reference data: the transitive closure of the term hierarchy, the population, the searchable text of BioSamples, and auxiliary data for aggregation. Every operation recomputes derived data from scratch rather than patching it.

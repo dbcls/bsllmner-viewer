@@ -7,9 +7,9 @@ import type * as Client from "~/lib/api/client"
 
 type SelectBody = { q: string | null; clauses: Record<string, string>[]; mode: string }
 
-const OLD_RANGE = { field: "date_created", from: "2015-01-01", to: "2016-12-31" }
-const NEW_RANGE = { field: "date_created", from: "2018-01-01", to: "2019-12-31" }
-const Q = "date_created:[2015-01-01 TO 2016-12-31]"
+const OLD_RANGE = { field: "date_published", from: "2015-01-01", to: "2016-12-31" }
+const NEW_RANGE = { field: "date_published", from: "2018-01-01", to: "2019-12-31" }
+const Q = "date_published:[2015-01-01 TO 2016-12-31]"
 const HUMAN = { field: "organism_id", value: "9606" }
 const HUMAN_Q = "organism_id:9606"
 
@@ -25,7 +25,7 @@ vi.mock("~/lib/api/client", async (importOriginal) => {
     await new Promise<void>((resolve) => {
       state.releaseParse = resolve
     })
-    const ast = init.params.query.q === Q ? { field: "date_created", op: "between", from: OLD_RANGE.from, to: OLD_RANGE.to } : null
+    const ast = init.params.query.q === Q ? { field: "date_published", op: "between", from: OLD_RANGE.from, to: OLD_RANGE.to } : null
     return { data: { q: init.params.query.q, ast, labels: {} }, response: new Response("{}") }
   }
   const POST = async (_path: string, init: { body: SelectBody }) => {
@@ -35,7 +35,7 @@ vi.mock("~/lib/api/client", async (importOriginal) => {
       return { data: { dsl: HUMAN_Q, ast, labels: { "9606": "Homo sapiens" } }, response: new Response("{}") }
     }
     const removed = init.body.clauses.some((c) => c["from"] === OLD_RANGE.from)
-    const dsl = removed ? null : "date_created:[2018-01-01 TO 2019-12-31]"
+    const dsl = removed ? null : "date_published:[2018-01-01 TO 2019-12-31]"
     return { data: { dsl, ast: null, labels: {} }, response: new Response("{}") }
   }
   return { ...original, api: { GET, POST } }
@@ -59,7 +59,7 @@ describe("useCondition replaceField", () => {
 
     let replaced: Promise<void> = Promise.resolve()
     act(() => {
-      replaced = result.current.replaceField("date_created", NEW_RANGE)
+      replaced = result.current.replaceField("date_published", NEW_RANGE)
     })
     await act(async () => {
       state.releaseParse?.()
@@ -68,7 +68,7 @@ describe("useCondition replaceField", () => {
 
     expect(state.selects.map((s) => s.clauses)).toEqual([[OLD_RANGE], [NEW_RANGE]])
     expect(state.selects[1]?.q).toBeNull()
-    expect(update).toHaveBeenCalledWith({ q: "date_created:[2018-01-01 TO 2019-12-31]" })
+    expect(update).toHaveBeenCalledWith({ q: "date_published:[2018-01-01 TO 2019-12-31]" })
   })
 
   it("adds the clause directly when the condition has no clause on the field", async () => {
@@ -77,7 +77,7 @@ describe("useCondition replaceField", () => {
 
     let replaced: Promise<void> = Promise.resolve()
     act(() => {
-      replaced = result.current.replaceField("date_created", NEW_RANGE)
+      replaced = result.current.replaceField("date_published", NEW_RANGE)
     })
     await act(async () => {
       state.releaseParse?.()

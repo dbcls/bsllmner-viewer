@@ -25,7 +25,7 @@ class Population:
 def population(ast: Node | None, fields: FieldSet) -> Population:
     predicate = compile_condition(ast, fields, alias="pn")
     sql = (
-        "SELECT pn.biosample, pn.experiment, pn.library_strategy, pn.organism_id, pn.date_created, "
+        "SELECT pn.biosample, pn.experiment, pn.library_strategy, pn.organism_id, pn.date_published, "
         "pn.year "
         f"FROM population pn WHERE {predicate.sql}"
     )

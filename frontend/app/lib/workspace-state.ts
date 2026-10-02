@@ -23,7 +23,6 @@ export type WorkspaceState = {
   q: string | null
   tab: Tab
   unit: Unit
-  selfExclusion: boolean
   page: number
   sort: ProjectSort
   row: string
@@ -33,15 +32,12 @@ export type WorkspaceState = {
   color: HeatmapColor
   trendField: string | null
   trendTerms: string[] | null
-  expandedStatus: boolean
-  expanded: string[]
 }
 
 export const DEFAULTS: WorkspaceState = {
   q: null,
   tab: "samples",
   unit: "biosample",
-  selfExclusion: true,
   page: 1,
   sort: "biosampleCount:desc",
   row: "cell_line",
@@ -51,8 +47,6 @@ export const DEFAULTS: WorkspaceState = {
   color: "count",
   trendField: null,
   trendTerms: null,
-  expandedStatus: false,
-  expanded: [],
 }
 
 const UNITS: readonly Unit[] = ["biosample", "sra-experiment", "bioproject"]
@@ -69,7 +63,6 @@ export const readState = (params: URLSearchParams): WorkspaceState => {
     q: params.get("q")?.trim() || null,
     tab: TABS.includes(tab as Tab) ? (tab as Tab) : DEFAULTS.tab,
     unit: UNITS.includes(unit as Unit) ? (unit as Unit) : DEFAULTS.unit,
-    selfExclusion: params.get("se") !== "0",
     page: Number.isInteger(page) && page >= 1 ? page : 1,
     sort: PROJECT_SORTS.includes(sort as ProjectSort) ? (sort as ProjectSort) : DEFAULTS.sort,
     row: params.get("row") ?? DEFAULTS.row,
@@ -79,8 +72,6 @@ export const readState = (params: URLSearchParams): WorkspaceState => {
     color: params.get("color") === "residual" ? "residual" : "count",
     trendField: params.get("trend_field"),
     trendTerms: list(params.get("trend_terms")),
-    expandedStatus: params.get("states") === "6",
-    expanded: list(params.get("expand")) ?? [],
   }
 }
 
@@ -89,7 +80,6 @@ export const writeState = (state: WorkspaceState): URLSearchParams => {
   if (state.q) params.set("q", state.q)
   if (state.tab !== DEFAULTS.tab) params.set("tab", state.tab)
   if (state.unit !== DEFAULTS.unit) params.set("unit", state.unit)
-  if (!state.selfExclusion) params.set("se", "0")
   if (state.page !== 1) params.set("page", String(state.page))
   if (state.sort !== DEFAULTS.sort) params.set("sort", state.sort)
   if (state.row !== DEFAULTS.row) params.set("row", state.row)
@@ -99,8 +89,6 @@ export const writeState = (state: WorkspaceState): URLSearchParams => {
   if (state.color !== DEFAULTS.color) params.set("color", state.color)
   if (state.trendField) params.set("trend_field", state.trendField)
   if (state.trendTerms) params.set("trend_terms", state.trendTerms.join(","))
-  if (state.expandedStatus) params.set("states", "6")
-  if (state.expanded.length) params.set("expand", state.expanded.join(","))
   return params
 }
 

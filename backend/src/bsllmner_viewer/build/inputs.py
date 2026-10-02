@@ -28,8 +28,7 @@ class InputDoc:
     organism_id: int | None
     organism_name: str | None
     title: str | None
-    date_created: datetime.date | None
-    date_modified: datetime.datetime | None
+    date_published: datetime.date | None
     attributes: list[Attribute] = field(default_factory=list)
 
 
@@ -55,8 +54,7 @@ def parse_input_doc(doc: dict[str, Any]) -> InputDoc:
         organism_id=int(taxonomy_id) if isinstance(taxonomy_id, str) and taxonomy_id.isdigit() else None,
         organism_name=organism.get("OrganismName") or organism.get("taxonomy_name"),
         title=title if isinstance(title, str) else None,
-        date_created=parse_date(body.get("submission_date") or body.get("publication_date")),
-        date_modified=parse_datetime(body.get("last_update")),
+        date_published=parse_date(body.get("publication_date")),
         attributes=_attributes(body),
     )
 
@@ -93,3 +91,24 @@ def parse_datetime(value: Any) -> datetime.datetime | None:
 def parse_date(value: Any) -> datetime.date | None:
     parsed = parse_datetime(value)
     return parsed.date() if parsed else None
+
+
+EARLIEST_PUBLICATION_DATE = datetime.date(2005, 1, 1)
+
+
+def plausible_publication_date(
+    published: datetime.date | None, run_start: datetime.datetime | None
+) -> datetime.date | None:
+    """The publication date, or None when it cannot be the day on which the BioSample became public.
+
+    A date before 2005 is a placeholder such as 2000-01-01: the sequencing assays of a dataset produced no data that
+    early. A date after the start of the run is a planned release date: the run analyzed the BioSample after it had
+    become public.
+    """
+    if published is None or published < EARLIEST_PUBLICATION_DATE:
+        return None
+    if run_start is not None:
+        start = run_start.astimezone(datetime.UTC) if run_start.tzinfo is not None else run_start
+        if published > start.date():
+            return None
+    return published
