@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test"
 
 import { dataset, distribution, select, trend } from "./_api"
-import { choose, expectChosen, expectParam, expectQ, formatCount, viewTabs, workspaceUrl } from "./_helpers"
+import { choose, expectChosen, expectParam, expectQ, formatCount, pageRangeText, viewTabs, workspaceUrl } from "./_helpers"
 
 const topDisease = async (request: Parameters<typeof distribution>[0]) => {
   const [first] = (await distribution(request, "disease")).elements
@@ -89,6 +89,6 @@ test.describe("trend", () => {
     await expectQ(page, narrowed)
     await expectParam(page, "tab", null)
     await expect(viewTabs(page).getByRole("link", { name: "Samples" })).toHaveAttribute("aria-current", "page")
-    await expect(page.getByRole("main")).toContainText(`${formatCount(target.point.count)} BioSamples match`)
+    await expect(page.getByRole("main")).toContainText(pageRangeText(target.point.count))
   })
 })

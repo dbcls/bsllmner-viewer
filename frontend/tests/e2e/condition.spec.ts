@@ -103,7 +103,7 @@ test.describe("condition", () => {
     const q = `disease:"${first.value}"`
     await page.goto(workspaceUrl({ q }))
     for (const [unit, label] of [["biosample", "BioSamples"], ["sra-experiment", "SRA Experiments"], ["bioproject", "BioProjects"]] as const) {
-      await expect(conditionRegion(page)).toContainText(new RegExp(`${formatCount(await countOf(request, q, unit))}\\s+${label}`))
+      await expect(conditionRegion(page)).toContainText(new RegExp(`${formatCount(await countOf(request, q, unit))}\\s*${label}`))
     }
   })
 

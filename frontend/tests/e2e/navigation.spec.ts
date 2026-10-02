@@ -117,7 +117,7 @@ test.describe("workspace navigation", () => {
     await expectParam(page, "tab", expected.get("tab"))
     await expectParam(page, "unit", expected.get("unit"))
     await expect(viewTabs(page).getByRole("link", { name: tabLabel(expected.get("tab")) })).toHaveAttribute("aria-current", "page")
-    await expect(conditionRegion(page)).toContainText(new RegExp(`${formatCount(await countOf(request, q))}\\s+BioSamples`))
+    await expect(conditionRegion(page)).toContainText(new RegExp(`${formatCount(await countOf(request, q))}\\s*BioSamples`))
   })
 
   test("the landing search finds a term in every field and opens the workspace with it", async ({ page, request }) => {

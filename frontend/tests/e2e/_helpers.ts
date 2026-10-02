@@ -38,9 +38,12 @@ export const workspaceUrl = (params: Record<string, string>): string => {
 
 export const conditionRegion = (page: Page): Locator => page.getByRole("region", { name: "Condition" })
 
-/** Waits until the condition bar has its counts, which means that the page is interactive. */
+/**
+ * Waits until the condition bar has its counts, which means that the page is interactive. The count and its unit are
+ * separate elements, so the text has no space between them.
+ */
 export const expectCounted = async (page: Page): Promise<void> => {
-  await expect(conditionRegion(page)).toContainText(/\d+\s+BioSamples/)
+  await expect(conditionRegion(page)).toContainText(/\d+\s*BioSamples/)
 }
 
 export const conditionPanel = (page: Page): Locator => page.getByRole("complementary")
