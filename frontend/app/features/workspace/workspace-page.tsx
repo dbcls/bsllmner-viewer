@@ -90,7 +90,7 @@ export const WorkspacePage = () => {
         exportMenu={<ExportMenu open={exportOpen} onClose={() => setExportOpen(false)} q={state.q} totalRecords={records.data?.pagination.total} />}
       />
       <div className="flex min-h-0 flex-1 items-stretch">
-        <ConditionPanel q={state.q} condition={condition} onAddTerm={(field) => setPicker({ field, mode: "condition" })} />
+        <ConditionPanel q={state.q} unit={state.unit} condition={condition} onAddTerm={(field) => setPicker({ field, mode: "condition" })} />
         <main className="min-w-0 flex-1 pb-10">
           <Tabs state={state} onUnit={(unit) => update({ unit })} onSelfExclusion={() => update({ selfExclusion: !state.selfExclusion })} />
           <div className="px-workspace-gutter pt-4">

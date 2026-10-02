@@ -22,7 +22,8 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
-    restart: unless-stopped
+    # always, because the user's podman-restart.service starts only containers with this policy after a reboot.
+    restart: always
 
   web:
     build:
@@ -37,4 +38,4 @@ services:
       BSLLMNER_VIEWER_NOINDEX: ${BSLLMNER_VIEWER_NOINDEX:-false}
     depends_on:
       - api
-    restart: unless-stopped
+    restart: always

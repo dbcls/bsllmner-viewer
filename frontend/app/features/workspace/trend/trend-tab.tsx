@@ -91,7 +91,7 @@ export const TrendTab = ({ state, condition, onSplit }: TrendTabProps) => {
     <Card padding="sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="font-semibold">{unit} per BioSample creation year</span>
+          <span className="font-semibold">{state.unit === "biosample" ? "Per BioSample creation year" : `${unit} per BioSample creation year`}</span>
           {yearUnfiltered && <Tag kind="warn">Not filtered by Year</Tag>}
           {splitUnfiltered && split && <Tag kind="warn">Split lines are not filtered by {fieldLabel(split)}</Tag>}
           <span className="inline-flex items-center gap-1.5 text-fs-label text-ink-soft">

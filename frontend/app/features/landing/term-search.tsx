@@ -72,10 +72,7 @@ export const TermSearch = () => {
         <div className="mt-3">
           <Card padding="none" flush>
             <CardHeader>
-              <span>
-                <span className="font-semibold text-ink">{resultTitle(everyField ? null : fieldLabel(field), debounced)}</span> · BioSamples with
-                the term
-              </span>
+              <span className="font-semibold text-ink">{resultTitle(everyField ? null : fieldLabel(field), debounced)}</span>
               <Button kind="secondary" size="sm" onClick={clear}>
                 <Icon name={ACTION_ICON.clear} />
                 Clear search
@@ -103,10 +100,7 @@ export const TermSearch = () => {
       ) : (
         <div className="mt-3">
           <Card padding="sm">
-            <div className="mb-1.5 flex items-baseline justify-between">
-              <span className="font-semibold">Annotation terms</span>
-              <span className="text-fs-micro text-ink-soft">BioSamples with a term</span>
-            </div>
+            <div className="mb-1.5 font-semibold">Annotation terms</div>
             <div className="grid grid-cols-3 gap-x-5">
               {fields.map((name) => (
                 <FieldRow key={name} field={name} total={total} onSelect={() => setField(name)} />

@@ -296,7 +296,8 @@ export const HeatmapTab = ({ state, condition, update, onOpenPicker, onAxisEleme
             {state.color === "count" ? (
               <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
                 0<span className="inline-block h-2.5 w-25 rounded-badge" style={{ background: gradient }} />
-                {formatCount(max)} <span>{unit}</span>
+                {formatCount(max)}
+                {state.unit !== "biosample" && <span>{unit}</span>}
               </span>
             ) : (
               <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
@@ -417,7 +418,7 @@ export const HeatmapTab = ({ state, condition, update, onOpenPicker, onAxisEleme
         <CardFooter>
           <span className="text-fs-micro">
             A cell opens its records in Samples. Rows and columns overlap (multi-valued fields, child terms), so marginal totals are not sums
-            of the cells and may exceed the {unit} total. Cells with fewer than 5 expected {unit} are not classified. r is the adjusted
+            of the cells and may exceed the overall total. Cells with an expected count below 5 are not classified. r is the adjusted
             standardized residual.
           </span>
         </CardFooter>

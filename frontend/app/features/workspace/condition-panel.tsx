@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 
 import { useDataset, useDistribution } from "~/lib/api/queries"
-import type { Clause } from "~/lib/api/types"
+import type { Clause, Unit } from "~/lib/api/types"
 import { formatCount } from "~/lib/format"
 import { fieldLabel, GROUP_LABELS, organismLabel, type StatusGroup } from "~/lib/labels"
 import { Button, CheckboxRow, Chip, Clickable, cn, LinkButton, PaneHeading, Select, TextInput } from "~/ui"
@@ -11,6 +11,8 @@ import type { Condition } from "./use-condition"
 
 type ConditionPanelProps = {
   q: string | null
+  /** The counting unit of the views, so that the counts beside the assays and organisms are in the same unit. */
+  unit: Unit
   condition: Condition
   onAddTerm: (field: string) => void
 }
@@ -23,11 +25,11 @@ const organismOrder = (id: string): number => {
 }
 
 /** The condition inputs: terms per field, assay, organism, creation year, annotation status, and text matches. */
-export const ConditionPanel = ({ q, condition, onAddTerm }: ConditionPanelProps) => {
+export const ConditionPanel = ({ q, unit, condition, onAddTerm }: ConditionPanelProps) => {
   const dataset = useDataset()
   const fields = dataset.data?.fields ?? []
-  const assays = useDistribution({ field: "library_strategy", q, unit: "biosample", selfExclusion: true, limit: 20 })
-  const organisms = useDistribution({ field: "organism_id", q, unit: "biosample", selfExclusion: true, limit: 2 })
+  const assays = useDistribution({ field: "library_strategy", q, unit, selfExclusion: true, limit: 20 })
+  const organisms = useDistribution({ field: "organism_id", q, unit, selfExclusion: true, limit: 2 })
   const selected = selectedClauses(condition.ast)
   const yearClause = selected.find((clause) => clause.field === "date_created" && clause.from !== undefined && clause.to !== undefined)
   const conditionFrom = yearClause?.from?.slice(0, 4) ?? ""

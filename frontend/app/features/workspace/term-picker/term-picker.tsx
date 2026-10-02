@@ -108,8 +108,8 @@ export const TermPicker = ({ request, onClose, fields, dimensions, q, unit, self
       </div>
       <div className="flex justify-between border-t border-border-soft px-3.5 py-2 text-fs-micro text-ink-soft">
         <span>
-          Counts are {unitLabel(unit)}. Each count excludes the condition on the term's own field. A term condition also matches its
-          descendant terms.
+          {unit !== "biosample" && `Counts are ${unitLabel(unit)}. `}Each count excludes the condition on the term's own field. A term
+          condition also matches its descendant terms.
         </span>
         <LinkButton onClick={onClose}>Close (Esc)</LinkButton>
       </div>

@@ -24,8 +24,8 @@ export const LandingPage = () => {
           <PageHeading rule="edge">bsllmner-viewer: Ontology-annotated BioSamples</PageHeading>
           <p className="mt-3 mb-8 max-w-2xl text-fs-body text-ink-mid text-pretty">
             Search BioSamples by the ontology terms that annotate them, and compare the results in tables and charts.{" "}
-            <ExternalLink href={MK2_URL}>bsllmner-mk2</ExternalLink> uses a large language model (LLM) to extract values such as the cell line,
-            the tissue, and the disease from the attributes of each BioSample. Then bsllmner-mk2 maps each value to an ontology term.
+            <ExternalLink href={MK2_URL}>bsllmner-mk2</ExternalLink> reads the attributes of each BioSample with a large language model (LLM),
+            extracts values such as the cell line, the tissue, and the disease, and maps each value to an ontology term.
           </p>
           <div className="mb-3">
             <SectionHeading>Search by ontology terms</SectionHeading>
@@ -116,10 +116,7 @@ const FieldStatistics = ({ field }: { field: (typeof STATISTICS_FIELDS)[number] 
   }
   return (
     <div className="mt-4 border-t border-border-soft pt-3.5">
-      <div className="mb-1.5 flex items-baseline justify-between">
-        <span className="font-semibold">{fieldLabel(field)}</span>
-        <span className="text-fs-micro text-ink-soft">BioSamples</span>
-      </div>
+      <div className="mb-1.5 font-semibold">{fieldLabel(field)}</div>
       {elements.map((element) => (
         <Clickable
           key={element.value}

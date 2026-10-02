@@ -102,7 +102,7 @@ podman-compose -p bsllmner-viewer up -d
 
 - Give the project name with `-p` to every command (`ps`, `logs`, `restart`, and `down` too). Without it, podman-compose names the project after the directory, `deploy`. The commands are the same with `docker compose`.
 - `up -d` does not rebuild an image that exists. After you update the code, run `build` before `up -d`.
-- Containers restart when they fail, but a rootless podman does not start them again after the host reboots. After a reboot, run `up -d`.
+- Both containers have the restart policy `always`. With rootless podman, containers start again after the host reboots only if the deploying user has lingering enabled (`loginctl enable-linger`) and the user service `podman-restart.service` enabled (`systemctl --user enable podman-restart.service`). That service starts only the containers whose policy is `always`.
 
 | Variable | Meaning |
 |---|---|
