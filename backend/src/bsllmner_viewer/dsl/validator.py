@@ -6,6 +6,7 @@ import datetime
 import re
 
 from bsllmner_viewer.dsl.ast import BoolOp, FieldClause, FreeText, Node, Range
+from bsllmner_viewer.dsl.canonical import ORGANISM_ID_MAX, canonical_int
 from bsllmner_viewer.dsl.errors import DslError, ErrorType
 from bsllmner_viewer.dsl.fields import FieldDef, FieldSet, Operator, expand_status
 from bsllmner_viewer.dsl.keyword import word_matches
@@ -14,15 +15,14 @@ MAX_DEPTH = 5
 MAX_NODES = 512
 
 _DATE_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}\Z")
-_DIGITS_RE = re.compile(r"^[0-9]+\Z")
 
 
 def validate(ast: Node, fields: FieldSet, *, max_depth: int = MAX_DEPTH, max_nodes: int = MAX_NODES) -> None:
     """Raise DslError when the AST uses unknown fields, unsupported operators, or invalid values."""
+    check_depth(ast, max_depth)
     total = _count(ast)
     if total > max_nodes:
         raise DslError(type=ErrorType.nest_depth_exceeded, detail=f"total node count {total} exceeds limit {max_nodes}")
-    _check_depth(ast, 1, max_depth)
     _check_nodes(ast, fields)
 
 
@@ -67,6 +67,14 @@ def _count(node: Node) -> int:
     if isinstance(node, FieldClause | FreeText):
         return 1
     return 1 + sum(_count(c) for c in node.children)
+
+
+def check_depth(node: Node, max_depth: int) -> None:
+    """Raise DslError when the boolean groups of the tree nest deeper than `max_depth`.
+
+    The recursion stops at `max_depth`, so the check is safe for a tree of any depth.
+    """
+    _check_depth(node, 1, max_depth)
 
 
 def _check_depth(node: Node, current: int, max_depth: int) -> None:
@@ -126,10 +134,13 @@ def _check_value(field: FieldDef, clause: FieldClause) -> None:
             column=col,
             length=length,
         )
-    elif field.kind == "organism" and not _DIGITS_RE.match(value):
+    elif field.kind == "organism" and canonical_int(value, maximum=ORGANISM_ID_MAX) is None:
         raise DslError(
             type=ErrorType.invalid_value,
-            detail=f"organism_id must be an NCBI Taxonomy ID at column {col}",
+            detail=(
+                f"organism_id must be an NCBI Taxonomy ID written in ASCII digits without a sign or a leading zero, "
+                f"at most {ORGANISM_ID_MAX}, at column {col}"
+            ),
             column=col,
             length=length,
         )

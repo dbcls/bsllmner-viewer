@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
-from bsllmner_viewer.dsl.lex import is_bare_word
+from bsllmner_viewer.dsl.lex import RESERVED, is_bare_word
 
 type ValueKind = Literal["phrase", "word", "wildcard", "date", "range"]
 type BoolOpKind = Literal["AND", "OR", "NOT"]
@@ -111,8 +111,8 @@ def normalize(node: Node) -> Node:
     """The shape parse produces for any serialized tree: nested same-op AND/OR flattened, word/phrase canonical."""
     if isinstance(node, FieldClause):
         return _normalize_kind(node)
-    if not isinstance(node, BoolOp):
-        return node
+    if isinstance(node, FreeText):
+        return _normalize_words(node)
     children = tuple(normalize(c) for c in node.children)
     if node.op == "NOT":
         return BoolOp(op="NOT", children=children, position=node.position)
@@ -123,6 +123,17 @@ def normalize(node: Node) -> Node:
         else:
             flat.append(child)
     return BoolOp(op=node.op, children=tuple(flat), position=node.position)
+
+
+def _normalize_words(node: FreeText) -> FreeText:
+    """Write `AND`, `OR`, and `NOT` in a keyword of words in lower case, which is how they are read back as words."""
+    if node.is_phrase:
+        return node
+    words = node.value.split(" ")
+    if not any(word in RESERVED for word in words):
+        return node
+    value = " ".join(word.lower() if word in RESERVED else word for word in words)
+    return FreeText(value=value, is_phrase=False, position=node.position)
 
 
 def _normalize_kind(node: FieldClause) -> FieldClause:

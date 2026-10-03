@@ -9,6 +9,8 @@ from typing import Any
 import duckdb
 import orjson
 
+from bsllmner_viewer.build.errors import BuildError
+
 
 def sql_literal(path: Path) -> str:
     """A path as the body of a single-quoted SQL literal (ATTACH does not take parameters)."""
@@ -22,33 +24,47 @@ def jsonl_files(path: Path) -> list[Path]:
     return [path]
 
 
+def _jsonl_objects(file: Path) -> Iterator[tuple[int, dict[str, Any]]]:
+    """(line number, object) of each line of a JSONL file. An invalid line raises a BuildError that names the line."""
+    with file.open("rb") as f:
+        for number, raw in enumerate(f, 1):
+            if not raw.strip():
+                continue
+            try:
+                doc = orjson.loads(raw)
+            except orjson.JSONDecodeError as e:
+                raise BuildError(f"{file.name}:{number}: invalid JSON: {e}") from e
+            if not isinstance(doc, dict):
+                raise BuildError(f"{file.name}:{number}: the line is not a JSON object")
+            yield number, doc
+
+
+def _identifier(file: Path, number: int, doc: dict[str, Any]) -> str:
+    identifier = doc.get("identifier")
+    if not isinstance(identifier, str) or not identifier:
+        raise BuildError(f"{file.name}:{number}: the identifier is not a non-empty string")
+    return identifier
+
+
 def read_experiments(path: Path) -> Iterator[tuple[str, str | None]]:
     """(experiment accession, library_strategy) from ddbj-search-converter SRA experiment JSONL."""
     for file in jsonl_files(path):
         if "experiment" not in file.name:
             continue
-        with file.open("rb") as f:
-            for raw in f:
-                if not raw.strip():
-                    continue
-                doc = orjson.loads(raw)
-                if doc.get("type") not in (None, "sra-experiment"):
-                    continue
-                strategy = doc.get("libraryStrategy")
-                first = strategy[0] if isinstance(strategy, list) and strategy else strategy
-                yield str(doc["identifier"]), first if isinstance(first, str) and first else None
+        for number, doc in _jsonl_objects(file):
+            if doc.get("type") not in (None, "sra-experiment"):
+                continue
+            strategy = doc.get("libraryStrategy")
+            first = strategy[0] if isinstance(strategy, list) and strategy else strategy
+            yield _identifier(file, number, doc), first if isinstance(first, str) and first else None
 
 
 def read_bioprojects(path: Path) -> Iterator[tuple[str, str | None]]:
     """(BioProject accession, title) from ddbj-search-converter BioProject JSONL."""
     for file in jsonl_files(path):
-        with file.open("rb") as f:
-            for raw in f:
-                if not raw.strip():
-                    continue
-                doc = orjson.loads(raw)
-                title = doc.get("title")
-                yield str(doc["identifier"]), title if isinstance(title, str) else None
+        for number, doc in _jsonl_objects(file):
+            title = doc.get("title")
+            yield _identifier(file, number, doc), title if isinstance(title, str) else None
 
 
 def read_chip_atlas(path: Path) -> Iterator[tuple[str, str]]:

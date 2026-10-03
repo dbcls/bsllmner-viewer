@@ -1,5 +1,8 @@
 import type { ProjectSort, Unit } from "./api/types"
 
+/** The most terms that the Trend draws as lines, one per color. */
+export const TREND_LIMIT = 5
+
 export const TABS = ["samples", "projects", "distribution", "heatmap", "trend"] as const
 
 /** The numbers of rows that a page of the tables (Samples and Projects) can hold. The first is the default. */
@@ -87,16 +90,25 @@ const UNIT_SET: Record<Unit, true> = {
 
 export const UNITS = Object.keys(UNIT_SET) as Unit[]
 
-const list = (value: string | null): string[] | null =>
-  value === null ? null : value.split(",").map((s) => s.trim()).filter(Boolean)
+/** An empty list reads as no explicit terms, the same as a missing parameter. */
+const list = (value: string | null): string[] | null => {
+  const terms = value === null ? [] : value.split(",").map((s) => s.trim()).filter(Boolean)
+  return terms.length ? terms : null
+}
 
-const year = (value: string | null): number | null => (value !== null && /^\d+$/.test(value) ? Number(value) : null)
+/** The page number: a safe integer from 1, and the first page for anything else. */
+const page = (value: string | null): number => {
+  const n = value !== null && /^\d+$/.test(value) ? Number(value) : 1
+  return Number.isSafeInteger(n) && n >= 1 ? n : 1
+}
+
+/** A four-digit year, the range that the api accepts. */
+const year = (value: string | null): number | null => (value !== null && /^\d{4}$/.test(value) ? Number(value) : null)
 
 export const readState = (params: URLSearchParams): WorkspaceState => {
   const tab = params.get("tab")
   const unit = params.get("unit")
   const sort = params.get("sort")
-  const page = Number(params.get("page") ?? "1")
   const perPage = Number(params.get("perPage"))
   const row = params.get("row") ?? DEFAULTS.row
   const named = params.get("col") ?? DEFAULTS.col
@@ -107,7 +119,7 @@ export const readState = (params: URLSearchParams): WorkspaceState => {
     q: params.get("q")?.trim() || null,
     tab: TABS.includes(tab as Tab) ? (tab as Tab) : DEFAULTS.tab,
     unit: UNITS.includes(unit as Unit) ? (unit as Unit) : DEFAULTS.unit,
-    page: Number.isInteger(page) && page >= 1 ? page : 1,
+    page: page(params.get("page")),
     perPage: TABLE_PER_PAGES.includes(perPage as TablePerPage) ? (perPage as TablePerPage) : DEFAULTS.perPage,
     sort: PROJECT_SORTS.includes(sort as ProjectSort) ? (sort as ProjectSort) : DEFAULTS.sort,
     row,
@@ -116,7 +128,7 @@ export const readState = (params: URLSearchParams): WorkspaceState => {
     colTerms: col === named ? list(params.get("col_terms")) : null,
     color: params.get("color") === "ratio" ? "ratio" : "count",
     trendField: params.get("trend_field") || DEFAULTS.trendField,
-    trendTerms: list(params.get("trend_terms")),
+    trendTerms: list(params.get("trend_terms"))?.slice(0, TREND_LIMIT) ?? null,
     trendFrom: year(params.get("trend_from")),
     trendTo: year(params.get("trend_to")),
     trendCondition: params.get("trend_condition") !== "off",
@@ -136,11 +148,11 @@ export const writeState = (state: WorkspaceState): URLSearchParams => {
   if (state.sort !== DEFAULTS.sort) params.set("sort", state.sort)
   if (state.row !== DEFAULTS.row) params.set("row", state.row)
   if (state.col !== DEFAULTS.col) params.set("col", state.col)
-  if (state.rowTerms) params.set("row_terms", state.rowTerms.join(","))
-  if (state.colTerms) params.set("col_terms", state.colTerms.join(","))
+  if (state.rowTerms?.length) params.set("row_terms", state.rowTerms.join(","))
+  if (state.colTerms?.length) params.set("col_terms", state.colTerms.join(","))
   if (state.color !== DEFAULTS.color) params.set("color", state.color)
   if (state.trendField !== DEFAULTS.trendField) params.set("trend_field", state.trendField)
-  if (state.trendTerms) params.set("trend_terms", state.trendTerms.join(","))
+  if (state.trendTerms?.length) params.set("trend_terms", state.trendTerms.join(","))
   if (state.trendFrom !== null) params.set("trend_from", String(state.trendFrom))
   if (state.trendTo !== null) params.set("trend_to", String(state.trendTo))
   if (!state.trendCondition) params.set("trend_condition", "off")

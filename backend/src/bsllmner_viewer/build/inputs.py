@@ -14,6 +14,8 @@ from typing import Any
 
 import orjson
 
+from bsllmner_viewer.build.errors import BuildError
+
 
 @dataclass(slots=True)
 class Attribute:
@@ -37,10 +39,18 @@ class InputDoc:
 
 
 def read_input(path: Path) -> Iterator[InputDoc]:
+    """The entries of an input file. A line that is not valid raises a BuildError that names the file and the line."""
     with path.open("rb") as f:
-        for raw in f:
-            if raw.strip():
-                yield parse_input_doc(orjson.loads(raw))
+        for number, raw in enumerate(f, 1):
+            if not raw.strip():
+                continue
+            try:
+                doc = orjson.loads(raw)
+                if not isinstance(doc, dict):
+                    raise ValueError("the line is not a JSON object")
+                yield parse_input_doc(doc)
+            except (orjson.JSONDecodeError, ValueError) as e:
+                raise BuildError(f"{path.name}:{number}: {e}") from e
 
 
 def parse_input_doc(doc: dict[str, Any]) -> InputDoc:
@@ -49,13 +59,12 @@ def parse_input_doc(doc: dict[str, Any]) -> InputDoc:
     accession = doc.get("accession") or body.get("accession")
     if not isinstance(accession, str) or not accession:
         raise ValueError("input document without accession")
-    description = body.get("Description") or {}
-    organism = description.get("Organism") or {}
-    taxonomy_id = organism.get("taxonomy_id")
+    description = _object(body, "Description")
+    organism = _object(description, "Organism")
     title = description.get("Title")
     return InputDoc(
         accession=accession,
-        organism_id=int(taxonomy_id) if isinstance(taxonomy_id, str) and taxonomy_id.isdigit() else None,
+        organism_id=_taxonomy_id(organism.get("taxonomy_id")),
         organism_name=organism.get("OrganismName") or organism.get("taxonomy_name"),
         title=title if isinstance(title, str) else None,
         date_published=parse_date(body.get("publication_date")),
@@ -63,6 +72,37 @@ def parse_input_doc(doc: dict[str, Any]) -> InputDoc:
         description=_description(description),
         record=_record(body),
     )
+
+
+MAX_TAXONOMY_ID = 2**31 - 1
+"""The largest taxonomy ID that a store holds (a 32-bit signed integer)."""
+
+
+def _taxonomy_id(value: Any) -> int | None:
+    """The taxonomy ID as an integer from 1 to `MAX_TAXONOMY_ID`, or None when the entry has none.
+
+    The value is an integer or a string of ASCII digits. Any other value raises a ValueError.
+    """
+    if value is None or value == "":
+        return None
+    if isinstance(value, str) and value.isascii() and value.isdigit():
+        number = int(value)
+    elif isinstance(value, int) and not isinstance(value, bool):
+        number = value
+    else:
+        raise ValueError(f"taxonomy_id {value!r} is not an integer")
+    if not 1 <= number <= MAX_TAXONOMY_ID:
+        raise ValueError(f"taxonomy_id {value!r} is out of range (1 to {MAX_TAXONOMY_ID})")
+    return number
+
+
+def _object(parent: dict[str, Any], key: str) -> dict[str, Any]:
+    value = parent.get(key)
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ValueError(f"{key} is not an object")
+    return value
 
 
 def _strings(value: Any) -> list[str]:
@@ -135,7 +175,8 @@ def _attributes(body: dict[str, Any]) -> list[Attribute]:
         if not isinstance(item, dict):
             continue
         name = item.get("attribute_name")
-        value = item.get("content")
+        content = item.get("content")
+        value = str(content) if isinstance(content, (int, float)) and not isinstance(content, bool) else content
         if isinstance(name, str) and isinstance(value, str):
             harmonized = item.get("harmonized_name")
             out.append(Attribute(name, value, harmonized if isinstance(harmonized, str) else None))

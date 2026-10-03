@@ -5,6 +5,7 @@ from __future__ import annotations
 import http
 import logging
 import uuid
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import Any
 
@@ -14,6 +15,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 from pydantic.alias_generators import to_camel
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from bsllmner_viewer.dsl.errors import DslError, ErrorType
 
@@ -69,7 +71,9 @@ def request_id_of(request: Request) -> str:
     return request_id or str(uuid.uuid4())
 
 
-def problem_response(request: Request, *, slug: str | None, status: int, detail: str) -> JSONResponse:
+def problem_response(
+    request: Request, *, slug: str | None, status: int, detail: str, headers: Mapping[str, str] | None = None
+) -> JSONResponse:
     request_id = request_id_of(request)
     body = ProblemDetails(
         type=BLANK_TYPE if slug is None else PROBLEM_TYPE_PREFIX + slug,
@@ -84,7 +88,7 @@ def problem_response(request: Request, *, slug: str | None, status: int, detail:
         body.model_dump(by_alias=True),
         status_code=status,
         media_type=MEDIA_TYPE,
-        headers={REQUEST_ID_HEADER: request_id},
+        headers={**(headers or {}), REQUEST_ID_HEADER: request_id},
     )
 
 
@@ -99,7 +103,7 @@ def install_problem_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(StarletteHTTPException)
     async def _http_error(request: Request, exc: StarletteHTTPException) -> JSONResponse:
-        return problem_response(request, slug=None, status=exc.status_code, detail=str(exc.detail))
+        return problem_response(request, slug=None, status=exc.status_code, detail=str(exc.detail), headers=exc.headers)
 
     @app.exception_handler(RequestValidationError)
     async def _validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
@@ -115,10 +119,37 @@ def install_problem_handlers(app: FastAPI) -> None:
             return problem_response(request, slug=ErrorType.invalid_ast.value, status=400, detail=detail)
         return problem_response(request, slug=None, status=422, detail=detail)
 
-    @app.exception_handler(Exception)
-    async def _unhandled_error(request: Request, exc: Exception) -> JSONResponse:
-        logger.exception("Unhandled exception: %s", exc)
-        return problem_response(request, slug=None, status=500, detail="An unexpected error occurred.")
+
+class UnhandledErrorMiddleware:
+    """Answer an exception that no handler took with a 500 problem.
+
+    The middleware sits inside the CORS middleware, so the 500 response carries the same headers as every other
+    response. An exception after the response has started is raised again, because the response cannot change.
+    """
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        started = False
+
+        async def tracking_send(message: Message) -> None:
+            nonlocal started
+            if message["type"] == "http.response.start":
+                started = True
+            await send(message)
+
+        try:
+            await self.app(scope, receive, tracking_send)
+        except Exception as exc:
+            if started:
+                raise
+            logger.exception("Unhandled exception: %s", exc)
+            response = problem_response(Request(scope), slug=None, status=500, detail="An unexpected error occurred.")
+            await response(scope, receive, send)
 
 
 def _with_column(exc: DslError) -> str:

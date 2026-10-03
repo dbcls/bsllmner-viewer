@@ -6,7 +6,11 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+
+def _duplicates(names: list[str]) -> list[str]:
+    return sorted({n for n in names if names.count(n) > 1})
 
 
 class _Strict(BaseModel):
@@ -41,6 +45,14 @@ class ReferenceSpec(_Strict):
     bioprojects: SourceSpec
     chip_atlas: SourceSpec
 
+    @field_validator("ontologies")
+    @classmethod
+    def _unique_ontology_names(cls, ontologies: list[OntologySpec]) -> list[OntologySpec]:
+        duplicates = _duplicates([o.name for o in ontologies])
+        if duplicates:
+            raise ValueError(f"duplicate ontology names: {', '.join(duplicates)}")
+        return ontologies
+
 
 class Manifest(_Strict):
     name: str
@@ -52,11 +64,20 @@ class Manifest(_Strict):
     @field_validator("runs")
     @classmethod
     def _unique_run_names(cls, runs: list[RunSpec]) -> list[RunSpec]:
-        names = [r.name for r in runs]
-        duplicates = sorted({n for n in names if names.count(n) > 1})
+        duplicates = _duplicates([r.name for r in runs])
         if duplicates:
             raise ValueError(f"duplicate run names: {', '.join(duplicates)}")
         return runs
+
+    @model_validator(mode="after")
+    def _unique_result_files(self) -> Manifest:
+        seen: dict[Path, str] = {}
+        for run in self.runs:
+            resolved = self.resolve(run.result).resolve()
+            if resolved in seen:
+                raise ValueError(f"runs {seen[resolved]} and {run.name} have the same result file")
+            seen[resolved] = run.name
+        return self
 
     def resolve(self, path: Path) -> Path:
         return path if path.is_absolute() else (self.base_dir / path)

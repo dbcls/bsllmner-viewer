@@ -79,7 +79,7 @@ export const ConditionPanel = ({ q, condition, onAddTerm }: ConditionPanelProps)
                 key={`${clause.field}:${clause.value}`}
                 field={fieldLabel(clause.field)}
                 value={clauseLabel(clause, condition.labels)}
-                onRemove={() => void condition.toggle([clause])}
+                onRemove={() => void condition.remove([clause])}
               />
             ))}
           </div>
@@ -220,32 +220,46 @@ const KeywordSearch = ({ condition }: { condition: Condition }) => {
   const current = condition.keywordText
   const [text, setText] = useState(current)
   const [focused, setFocused] = useState(false)
+  const [composing, setComposing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const applied = useRef(current)
+  const applying = useRef(false)
+  /** The last change was not written, because the condition moved on; the box shows the latest keywords again. */
+  const dropped = useRef(false)
+  const [resync, setResync] = useState(0)
 
   useEffect(() => {
-    if (focused) return
+    if (applying.current) return
+    const forced = dropped.current
+    dropped.current = false
+    if (focused && !forced) return
     setText(current)
     applied.current = current
-  }, [current, focused])
+  }, [current, focused, resync])
 
   const apply = async (next: string) => {
     applied.current = next
+    applying.current = true
     try {
-      await condition.setKeyword(next)
+      if (!(await condition.setKeyword(next))) dropped.current = true
       setError(null)
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught))
+    } finally {
+      applying.current = false
+      if (dropped.current) setResync((n) => n + 1)
     }
   }
 
   useEffect(() => {
-    if (text === applied.current) return
-    const timer = setTimeout(() => void apply(text), KEYWORD_TYPING_MS)
+    if (text === applied.current || composing) return
+    const timer = setTimeout(() => {
+      if (text !== applied.current) void apply(text)
+    }, KEYWORD_TYPING_MS)
     return () => clearTimeout(timer)
-    // The typed text is the trigger; the condition is read when the timer fires.
+    // The typed text and the composition are the triggers; the operations of the condition read the latest condition themselves.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [text])
+  }, [text, composing])
 
   return (
     <div>
@@ -254,7 +268,12 @@ const KeywordSearch = ({ condition }: { condition: Condition }) => {
         onChange={setText}
         onEnter={() => void apply(text)}
         onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
+        onBlur={() => {
+          setFocused(false)
+          if (!composing && text !== applied.current) void apply(text)
+        }}
+        onCompositionStart={() => setComposing(true)}
+        onCompositionEnd={() => setComposing(false)}
         icon={ACTION_ICON.search}
         block
         spellCheck={false}
@@ -287,30 +306,51 @@ const PublicationDate = ({ condition }: { condition: Condition }) => {
   const recent = range ? recentYearsOf(range, today) : null
   const [from, setFrom] = useState(range?.from ?? "")
   const [to, setTo] = useState(range?.to ?? "")
+  /** Counts the changes that were not written, because the condition moved on; the boxes then show the latest range again. */
+  const [resync, setResync] = useState(0)
   useEffect(() => {
     setFrom(range?.from ?? "")
     setTo(range?.to ?? "")
-  }, [range?.from, range?.to])
+  }, [range?.from, range?.to, resync])
 
   const entered = enteredRange(from, to, today)
   const unchanged = from === (range?.from ?? "") && to === (range?.to ?? "")
   const apply = (next: DateRange | null) => {
-    if (next === null) {
-      if (ranges.length) void condition.toggle(ranges)
-      return
-    }
-    void condition.replaceField(DATE_FIELD, { field: DATE_FIELD, ...next })
+    const done = next === null ? condition.removeField(DATE_FIELD) : condition.replaceField(DATE_FIELD, { field: DATE_FIELD, ...next })
+    void done.then((written) => {
+      if (written) return
+      sent.current = null
+      setResync((n) => n + 1)
+    })
+  }
+
+  const cleared = from === "" && to === ""
+  const typed: DateRange | null | undefined = unchanged ? undefined : cleared ? null : entered !== null && entered !== "reversed" ? entered : undefined
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  /** The typed dates that have been applied, so that the timer and the blur apply them once. */
+  const sent = useRef<string | null>(null)
+  const send = (dates: DateRange | null) => {
+    clearTimeout(timer.current)
+    sent.current = `${from}|${to}`
+    apply(dates)
   }
 
   useEffect(() => {
-    if (unchanged) return
-    const cleared = from === "" && to === ""
-    if (!cleared && (entered === null || entered === "reversed")) return
-    const timer = setTimeout(() => apply(cleared ? null : (entered as DateRange)), DATE_TYPING_MS)
-    return () => clearTimeout(timer)
+    if (typed === undefined) return
+    timer.current = setTimeout(() => send(typed), DATE_TYPING_MS)
+    return () => clearTimeout(timer.current)
     // The typed dates are the trigger; the condition is read when the timer fires.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [from, to])
+
+  // A change of the range of the condition starts the typed dates over.
+  useEffect(() => {
+    sent.current = null
+  }, [range?.from, range?.to])
+
+  const commit = () => {
+    if (typed !== undefined && sent.current !== `${from}|${to}`) send(typed)
+  }
 
   return (
     <>
@@ -324,7 +364,13 @@ const PublicationDate = ({ condition }: { condition: Condition }) => {
           </Choice>
         ))}
       </div>
-      <div className="mt-2 flex flex-col gap-1.5">
+      <div
+        className="mt-2 flex flex-col gap-1.5"
+        onBlur={(event) => {
+          // Moving from one date box to the other does not finish the range.
+          if (!event.currentTarget.contains(event.relatedTarget)) commit()
+        }}
+      >
         <label className="flex items-center gap-2">
           <span className="w-8 shrink-0">
             <Caption>From</Caption>

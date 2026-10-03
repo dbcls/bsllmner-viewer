@@ -76,7 +76,7 @@ A condition is evaluated on a BioSample of the population together with one of i
 - Clauses on annotations, organism, publication date, and BioProject are evaluated against the BioSample.
 - Clauses on `library_strategy` are evaluated against the experiment.
 - Keywords are evaluated against the searchable text of the BioSample. A word in the form of an accession is evaluated against the accessions of the BioSample, its BioProjects, the experiment, and the experiment's runs.
-- A clause on a field is true when at least one value of that field satisfies it. A clause on a field-level or BioSample-level status (`not_stated`, `extraction_failed`) is evaluated against the field as a whole.
+- A clause on a field is true when at least one value of that field satisfies it. A BioSample without a publication date or an organism, or an experiment without a library strategy, does not satisfy a clause on that field, so it satisfies the negation of the clause. A clause on a field-level or BioSample-level status (`not_stated`, `extraction_failed`) is evaluated against the field as a whole.
 
 Because each evaluation sees the assay of a single experiment, a condition that requires two different assays matches nothing, even for a BioSample that has experiments of both. Assays are compared by counting per assay under the same annotation conditions.
 

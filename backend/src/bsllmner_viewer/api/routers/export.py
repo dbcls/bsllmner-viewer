@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Iterator
 from typing import Annotated, Literal
 
@@ -47,7 +48,7 @@ _ACCESSION_SQL: dict[AccessionType, str] = {
     "/export/accessions/{type}",
     operation_id="exportAccessions",
     responses=NOT_FOUND_RESPONSE,
-    summary="Accession list of the matching entries, one per line",
+    summary="Accession list of the matching entries, with a header line and then one accession per line",
     response_class=StreamingResponse,
 )
 def export_accessions(store: StoreDep, type: AccessionType, q: QParam = None) -> StreamingResponse:
@@ -57,8 +58,8 @@ def export_accessions(store: StoreDep, type: AccessionType, q: QParam = None) ->
 
     def lines() -> Iterator[bytes]:
         header = (
-            f"# bsllmner-viewer {type} accessions; q={q_of(ast) or ''}; "
-            f"dataset={version.name} {version.created_at} {version.digest}\n"
+            f"# bsllmner-viewer {type} accessions; q={json.dumps(q_of(ast) or '')}; "
+            f"dataset={json.dumps(version.name)} {version.created_at} {version.digest}\n"
         )
         yield header.encode()
         with store.cursor() as cur:

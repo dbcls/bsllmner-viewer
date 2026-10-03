@@ -26,13 +26,15 @@ import { useCondition } from "./use-condition"
 const ALERT_MS = 4000
 
 export const WorkspacePage = () => {
-  const [state, update] = useWorkspaceState()
+  const [state, update, latest] = useWorkspaceState()
   const location = useLocation()
-  const condition = useCondition(state.q, update)
+  const condition = useCondition(state.q, update, latest)
   const dataset = useDataset()
   const fields = dataset.data?.fields.map((f) => f.name) ?? []
   const [pickerOpen, setPickerOpen] = useState(false)
   const [apiOpen, setApiOpen] = useState(false)
+  // Pasted entries of an axis are being resolved. This page outlives the views, so a view that is left and opened again still knows.
+  const [replacing, setReplacing] = useState(false)
   const [alert, setAlert] = useState<string | null>(null)
   const alertTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const entries = useEntries({ q: state.q, page: 1, perPage: 1 })
@@ -70,7 +72,7 @@ export const WorkspacePage = () => {
       <div className="flex min-h-0 flex-1 items-stretch">
         <ConditionPanel q={state.q} condition={condition} onAddTerm={() => setPickerOpen(true)} />
         <main className="min-w-0 flex-1 pb-4">
-          <Tabs state={state} />
+          <Tabs state={state} onTab={(tab) => update({ tab, page: 1 })} />
           <div className="px-workspace-gutter pt-4">
             {state.tab === "samples" && (
               <SamplesTab state={state} onPage={(page) => update({ page })} onPerPage={(perPage) => update({ perPage, page: 1 })} search={location.search} />
@@ -88,6 +90,9 @@ export const WorkspacePage = () => {
                 state={state}
                 condition={condition}
                 update={update}
+                latest={latest}
+                replacing={replacing}
+                setReplacing={setReplacing}
                 onAlert={showAlert}
               />
             )}
@@ -96,6 +101,9 @@ export const WorkspacePage = () => {
                 state={state}
                 condition={condition}
                 update={update}
+                latest={latest}
+                replacing={replacing}
+                setReplacing={setReplacing}
                 onAlert={showAlert}
               />
             )}

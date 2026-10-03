@@ -50,6 +50,7 @@ vi.mock("~/lib/api/client", async (importOriginal) => {
 })
 
 import { useCondition } from "~/features/workspace/use-condition"
+import { DEFAULTS } from "~/lib/workspace-state"
 
 beforeEach(() => {
   state.selects.length = 0
@@ -58,10 +59,10 @@ beforeEach(() => {
 describe("useCondition replaceField", () => {
   it("removes the field's present clauses even when the parsed condition is still loading", async () => {
     const update = vi.fn()
-    const { result } = renderHook(() => useCondition(Q, update), { wrapper })
+    const { result } = renderHook(() => useCondition(Q, update, () => ({ ...DEFAULTS, q: Q })), { wrapper })
     expect(result.current.ast).toBeNull()
 
-    let replaced: Promise<void> = Promise.resolve()
+    let replaced: Promise<unknown> = Promise.resolve()
     act(() => {
       replaced = result.current.replaceField("date_published", NEW_RANGE)
     })
@@ -77,9 +78,9 @@ describe("useCondition replaceField", () => {
 
   it("adds the clause directly when the condition has no clause on the field", async () => {
     const update = vi.fn()
-    const { result } = renderHook(() => useCondition("organism_id:9606", update), { wrapper })
+    const { result } = renderHook(() => useCondition("organism_id:9606", update, () => ({ ...DEFAULTS, q: "organism_id:9606" })), { wrapper })
 
-    let replaced: Promise<void> = Promise.resolve()
+    let replaced: Promise<unknown> = Promise.resolve()
     act(() => {
       replaced = result.current.replaceField("date_published", NEW_RANGE)
     })
@@ -101,7 +102,7 @@ describe("useCondition toggle", () => {
     const update = vi.fn((patch: { q?: string | null }) => {
       q = patch.q ?? null
     })
-    const { result, rerender } = renderHook(() => useCondition(q, update), { wrapper: own })
+    const { result, rerender } = renderHook(() => useCondition(q, update, () => ({ ...DEFAULTS, q })), { wrapper: own })
 
     await act(async () => {
       await result.current.toggle([HUMAN])
@@ -117,10 +118,10 @@ describe("useCondition toggle", () => {
 describe("useCondition toggleNarrow", () => {
   it("narrows the condition to the element's clauses when the condition does not have them", async () => {
     const update = vi.fn()
-    const { result } = renderHook(() => useCondition(null, update), { wrapper })
+    const { result } = renderHook(() => useCondition(null, update, () => ({ ...DEFAULTS, q: null })), { wrapper })
 
     await act(async () => {
-      await result.current.toggleNarrow(null, [HUMAN])
+      await result.current.toggleNarrow(null, [HUMAN], null)
     })
 
     expect(state.selects).toEqual([{ q: null, clauses: [HUMAN], mode: "narrow" }])
@@ -133,15 +134,15 @@ describe("useCondition toggleNarrow", () => {
     const update = vi.fn((patch: { q?: string | null }) => {
       q = patch.q ?? null
     })
-    const { result, rerender } = renderHook(() => useCondition(q, update), { wrapper: own })
+    const { result, rerender } = renderHook(() => useCondition(q, update, () => ({ ...DEFAULTS, q })), { wrapper: own })
     await act(async () => {
-      await result.current.toggleNarrow(null, [HUMAN])
+      await result.current.toggleNarrow(null, [HUMAN], null)
     })
     rerender()
     expect(result.current.isSelected([HUMAN])).toBe(true)
 
     await act(async () => {
-      await result.current.toggleNarrow(Q, [HUMAN])
+      await result.current.toggleNarrow(Q, [HUMAN], HUMAN_Q)
     })
 
     expect(state.selects).toHaveLength(1)
@@ -151,7 +152,7 @@ describe("useCondition toggleNarrow", () => {
 
 describe("useCondition isSelected", () => {
   it("follows the selected clauses of the api, not the AST", async () => {
-    const { result } = renderHook(() => useCondition(HUMAN_Q_UNSELECTED, vi.fn()), { wrapper })
+    const { result } = renderHook(() => useCondition(HUMAN_Q_UNSELECTED, vi.fn(), () => ({ ...DEFAULTS, q: HUMAN_Q_UNSELECTED })), { wrapper })
     await act(async () => {
       state.releaseParse?.()
     })
@@ -161,7 +162,7 @@ describe("useCondition isSelected", () => {
   })
 
   it("is false for no clauses", () => {
-    const { result } = renderHook(() => useCondition(null, vi.fn()), { wrapper })
+    const { result } = renderHook(() => useCondition(null, vi.fn(), () => ({ ...DEFAULTS, q: null })), { wrapper })
     expect(result.current.isSelected([])).toBe(false)
   })
 })

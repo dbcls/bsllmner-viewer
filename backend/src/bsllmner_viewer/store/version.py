@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import duckdb
 import orjson
 from pydantic import BaseModel, ConfigDict
+
+from bsllmner_viewer.store.schema import SCHEMA_VERSION
 
 
 class RunVersion(BaseModel):
@@ -85,3 +88,26 @@ def read_version(con: duckdb.DuckDBPyConnection) -> DatasetVersion:
             chip_atlas=snapshots.get("chip_atlas"),
         ),
     )
+
+
+class SchemaVersionError(RuntimeError):
+    """A store was written with another version of the store schema than the one this code reads."""
+
+
+def require_current_schema(con: duckdb.DuckDBPyConnection, path: Path, *, catalog: str | None = None) -> None:
+    """Raise SchemaVersionError unless the store has the current schema version.
+
+    `catalog` is the name under which the store is attached to the connection, or None when it is the connection's
+    own database.
+    """
+    table = "store_meta" if catalog is None else f"{catalog}.store_meta"
+    try:
+        row = con.execute(f"SELECT value FROM {table} WHERE key = 'schema_version'").fetchone()
+        found = None if row is None else int(orjson.loads(row[0]))
+    except (duckdb.CatalogException, ValueError):
+        found = None
+    if found != SCHEMA_VERSION:
+        raise SchemaVersionError(
+            f"{path} has store schema version {found}, and this code reads version {SCHEMA_VERSION}; "
+            "write a new store with a full build"
+        )

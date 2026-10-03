@@ -5,7 +5,7 @@ import { segmentText, type Span } from "~/features/sample/evidence"
 
 const span: fc.Arbitrary<Span> = fc.record({ start: fc.integer({ min: -3, max: 30 }), end: fc.integer({ min: -3, max: 30 }) })
 const input = fc.record({
-  text: fc.string({ maxLength: 25 }),
+  text: fc.string({ unit: "binary", maxLength: 25 }),
   spans: fc.array(span, { maxLength: 6 }),
   active: fc.array(span, { maxLength: 3 }),
 })
@@ -25,12 +25,13 @@ describe("segmentText", () => {
     expect(segments.map((segment) => segment.text).join("")).toBe(text)
     let at = 0
     for (const segment of segments) {
-      for (let offset = 0; offset < segment.text.length; offset++) {
-        expect(segment.active).toBe(covers(active, at + offset))
-        expect(segment.matched).toBe(covers(active, at + offset) || covers(spans, at + offset))
+      for (const _character of segment.text) {
+        expect(segment.active).toBe(covers(active, at))
+        expect(segment.matched).toBe(covers(active, at) || covers(spans, at))
+        at += 1
       }
-      at += segment.text.length
     }
+    expect(at).toBe(Array.from(text).length)
   })
 
   test.prop({ input })("returns the longest runs: no empty run, and no two neighbors alike", ({ input: { text, spans, active } }) => {

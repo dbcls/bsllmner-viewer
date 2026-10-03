@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import duckdb
 import pytest
 
-from bsllmner_viewer.dsl.ast import FreeText
+from bsllmner_viewer.dsl.ast import FreeText, Node, not_
 from bsllmner_viewer.dsl.compile import compile_condition
 from bsllmner_viewer.dsl.errors import DslError, ErrorType
 from bsllmner_viewer.dsl.fields import FieldSet
@@ -29,7 +30,10 @@ def test_compile_status_group_expands_to_statuses() -> None:
 def test_compile_boolean_structure_and_parameter_order() -> None:
     pred = compile_condition(parse("NOT organism_id:9606 AND (library_strategy:a OR disease:b)"), FIELDS)
     term = "pn.biosample IN (SELECT biosample FROM annotation_closure WHERE field = ? AND ancestor = ?)"
-    assert pred.sql == f"(NOT (pn.organism_id = ?) AND (pn.library_strategy = ? OR {term}))"
+    assert (
+        pred.sql
+        == f"(NOT (COALESCE(pn.organism_id = ?, FALSE)) AND (COALESCE(pn.library_strategy = ?, FALSE) OR {term}))"
+    )
     assert pred.params == [9606, "a", "disease", "b"]
 
 
@@ -97,3 +101,34 @@ def test_compile_keyword_without_a_letter_or_a_digit_raises_invalid_value() -> N
         with pytest.raises(DslError) as info:
             compile_condition(node, FIELDS)
         assert info.value.type is ErrorType.invalid_value
+
+
+@pytest.mark.parametrize(
+    "dsl",
+    [
+        "organism_id:9606",
+        "library_strategy:RNA-Seq",
+        "date_published:2020-01-01",
+        "date_published:[2020-01-01 TO 2021-12-31]",
+    ],
+)
+def test_compile_clause_on_a_column_that_can_be_null_and_its_negation_cover_the_population(dsl: str) -> None:
+    con = duckdb.connect()
+    con.execute(
+        "CREATE TABLE population "
+        "(biosample VARCHAR, organism_id INTEGER, library_strategy VARCHAR, date_published DATE)"
+    )
+    con.execute(
+        "INSERT INTO population VALUES ('a', 9606, 'RNA-Seq', '2020-01-01'), ('b', 10090, 'ATAC-seq', '2022-05-05'), "
+        "('c', NULL, NULL, NULL)"
+    )
+
+    def total(ast: Node) -> int:
+        pred = compile_condition(ast, FIELDS)
+        row = con.execute(f"SELECT count(*) FROM population pn WHERE {pred.sql}", pred.params).fetchone()
+        assert row is not None
+        return int(row[0])
+
+    ast = parse(dsl)
+    assert total(ast) + total(not_(ast)) == 3
+    assert total(ast) == 1

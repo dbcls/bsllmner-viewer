@@ -1,5 +1,12 @@
-/** Every year from `start` to `end`, or none when `start` is after `end`. */
-const yearsBetween = (start: number, end: number): number[] => (start > end ? [] : Array.from({ length: end - start + 1 }, (_, index) => start + index))
+/**
+ * The years from `start` to `end` that are in the data's range or chosen, or none when `start` is after `end`. A chosen
+ * year far outside the range adds itself, not the years between.
+ */
+const yearsBetween = (start: number, end: number, first: number, last: number, chosen: number[]): number[] => {
+  const years = new Set<number>(chosen)
+  for (let year = Math.max(start, first); year <= Math.min(end, last); year++) years.add(year)
+  return [...years].filter((year) => start <= year && year <= end).sort((a, b) => a - b)
+}
 
 export type YearChoices = { from: number[]; to: number[] }
 
@@ -13,5 +20,9 @@ export const yearChoices = (first: number, last: number, from: number | null, to
   const end = to ?? last
   const low = Math.min(first, start, end)
   const high = Math.max(last, start, end)
-  return { from: yearsBetween(low, Math.max(start, end)), to: yearsBetween(Math.min(start, end), high) }
+  const chosen = [start, end]
+  return {
+    from: yearsBetween(low, Math.max(start, end), first, last, chosen),
+    to: yearsBetween(Math.min(start, end), high, first, last, chosen),
+  }
 }

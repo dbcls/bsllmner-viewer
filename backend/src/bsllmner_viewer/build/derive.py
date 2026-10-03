@@ -393,6 +393,7 @@ def _derive_searchable_text(con: duckdb.DuckDBPyConnection) -> None:
             SELECT biosample,
                    string_agg(
                        concat_ws(' | ', replace(extracted_value, '|', '/'), replace(term_label, '|', '/')), ' | '
+                       ORDER BY field, value_index
                    ) AS value
             FROM annotation GROUP BY biosample
         ),

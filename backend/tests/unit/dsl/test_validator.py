@@ -108,3 +108,18 @@ def test_validate_counts_keywords_as_nodes() -> None:
     with pytest.raises(DslError) as info:
         validate(parse(dsl), FIELDS, max_nodes=50)
     assert info.value.type is ErrorType.nest_depth_exceeded
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["09606", "0009606", "+9606", "-1", "\uff19\uff16\uff10\uff16", "9_606", "2147483648", "9" * 39, "9" * 4000],
+)
+def test_validate_rejects_organism_ids_that_are_not_canonical(value: str) -> None:
+    with pytest.raises(DslError) as info:
+        validate(parse(f'organism_id:"{value}"'), FIELDS)
+    assert info.value.type is ErrorType.invalid_value
+    assert "leading zero" in info.value.detail
+
+
+def test_validate_accepts_the_largest_organism_id() -> None:
+    validate(parse("organism_id:2147483647"), FIELDS)

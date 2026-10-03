@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import pytest
 
-from bsllmner_viewer.dsl.ast import BoolOp, FieldClause, FreeText, Range
+from bsllmner_viewer.dsl.ast import BoolOp, FieldClause, FreeText, Node, Range, not_
 from bsllmner_viewer.dsl.errors import DslError, ErrorType
+from bsllmner_viewer.dsl.fields import FieldSet
 from bsllmner_viewer.dsl.parser import parse
+from bsllmner_viewer.dsl.validator import validate
 
 
 def _leaf(node: object) -> FieldClause:
@@ -103,3 +105,70 @@ def test_parse_over_length_is_rejected() -> None:
         parse("title:" + "a" * 5000)
     assert info.value.type is ErrorType.unexpected_token
     assert "too long" in info.value.detail
+
+
+@pytest.mark.parametrize("depth", [100, 300, 2000])
+def test_parse_of_redundant_parentheses_returns_the_inner_clause(depth: int) -> None:
+    node = _leaf(parse("(" * depth + "disease:a" + ")" * depth))
+    assert node.value == "a"
+
+
+@pytest.mark.parametrize("depth", [100, 300, 500])
+def test_parse_rejects_deeply_nested_groups_with_a_dsl_error(depth: int) -> None:
+    with pytest.raises(DslError) as info:
+        parse("(a AND " * depth + "b" + ")" * depth)
+    assert info.value.type is ErrorType.nest_depth_exceeded
+
+
+@pytest.mark.parametrize("depth", [100, 300, 680])
+def test_parse_rejects_deeply_nested_negations_with_a_dsl_error(depth: int) -> None:
+    with pytest.raises(DslError) as info:
+        parse("NOT (" * depth + "disease:a" + ")" * depth)
+    assert info.value.type is ErrorType.nest_depth_exceeded
+
+
+def test_deep_asts_are_checked_for_depth_before_any_step_that_recurses() -> None:
+    node: Node = FieldClause("disease", "word", "a")
+    for _ in range(5000):
+        node = not_(node)
+    with pytest.raises(DslError) as info:
+        validate(node, FieldSet(("disease",)))
+    assert info.value.type is ErrorType.nest_depth_exceeded
+
+
+@pytest.mark.parametrize("depth", [6, 64, 65, 500])
+def test_parse_reports_one_depth_limit_for_every_depth_over_it(depth: int) -> None:
+    with pytest.raises(DslError) as info:
+        parse("a OR (" * depth + "b" + ")" * depth)
+    assert info.value.type is ErrorType.nest_depth_exceeded
+    assert "exceeds limit 5 " in info.value.detail
+
+
+@pytest.mark.parametrize("dsl", ["NOT'x'", "a OR'x'", "a AND'x'", "NOT'x y'"])
+def test_parse_reads_an_operator_before_a_single_quote(dsl: str) -> None:
+    ast = parse(dsl)
+    assert isinstance(ast, BoolOp)
+
+
+@pytest.mark.parametrize("word", ["ORAL'", "NOTE's", "ANDx'y'"])
+def test_parse_reads_a_word_with_a_single_quote_after_letters_as_a_word(word: str) -> None:
+    assert isinstance(parse(f"x {word}"), FreeText)
+
+
+@pytest.mark.parametrize("word", ["NOTCH1", "ORGANOID", "ANDROGEN", "ORF1ab", "NOT-x", "AND.1"])
+def test_parse_reads_a_word_that_starts_with_an_operator_as_a_word(word: str) -> None:
+    assert parse(f"{word} signaling") == FreeText(f"{word} signaling", position=parse(f"{word} signaling").position)
+    ast = parse(f"x AND {word} AND y")
+    assert isinstance(ast, BoolOp)
+    assert [type(c) for c in ast.children] == [FreeText, FreeText, FreeText]
+    assert ast.children[1].value == word  # type: ignore[union-attr]
+
+
+@pytest.mark.parametrize(
+    ("dsl", "op"),
+    [("NOT(a)", "NOT"), ("(a)OR(b)", "OR"), ('NOT "x"', "NOT"), ("(a)AND(b)", "AND"), ("a OR\tb", "OR")],
+)
+def test_parse_reads_an_operator_before_a_parenthesis_a_quote_or_a_space(dsl: str, op: str) -> None:
+    ast = parse(dsl)
+    assert isinstance(ast, BoolOp)
+    assert ast.op == op

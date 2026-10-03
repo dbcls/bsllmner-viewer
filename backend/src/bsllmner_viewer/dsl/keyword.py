@@ -14,7 +14,7 @@ from typing import Literal
 
 from bsllmner_viewer.dsl.ast import FreeText, Node
 from bsllmner_viewer.dsl.errors import DslError, ErrorType
-from bsllmner_viewer.dsl.lex import RESERVED, is_bare_word
+from bsllmner_viewer.dsl.lex import RESERVED, is_keyword_word
 from bsllmner_viewer.dsl.serializer import quote
 from bsllmner_viewer.dsl.transform import conjuncts
 
@@ -31,7 +31,12 @@ _ACCESSIONS: tuple[tuple[re.Pattern[str], AccessionKind], ...] = (
 
 def parts(text: str) -> list[str]:
     """The words of a text as the searchable text holds them: lower case, split at every other character."""
-    return [part for part in _SEPARATOR.split(text.lower()) if part]
+    return [part for part in _SEPARATOR.split(_lower(text)) if part]
+
+
+def _lower(text: str) -> str:
+    """Lower case as DuckDB's `lower` does, which maps `İ` to `i` where Python adds a combining dot."""
+    return text.replace("\u0130", "i").lower()
 
 
 def accession_kind(word: str) -> AccessionKind | None:
@@ -80,7 +85,7 @@ def word_matches(keyword: FreeText) -> list[WordMatch]:
             continue
         word = word_parts[0]
         last = index == last_index
-        has_symbol = raw.lower() != word
+        has_symbol = _lower(raw) != word
         prefix = last and not has_symbol and len(word) > 1
         matches.append(TextMatch((f"% {word}%" if prefix else f"% {word} %",)))
     return matches
@@ -114,7 +119,7 @@ def typed_keywords(text: str) -> list[FreeText]:
             raise DslError(type=ErrorType.unexpected_token, detail=f"wildcards are not accepted in keywords: {word!r}")
         if word in RESERVED:
             word = word.lower()
-        if is_bare_word(word):
+        if is_keyword_word(word, first=not words):
             words.append(word)
         else:
             phrases.append(FreeText(value=word, is_phrase=True))

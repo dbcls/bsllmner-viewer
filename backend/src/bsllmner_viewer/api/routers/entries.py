@@ -48,7 +48,7 @@ def list_entries(
     pop = population(ast, store.field_set)
     with store.cursor() as cur:
         total = rq.count_entries(cur, pop)
-        keys = rq.page_keys(cur, pop, page, per_page)
+        keys = rq.page_keys(cur, pop, page, per_page) if (page - 1) * per_page < total else []
         rows = rq.entry_rows(cur, pop, keys, tuple(f.name for f in store.fields))
     return EntriesResponse(
         dataset_version=version_ref(store),

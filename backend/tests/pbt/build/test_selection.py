@@ -61,7 +61,7 @@ def test_selection_keeps_the_first_manifest_run_whatever_the_dates_of_the_entrie
         assert date == synthetic.truth.published[(run, accession)]
         expected = [
             (field, i, value, status, term_id)
-            for field in ("cell_line", "disease", "tissue", "drug", "chip_antigen")
+            for field in sorted(("cell_line", "disease", "tissue", "drug", "chip_antigen"))
             for i, (value, status, term_id) in enumerate(synthetic.truth.annotations[(run, accession, field)])
         ]
         assert [(f, i, v, s, t) for f, i, v, s, t in rows] == expected

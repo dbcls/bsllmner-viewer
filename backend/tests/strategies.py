@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from functools import reduce
 
 from hypothesis import strategies as st
@@ -9,7 +10,7 @@ from hypothesis import strategies as st
 from bsllmner_viewer.dsl.ast import BoolOp, FieldClause, FreeText, Node, Range, clause
 from bsllmner_viewer.dsl.fields import STATUS_GROUPS, STATUSES, FieldSet
 from bsllmner_viewer.dsl.keyword import word_matches
-from bsllmner_viewer.dsl.lex import needs_quote
+from bsllmner_viewer.dsl.lex import RESERVED
 from bsllmner_viewer.dsl.transform import add_clause, replace_keywords
 from tests.synthetic import ANNOTATED, TARGET_ASSAYS
 
@@ -95,9 +96,19 @@ def _bool(children: st.SearchStrategy[Node]) -> st.SearchStrategy[Node]:
     )
 
 
-_bare_words = st.one_of(words, apostrophe_words).filter(lambda w: not needs_quote(w))
+_date_words = st.builds(lambda d, rest: d + rest, dates, st.text(_word_chars, max_size=4))
+_operator_words = st.sampled_from(sorted(RESERVED))
+_operator_prefixed_words = st.builds(lambda op, rest: op + rest, _operator_words, st.text(_word_chars, max_size=4))
+_keyword_words = st.one_of(words, apostrophe_words, _date_words, _operator_prefixed_words, _operator_words)
+
+
+def _writable_bare(ws: list[str]) -> bool:
+    """Words of a keyword that can be written bare, so the keyword is not a phrase: not first with a `'`."""
+    return not ws[0].startswith("'") and not any(re.match(r"(?:AND|OR|NOT)'", w) for w in ws)
+
+
 keywords: st.SearchStrategy[FreeText] = st.one_of(
-    st.lists(_bare_words, min_size=1, max_size=3).map(lambda ws: FreeText(" ".join(ws))),
+    st.lists(_keyword_words, min_size=1, max_size=3).filter(_writable_bare).map(lambda ws: FreeText(" ".join(ws))),
     phrases.map(lambda p: FreeText(p, is_phrase=True)),
 ).filter(lambda k: bool(word_matches(k)))
 

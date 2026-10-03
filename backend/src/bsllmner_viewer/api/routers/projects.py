@@ -34,7 +34,7 @@ def get_projects(
     pop = population(pop_ast, store.field_set)
     with store.cursor() as cur:
         total = pq.count_projects(cur, pop)
-        page_rows = pq.project_page(cur, pop, sort, page, per_page)
+        page_rows = pq.project_page(cur, pop, sort, page, per_page) if (page - 1) * per_page < total else []
     return ProjectsResponse(
         dataset_version=version_ref(store),
         q=q_of(ast),

@@ -10,12 +10,12 @@ import { MATRIX_PRESETS } from "~/lib/presets"
 import { ACTION_ICON, busyClass, Card, CardHeader, Clickable, cn, HelpHint, Icon, InlineLabel, LinkButton, Segmented, Select, Skeleton } from "~/ui"
 
 import { AxisControls } from "../axis/axis-controls"
-import { type AxisMemory, MAX_AXIS_TERMS, replaceTerms, resolvePasted, switchDimension, toggleTerm } from "../axis/axis-terms"
+import { type AxisMemory, limitAlert, MAX_AXIS_TERMS, replaceTerms, resolvePasted, switchDimension, toggleTerm } from "../axis/axis-terms"
 import { AxisTermsDialog } from "../axis/axis-terms-dialog"
 import { findTermId } from "../axis/find-term"
 import { expectedElements } from "../expected-elements"
 import { FigureExport } from "../figure-export"
-import { type HeatmapColor, type Patch, type WorkspaceState } from "../state"
+import { type HeatmapColor, type Update, type WorkspaceState } from "../state"
 import { TermIdHover } from "../term-id-hover"
 import type { Condition } from "../use-condition"
 import { ViewControls } from "../view-controls"
@@ -28,7 +28,12 @@ export type AxisSide = "row" | "col"
 type HeatmapTabProps = {
   state: WorkspaceState
   condition: Condition
-  update: (patch: Patch) => void
+  update: Update
+  /** Reads the latest state of the URL, which can be newer than `state` after an await. */
+  latest: () => WorkspaceState
+  /** Pasted entries are being resolved. The state outlives the view, as the user can leave the view and come back meanwhile. */
+  replacing: boolean
+  setReplacing: (replacing: boolean) => void
   onAlert: (message: string) => void
 }
 
@@ -42,7 +47,7 @@ const coloredRatio = (cell: Cell | undefined): number | null =>
 const ratioText = (cell: Cell): string => (cell.ratio === null ? "" : formatRatio(cell.ratio))
 
 /** Cross-tabulation of two dimensions with expected counts, ratios to them, and gap marks. */
-export const HeatmapTab = ({ state, condition, update, onAlert }: HeatmapTabProps) => {
+export const HeatmapTab = ({ state, condition, update, latest, replacing, setReplacing, onAlert }: HeatmapTabProps) => {
   const dataset = useDataset()
   const fields = dataset.data?.fields.map((f) => f.name) ?? []
   // The term IDs follow the labels of the rows and of the columns that are annotation terms, when the charts show them.
@@ -66,13 +71,16 @@ export const HeatmapTab = ({ state, condition, update, onAlert }: HeatmapTabProp
   const cols = useMemo(() => data?.cols ?? [], [data])
 
   const unit = unitLabel(state.unit)
+  /** The table is the one of the previous condition, while the table of the new condition is on its way. */
+  const stale = crosstab.isPlaceholderData
+  const limit = { max: MAX_AXIS_TERMS, subject: "A heatmap axis" }
 
   /**
    * Narrow the condition to a cell: the population of the table plus the cell's row and column clauses. The view stays,
    * and selecting the cell again widens the condition back to the population of the table.
    */
   const narrowCell = (clauses: Clause[]) => {
-    if (data) void condition.toggleNarrow(data.populationQ, clauses)
+    if (data && !stale) void condition.toggleNarrow(data.populationQ, clauses, state.q)
   }
   const max = Math.max(1, ...(data?.cells ?? []).map((c) => c.count))
   const cellByKey = new Map((data?.cells ?? []).map((c) => [`${c.row}\t${c.col}`, c]))
@@ -83,7 +91,11 @@ export const HeatmapTab = ({ state, condition, update, onAlert }: HeatmapTabProp
    */
   const values = (side: AxisSide): string[] =>
     (side === "row" ? axes.rowTerms : axes.colTerms) ?? (side === "row" ? rows : cols).map((e) => e.value)
-  const setValues = (side: AxisSide, next: string[] | null) => update(side === "row" ? { rowTerms: next } : { colTerms: next })
+  // No terms left is the top terms.
+  const setValues = (side: AxisSide, next: string[] | null) => {
+    const terms = next?.length ? next : null
+    update(side === "row" ? { rowTerms: terms } : { colTerms: terms })
+  }
   const dimensionOf = (side: AxisSide) => (side === "row" ? axes.row : axes.col)
 
   /**
@@ -96,44 +108,75 @@ export const HeatmapTab = ({ state, condition, update, onAlert }: HeatmapTabProp
   /** The values of the rows that hang under the row at `index`, at every depth. */
   const nestedValues = (index: number) => nestedUnder(places, index).map((at) => rows[at]?.value ?? "")
 
+  /** The rows whose children are on their way, so that a second press on a chevron waits for the first. */
+  const [expanding, setExpanding] = useState<ReadonlySet<string>>(new Set())
+
   /** Shows the child terms of a row term under it, or takes them and the rows under them off the axis. */
   const toggleExpand = async (index: number) => {
     const value = rows[index]?.value
-    if (value === undefined || !data) return
+    if (value === undefined || !data || expanding.has(value)) return
     const current = values("row")
     if (isOpen(index)) {
       const removed = new Set(nestedValues(index))
       setValues("row", current.filter((v) => !removed.has(v)))
       return
     }
-    // The children are counted in the population of the table, as `hasChildren` is, so that a chevron always opens some.
-    const result = await fetchTermChildren({
-      field: dimensionOf("row"),
-      termId: value,
-      q: data.populationQ,
-      unit: state.unit,
-      selfExclusion: true,
-    })
-    const children = result.children.map((c) => c.value).filter((c) => c !== value)
-    if (children.length === 0) {
-      onAlert("No child terms with data")
-      return
+    const dimension = dimensionOf("row")
+    setExpanding((previous) => new Set(previous).add(value))
+    try {
+      // The children are counted in the population of the table, as `hasChildren` is, so that a chevron always opens some.
+      const result = await fetchTermChildren({
+        field: dimension,
+        termId: value,
+        q: data.populationQ,
+        unit: state.unit,
+        selfExclusion: true,
+      })
+      const children = result.children.map((c) => c.value).filter((c) => c !== value)
+      if (children.length === 0) {
+        onAlert("No child terms with data")
+        return
+      }
+      // A child that is a row already, such as one that the user added, moves under its parent with the rows under it.
+      const subtree = (child: string) => {
+        const at = current.indexOf(child)
+        return at < 0 ? [child] : [child, ...nestedValues(at)]
+      }
+      // The rows are those of the latest URL, which can hold another expansion that finished while this one waited.
+      const now = latest()
+      if (now.row !== state.row) return
+      const base = now.rowTerms ?? current
+      if (!base.includes(value)) return
+      const opened = openChildren(base, value, children, subtree)
+      if (opened.length > MAX_AXIS_TERMS) {
+        onAlert(limitAlert(limit))
+        return
+      }
+      update({ rowTerms: opened })
+    } finally {
+      setExpanding((previous) => {
+        const next = new Set(previous)
+        next.delete(value)
+        return next
+      })
     }
-    // A child that is a row already, such as one that the user added, moves under its parent with the rows under it.
-    const subtree = (child: string) => {
-      const at = current.indexOf(child)
-      return at < 0 ? [child] : [child, ...nestedValues(at)]
-    }
-    setValues("row", openChildren(current, value, children, subtree))
   }
 
-  const limit = { max: MAX_AXIS_TERMS, subject: "A heatmap axis" }
   /** Makes the pasted entries the terms of the axis, in their order. A label becomes the term whose label it is, or else the first term found. */
   const replace = async (side: AxisSide, entries: string[]) => {
     const dimension = dimensionOf(side)
-    const result = await replaceTerms(entries, (list) => resolvePasted(list, fields.includes(dimension), (label) => findTermId(dimension, label)), limit)
-    if (result.terms !== null) setValues(side, result.terms)
-    onAlert(result.alert)
+    const started = side === "row" ? state.row : state.col
+    setReplacing(true)
+    try {
+      const result = await replaceTerms(entries, (list) => resolvePasted(list, fields.includes(dimension), (label) => findTermId(dimension, label)), limit)
+      // The terms belong to the dimension that the entries were resolved on; they are dropped when the axis moved to another one while they waited.
+      const now = latest()
+      if ((side === "row" ? now.row : now.col) !== started) return
+      if (result.terms !== null) setValues(side, result.terms)
+      onAlert(result.alert)
+    } finally {
+      setReplacing(false)
+    }
   }
 
   /** Takes a term, and on the rows the rows that hang under it in the tree on screen, off the axis. */
@@ -321,6 +364,7 @@ export const HeatmapTab = ({ state, condition, update, onAlert }: HeatmapTabProp
           setValues(dialogSide, null)
         }}
         onReplace={(entries) => void replace(dialogSide, entries)}
+        replacing={replacing}
       />
       <Card padding="none" flush busy={crosstab.isPlaceholderData}>
         <CardHeader>
@@ -443,7 +487,9 @@ export const HeatmapTab = ({ state, condition, update, onAlert }: HeatmapTabProp
                               aria-label={`${row.label} × ${col.label}: ${text}. Narrow the condition to this cell`}
                               aria-pressed={selected}
                               onClick={() => narrowCell([...row.clauses, ...col.clauses])}
-                              className={cn(className, "cursor-pointer hover:outline-2 hover:outline-selection")}
+                              disabled={stale}
+                              aria-disabled={stale || undefined}
+                              className={cn(className, !stale && "cursor-pointer hover:outline-2 hover:outline-selection")}
                               style={cellStyleProps}
                             >
                               {text}

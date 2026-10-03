@@ -36,6 +36,9 @@ const ID_CHAR_WIDTH = 5.7
  */
 const columnWidth = (cols: MatrixLabel[]): number => Math.max(74, ...cols.map((col) => (col.id ? Math.ceil(col.id.length * ID_CHAR_WIDTH) + 16 : 0)))
 
+/** The first `length` characters of a label, counted in code points so that a surrogate pair is not split. */
+const cut = (label: string, length: number): string => Array.from(label).slice(0, length).join("")
+
 export const matrixSvgSize = (data: Pick<MatrixExport, "rowLabels" | "colLabels">): { width: number; height: number } => ({
   width: 180 + data.colLabels.length * (columnWidth(data.colLabels) + 2) + 80,
   height: 60 + data.rowLabels.length * 34 + 30,
@@ -63,14 +66,14 @@ export const matrixSvg = (data: MatrixExport): string => {
   data.colLabels.forEach((col, j) => {
     const x = left + j * (cellW + 2) + cellW / 2
     parts.push(
-      `<text x="${x}" y="${col.id ? top - 24 : top - 12}" text-anchor="middle" fill="${token("--color-ink")}">${escapeXml(col.label.slice(0, 14))}</text>`,
+      `<text x="${x}" y="${col.id ? top - 24 : top - 12}" text-anchor="middle" fill="${token("--color-ink")}">${escapeXml(cut(col.label, 14))}</text>`,
     )
     if (col.id) parts.push(id(x, top - 11, col.id, "middle"))
   })
   parts.push(`<text x="${totalX}" y="${top - 12}" text-anchor="end" fill="${token("--color-ink-soft")}" font-weight="600">Row total</text>`)
   data.rowLabels.forEach((row, i) => {
     const y = top + i * (cellH + 2)
-    parts.push(`<text x="10" y="${row.id ? y + 13 : y + cellH / 2 + 4}" fill="${token("--color-ink")}">${escapeXml(row.label.slice(0, 26))}</text>`)
+    parts.push(`<text x="10" y="${row.id ? y + 13 : y + cellH / 2 + 4}" fill="${token("--color-ink")}">${escapeXml(cut(row.label, 26))}</text>`)
     if (row.id) parts.push(id(10, y + 26, row.id, "start"))
     data.colLabels.forEach((col, j) => {
       const cell = byKey.get(cellKey(row.value, col.value))

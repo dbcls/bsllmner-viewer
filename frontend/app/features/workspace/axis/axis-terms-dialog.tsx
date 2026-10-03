@@ -36,6 +36,8 @@ type AxisTermsDialogProps = {
   onReset: () => void
   /** Makes the pasted entries, in their order, the terms of the axis. */
   onReplace: (entries: string[]) => void
+  /** The pasted entries are being resolved, which can outlast the dialog. */
+  replacing: boolean
 }
 
 /**
@@ -64,6 +66,7 @@ const AxisTerms = ({
   onRemove,
   onReset,
   onReplace,
+  replacing,
 }: Omit<AxisTermsDialogProps, "open" | "onClose" | "title">) => {
   const [way, setWay] = useState<Way>("search")
   const [pasted, setPasted] = useState<string | null>(null)
@@ -122,7 +125,7 @@ const AxisTerms = ({
             </span>
             <Button
               size="sm"
-              disabled={entries.length === 0}
+              disabled={entries.length === 0 || replacing}
               onClick={() => {
                 onReplace(entries)
                 setPasted(null)

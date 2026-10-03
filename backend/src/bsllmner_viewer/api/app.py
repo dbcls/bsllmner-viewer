@@ -13,7 +13,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.datastructures import Headers, MutableHeaders
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from bsllmner_viewer.api.problems import REQUEST_ID_HEADER, ProblemDetails, install_problem_handlers
+from bsllmner_viewer.api.problems import (
+    REQUEST_ID_HEADER,
+    ProblemDetails,
+    UnhandledErrorMiddleware,
+    install_problem_handlers,
+)
 from bsllmner_viewer.api.routers import aggregations, dataset, dsl, entries, export, projects, service_info, terms
 from bsllmner_viewer.api.store import Store, store_path_from_env
 
@@ -105,6 +110,7 @@ def create_app(store_path: Path | None = None) -> FastAPI:
         contact={"name": "BioData Science Initiative", "url": "https://github.com/dbcls/bsllmner-viewer"},
         license_info={"name": "Apache-2.0", "url": "https://www.apache.org/licenses/LICENSE-2.0"},
     )
+    app.add_middleware(UnhandledErrorMiddleware)
     app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
     app.add_middleware(RequestIdMiddleware)
     install_problem_handlers(app)

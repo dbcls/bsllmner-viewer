@@ -29,7 +29,7 @@ export const TermSearch = () => {
   const active = query.trim() !== "" || !everyField
   const terms = useTerms(
     { ...(everyField ? {} : { field }), query: debounced, q: null, unit: "biosample", selfExclusion: true, limit: 20 },
-    active,
+    active && (!everyField || debounced !== ""),
   )
   const list = useResultListRef(terms.data?.query, terms.data?.field)
 

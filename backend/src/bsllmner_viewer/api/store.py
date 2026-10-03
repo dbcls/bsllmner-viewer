@@ -14,8 +14,7 @@ import orjson
 
 from bsllmner_viewer.dsl.fields import FieldSet
 from bsllmner_viewer.store.organisms import ORGANISM_NAMES
-from bsllmner_viewer.store.schema import SCHEMA_VERSION
-from bsllmner_viewer.store.version import DatasetVersion, read_version
+from bsllmner_viewer.store.version import DatasetVersion, SchemaVersionError, read_version, require_current_schema
 
 STORE_ENV = "BSLLMNER_VIEWER_STORE"
 
@@ -73,15 +72,11 @@ class Store:
 
 
 def _require_current_schema(con: duckdb.DuckDBPyConnection, path: Path) -> None:
-    """Stop when the store was written with another version of the store schema than the one this code reads."""
-    row = con.execute("SELECT value FROM store_meta WHERE key = 'schema_version'").fetchone()
-    found = None if row is None else int(orjson.loads(row[0]))
-    if found != SCHEMA_VERSION:
+    try:
+        require_current_schema(con, path)
+    except SchemaVersionError:
         con.close()
-        raise RuntimeError(
-            f"{path} has store schema version {found}, and this api reads version {SCHEMA_VERSION}; "
-            "write a new store with the refresh operation of the build"
-        )
+        raise
 
 
 def store_path_from_env() -> Path:

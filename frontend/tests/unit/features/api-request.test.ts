@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest"
 
 import {
   apiRequestsFor,
+  crosstabAxes,
   crosstabParams,
   distributionFields,
   distributionParams,
@@ -13,6 +14,20 @@ import {
 import { apiUrl } from "~/lib/api/client"
 import { crosstabQuery, distributionQuery, entriesQuery, projectsQuery, trendQuery } from "~/lib/api/queries"
 import { DEFAULTS, readState, type Tab, TABS, type WorkspaceState } from "~/lib/workspace-state"
+
+describe("crosstabAxes", () => {
+  it("draws a row and a column that differ when the URL names a column that the dataset lacks", () => {
+    const axes = crosstabAxes(readState(new URLSearchParams("tab=heatmap&row=cell_line&col=bogus")), ["cell_line", "tissue", "disease"])
+    expect(axes.row).toBe("cell_line")
+    expect(axes.col).not.toBe(axes.row)
+  })
+
+  it("keeps the column and takes another row when the URL names a row that the dataset lacks", () => {
+    const axes = crosstabAxes(readState(new URLSearchParams("tab=heatmap&row=bogus&col=cell_line")), ["cell_line", "tissue"])
+    expect(axes.col).toBe("cell_line")
+    expect(axes.row).not.toBe("cell_line")
+  })
+})
 
 const FIELDS = ["disease", "cell_line", "tissue", "drug"]
 

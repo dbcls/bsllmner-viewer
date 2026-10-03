@@ -52,7 +52,7 @@ const renderTrend = () => {
   const toggleNarrow = vi.fn()
   const condition = { isSelected: () => false, toggle, toggleNarrow } as unknown as Condition
   renderWithQuery(
-    <TrendTab state={{ ...DEFAULTS, tab: "trend", q: "disease:D:1", trendField: "disease", trendAll: true, trendCondition: true }} condition={condition} update={vi.fn()} onAlert={vi.fn()} />,
+    <TrendTab state={{ ...DEFAULTS, tab: "trend", q: "disease:D:1", trendField: "disease", trendAll: true, trendCondition: true }} condition={condition} update={vi.fn()} latest={() => DEFAULTS} replacing={false} setReplacing={vi.fn()} onAlert={vi.fn()} />,
   )
   return { toggle, toggleNarrow }
 }

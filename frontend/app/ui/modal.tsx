@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect } from "react"
+import { type ReactNode, useEffect, useRef } from "react"
 
 import { cn } from "./cn"
 import { SectionHeading } from "./heading"
@@ -30,10 +30,18 @@ export const Modal = ({ open, onClose, title, description, children, width = "md
     return () => window.removeEventListener("keydown", onKey)
   }, [open, onClose])
 
+  // A press that starts in the dialog and ends on the backdrop, such as selecting text, does not close the dialog.
+  const pressedBackdrop = useRef(false)
   if (!open) return null
   return (
     <div
-      onClick={onClose}
+      onMouseDown={(event) => {
+        pressedBackdrop.current = event.target === event.currentTarget
+      }}
+      onClick={(event) => {
+        if (pressedBackdrop.current && event.target === event.currentTarget) onClose()
+        pressedBackdrop.current = false
+      }}
       className={cn(
         "fixed inset-0 z-modal flex justify-center bg-overlay",
         align === "top" ? "items-start pt-20" : "items-center",

@@ -33,7 +33,7 @@ def test_full_build_equals_prefix_build_plus_append(synthetic: Synthetic, k: int
     all_runs = synthetic.run_names
     full = build_full(load_manifest(synthetic.manifest), tmp / "full.duckdb", workers=1)
     assert full.ok
-    prefix_manifest = synthetic.manifest_with_runs(all_runs[:k], tmp / "prefix.yaml")
+    prefix_manifest = synthetic.manifest_with_runs(all_runs[:k], synthetic.root / f"prefix{k}.yaml")
     prefix = build_full(load_manifest(prefix_manifest), tmp / "prefix.duckdb", workers=1)
     assert prefix.ok
     appended = build_append(

@@ -29,8 +29,10 @@ def service_version() -> str:
     response_model=ServiceInfoResponse,
     summary="Get service information",
     description=(
-        "The name, the version, and the state of the store. Returns 200 whether or not the store is available; "
-        "`store` reports the actual state. Intended for health monitoring."
+        "The name, the version, and the state of the store, for health monitoring. The api starts only with a store "
+        "that it can open and whose schema version its code reads, so a missing, invalid, or mismatched store stops "
+        "the process at startup. While the api runs, the response has status 200, and `store` is `ok` if the api can "
+        "query the store and `unavailable` if a query fails."
     ),
 )
 def get_service_info(store: StoreDep) -> ServiceInfoResponse:

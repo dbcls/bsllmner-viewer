@@ -10,6 +10,7 @@ import duckdb
 from bsllmner_viewer.api.problems import ApiError
 from bsllmner_viewer.api.queries.core import Population, population_years
 from bsllmner_viewer.api.schemas import Clause
+from bsllmner_viewer.dsl.canonical import ORGANISM_ID_MAX, YEAR_MAX, YEAR_MIN, canonical_int
 from bsllmner_viewer.dsl.fields import STATUS_GROUPS, FieldDef, FieldKind, FieldSet, expand_status
 
 DIMENSION_KINDS: frozenset[FieldKind] = frozenset({"term", "status", "assay", "organism", "date"})
@@ -67,12 +68,12 @@ def membership(dim: FieldDef, elements: list[str]) -> Membership:
         return Membership(
             "SELECT p.biosample, p.experiment, CAST(p.organism_id AS VARCHAR) AS element FROM pop p "
             f"WHERE p.organism_id IN ({placeholders})",
-            tuple(_int(e, "organism_id") for e in elements),
+            tuple(int(e) for e in elements),
         )
     return Membership(
         "SELECT p.biosample, p.experiment, CAST(p.year AS VARCHAR) AS element FROM pop p "
         f"WHERE p.year IN ({placeholders})",
-        tuple(_int(e, "year") for e in elements),
+        tuple(int(e) for e in elements),
     )
 
 
@@ -102,25 +103,37 @@ def default_elements(
         return list(STATUS_GROUPS)
     if dim.kind == "assay":
         rows = cur.execute(
-            f"WITH {pop_cte} SELECT p.library_strategy, count(*) AS n FROM pop p GROUP BY 1 ORDER BY n DESC, 1 LIMIT ?",
+            f"WITH {pop_cte} SELECT p.library_strategy, count(DISTINCT p.biosample) AS n FROM pop p "
+            "GROUP BY 1 ORDER BY n DESC, 1 LIMIT ?",
             [*pop_params, limit],
         ).fetchall()
         return [str(r[0]) for r in rows]
     if dim.kind == "organism":
         rows = cur.execute(
-            f"WITH {pop_cte} SELECT p.organism_id, count(*) AS n FROM pop p WHERE p.organism_id IS NOT NULL "
-            "GROUP BY 1 ORDER BY n DESC, 1 LIMIT ?",
+            f"WITH {pop_cte} SELECT p.organism_id, count(DISTINCT p.biosample) AS n FROM pop p "
+            "WHERE p.organism_id IS NOT NULL GROUP BY 1 ORDER BY n DESC, 1 LIMIT ?",
             [*pop_params, limit],
         ).fetchall()
         return [str(r[0]) for r in rows]
     return [str(year) for year in population_years(cur, pop)]
 
 
-def _int(value: str, what: str) -> int:
-    try:
-        return int(value)
-    except ValueError as e:
-        raise ApiError("invalid-element", 400, f"{what} element must be an integer: {value!r}") from e
+def check_elements(dim: FieldDef, elements: list[str]) -> None:
+    """Reject a named organism or year element that is not a canonical decimal number in range."""
+    if dim.kind == "organism":
+        low, high = 0, ORGANISM_ID_MAX
+    elif dim.kind == "date":
+        low, high = YEAR_MIN, YEAR_MAX
+    else:
+        return
+    for element in elements:
+        if canonical_int(element, minimum=low, maximum=high) is None:
+            raise ApiError(
+                "invalid-element",
+                400,
+                f"{dim.name} element must be an integer from {low} to {high} without a sign or a leading zero: "
+                f"{element!r}",
+            )
 
 
 def labels_for(
@@ -134,7 +147,7 @@ def labels_for(
         found = {str(t): str(label) if label else str(t) for t, label in rows}
         return {e: found.get(e, e) for e in elements}
     if dim.kind == "organism":
-        return {e: organisms.get(int(e)) or e for e in elements if e.lstrip("-").isdigit()}
+        return {e: organisms.get(int(e)) or e for e in elements}
     if dim.kind == "status":
         return {e: e.replace("_", " ") for e in elements}
     return {e: e for e in elements}

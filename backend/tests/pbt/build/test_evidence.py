@@ -14,6 +14,7 @@ from bsllmner_viewer.build.evidence import (
     TEXT_STRATEGIES,
     Span,
     Text,
+    _is_continuation,
     find,
     similar,
     trace,
@@ -120,3 +121,35 @@ def test_similar_words_shorter_than_six_characters_differ_at_most_in_one_confusa
     if min(len(a), len(b)) < 6 and a != b and similar(a, b):
         assert len(a) == len(b)
         assert sum(x != y for x, y in zip(a, b, strict=True)) == 1
+
+
+# Characters in both composed and decomposed forms, a combining mark alone, a Hangul syllable, and a ligature.
+_unicode_pieces = st.sampled_from(
+    ["e", "E", "u", "o", "a", "A", "X", "k", "1", " ", "-", "(", ")", "+", "\u00e9", "\u00c9", "e\u0301", "E\u0301",
+     "\u00fc", "u\u0308", "\u00dc", "\u0301", "\ud55c", "\u1112\u1161\u11ab", "\ufb01", "\u00df", "\uff21", "\u01c5"]
+)  # fmt: skip
+unicode_texts = st.lists(_unicode_pieces, max_size=14).map("".join)
+unicode_values = st.lists(_unicode_pieces, min_size=1, max_size=6).map("".join)
+
+
+def _summary(value: str, text: str) -> tuple[str, int, int] | None:
+    traced = trace(value, [[Text(text)]])
+    return None if traced is None else (traced.strategy, traced.group, len(traced.matches))
+
+
+@given(unicode_values, unicode_texts)
+def test_trace_strategy_does_not_change_when_the_value_and_the_text_are_both_composed_or_both_decomposed(
+    value: str, text: str
+) -> None:
+    composed = _summary(unicodedata.normalize("NFC", value), unicodedata.normalize("NFC", text))
+    decomposed = _summary(unicodedata.normalize("NFD", value), unicodedata.normalize("NFD", text))
+    assert composed == decomposed
+
+
+@given(st.sampled_from(TEXT_STRATEGIES), unicode_values, unicode_texts)
+def test_find_spans_start_and_end_between_units(strategy: EvidenceStrategy, value: str, text: str) -> None:
+    for form in ("NFC", "NFD"):
+        normalized = unicodedata.normalize(form, text)
+        for span in find(strategy, Text(unicodedata.normalize(form, value)), Text(normalized)):
+            assert span.start == 0 or not _is_continuation(normalized[span.start])
+            assert span.end == len(normalized) or not _is_continuation(normalized[span.end])

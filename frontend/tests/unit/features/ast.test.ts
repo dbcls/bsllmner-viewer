@@ -1,6 +1,7 @@
+import fc from "fast-check"
 import { describe, expect, it } from "vitest"
 
-import { clauseLabel, clausesOfField, conditionGroups, describeAst, leafToClause, leaves } from "~/features/workspace/ast"
+import { clauseLabel, clausesOfField, conditionGroups, describeAst, keywordLabel, leafToClause, leaves } from "~/features/workspace/ast"
 import type { AstNode, Clause } from "~/lib/api/types"
 
 const leaf = (field: string, value: string): AstNode => ({ field, op: "eq", value })
@@ -104,5 +105,22 @@ describe("clauseLabel", () => {
     expect(clauseLabel({ field: "date_published", from: "2015-01-01", to: "2020-12-31" }, {})).toBe("2015–2020")
     expect(clauseLabel({ field: "date_published", from: "2020-01-01", to: "2020-12-31" }, {})).toBe("2020")
     expect(clauseLabel({ field: "date_published", from: "2021-10-02", to: "2026-10-02" }, {})).toBe("2021-10-02 – 2026-10-02")
+  })
+})
+
+describe("keywordLabel", () => {
+  it("escapes a backslash and a double quote of a phrase as they are typed", () => {
+    expect(keywordLabel({ op: "free_text", value: "a\\b", is_phrase: true })).toBe('"a\\\\b"')
+    expect(keywordLabel({ op: "free_text", value: 'a"b', is_phrase: true })).toBe('"a\\"b"')
+    expect(keywordLabel({ op: "free_text", value: "a\\b", is_phrase: false })).toBe("a\\b")
+  })
+
+  it("reads back as the value when the escapes are undone", () => {
+    fc.assert(
+      fc.property(fc.string(), (value) => {
+        const label = keywordLabel({ op: "free_text", value, is_phrase: true })
+        expect(label.slice(1, -1).replace(/\\(.)/gs, "$1")).toBe(value)
+      }),
+    )
   })
 })

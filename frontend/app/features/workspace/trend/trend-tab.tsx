@@ -6,6 +6,7 @@ import { token } from "~/lib/color"
 import { downloadPng, downloadSvg, downloadTsv } from "~/lib/export"
 import { formatCount } from "~/lib/format"
 import { fieldLabel, organismLabel, unitLabel } from "~/lib/labels"
+import { TREND_LIMIT } from "~/lib/workspace-state"
 import { busyClass, Card, CardHeader, cn, InlineLabel, Select, Skeleton, Toggle } from "~/ui"
 
 import { AxisControls } from "../axis/axis-controls"
@@ -14,11 +15,11 @@ import { AxisTermsDialog } from "../axis/axis-terms-dialog"
 import { findTermId } from "../axis/find-term"
 import { expectedElements } from "../expected-elements"
 import { FigureExport } from "../figure-export"
-import type { Patch, WorkspaceState } from "../state"
+import type { Update, WorkspaceState } from "../state"
 import { TermIdHover } from "../term-id-hover"
 import type { Condition } from "../use-condition"
 import { ViewControls } from "../view-controls"
-import { TREND_LIMIT, trendLineField, trendParams } from "../view-requests"
+import { trendLineField, trendParams } from "../view-requests"
 import { trendFields } from "./field"
 import { gridLines, PLOT, showYearLabel, xForIndex, yForValue, yMax } from "./scale"
 import { yearChoices } from "./years"
@@ -31,13 +32,16 @@ const YEAR_LABEL_Y = 300
 const DATA_LABEL_GAP = 5
 
 const SERIES_COLORS = ["--color-series-1", "--color-series-2", "--color-series-3", "--color-series-4", "--color-series-5"]
-/** The number of lines of the elements: the top elements when the user chose none, and the most that the user can choose, one per color. */
-const LIMIT = TREND_LIMIT
 
 type TrendTabProps = {
   state: WorkspaceState
   condition: Condition
-  update: (patch: Patch) => void
+  update: Update
+  /** Reads the latest state of the URL, which can be newer than `state` after an await. */
+  latest: () => WorkspaceState
+  /** Pasted entries are being resolved. The state outlives the view, as the user can leave the view and come back meanwhile. */
+  replacing: boolean
+  setReplacing: (replacing: boolean) => void
   onAlert: (message: string) => void
 }
 
@@ -55,7 +59,7 @@ const onKey = (action: () => void) => (event: KeyboardEvent) => {
 const polylinePoints = (placed: Placed[]): string => placed.map(({ x, y }) => `${x},${y}`).join(" ")
 
 /** Counts per BioSample publication year: the condition, and one line per element of one dimension. */
-export const TrendTab = ({ state, condition, update, onAlert }: TrendTabProps) => {
+export const TrendTab = ({ state, condition, update, latest, replacing, setReplacing, onAlert }: TrendTabProps) => {
   const svgRef = useRef<SVGSVGElement>(null)
   const [termsOpen, setTermsOpen] = useState(false)
   const dataset = useDataset()
@@ -73,6 +77,8 @@ export const TrendTab = ({ state, condition, update, onAlert }: TrendTabProps) =
   const all = state.trendAll ? (data?.allEntries ?? []) : []
   const max = yMax([...all, ...total, ...series.flatMap((s) => s.points)].map((p) => p.count))
   const unit = unitLabel(state.unit)
+  /** The trend is the one of the previous condition, while the trend of the new condition is on its way. */
+  const stale = trend.isPlaceholderData
   const totalLabel = "Condition"
   const allLabel = "All entries"
 
@@ -87,13 +93,14 @@ export const TrendTab = ({ state, condition, update, onAlert }: TrendTabProps) =
    * stays, and selecting the point again widens the condition back to the population of the series.
    */
   const narrowPoint = (clauses: Clause[]) => {
-    if (data) void condition.toggleNarrow(data.populationQ, clauses)
+    if (data && !stale) void condition.toggleNarrow(data.populationQ, clauses, state.q)
   }
   // The terms that the URL names, when the user chose them: the lines on screen can still be those of the previous
   // terms while the trend of the new ones is on its way.
   const values = state.trendTerms ?? series.map((s) => s.value)
-  const setTerms = (next: string[] | null) => update({ trendTerms: next })
-  const limit = { max: LIMIT, subject: "A trend" }
+  // No terms left is the top terms.
+  const setTerms = (next: string[] | null) => update({ trendTerms: next?.length ? next : null })
+  const limit = { max: TREND_LIMIT, subject: "A trend" }
   const pick = (hit: TermHit) => {
     const result = toggleTerm(values, hit.termId, limit)
     if (result.alert !== null) onAlert(result.alert)
@@ -101,9 +108,16 @@ export const TrendTab = ({ state, condition, update, onAlert }: TrendTabProps) =
   }
   /** Makes the first pasted entries, up to the most lines a trend shows, the terms of the lines. */
   const replace = async (entries: string[]) => {
-    const result = await replaceTerms(entries, (list) => resolvePasted(list, fields.includes(split), (label) => findTermId(split, label)), limit)
-    if (result.terms !== null) setTerms(result.terms)
-    onAlert(result.alert)
+    setReplacing(true)
+    try {
+      const result = await replaceTerms(entries, (list) => resolvePasted(list, fields.includes(split), (label) => findTermId(split, label)), limit)
+      // The terms belong to the dimension that the entries were resolved on; they are dropped when the lines moved to another one while they waited.
+      if (latest().trendField !== state.trendField) return
+      if (result.terms !== null) setTerms(result.terms)
+      onAlert(result.alert)
+    } finally {
+      setReplacing(false)
+    }
   }
   const changeDimension = (dimension: string) => update({ trendField: dimension, trendTerms: null })
 
@@ -155,7 +169,7 @@ export const TrendTab = ({ state, condition, update, onAlert }: TrendTabProps) =
             dimension={split}
             dimensions={dimensions}
             elements={series}
-            pending={data === undefined ? expectedElements(split, dataset.data, LIMIT, state.trendTerms) : null}
+            pending={data === undefined ? expectedElements(split, dataset.data, TREND_LIMIT, state.trendTerms) : null}
             onDimension={changeDimension}
             onOpenTerms={() => setTermsOpen(true)}
           />
@@ -179,7 +193,7 @@ export const TrendTab = ({ state, condition, update, onAlert }: TrendTabProps) =
         elements={series}
         pending={null}
         explicit={state.trendTerms !== null}
-        limit={LIMIT}
+        limit={TREND_LIMIT}
         q={state.q}
         selectedNote="✓ in trend"
         onDimension={changeDimension}
@@ -187,6 +201,7 @@ export const TrendTab = ({ state, condition, update, onAlert }: TrendTabProps) =
         onRemove={(value) => setTerms(values.filter((v) => v !== value))}
         onReset={() => setTerms(null)}
         onReplace={(entries) => void replace(entries)}
+        replacing={replacing}
       />
       <Card padding="none" flush busy={trend.isPlaceholderData}>
         <CardHeader>
@@ -249,6 +264,7 @@ export const TrendTab = ({ state, condition, update, onAlert }: TrendTabProps) =
                       selected={(point) => point.count > 0 && condition.isSelected(point.clauses)}
                       pressable={(point) => point.count > 0}
                       onPress={(point) => narrowPoint(point.clauses)}
+                      disabled={stale}
                       hint="Narrow the condition to this point"
                     />
                   </g>
@@ -335,12 +351,14 @@ type PointMarksProps = {
   /** Whether pressing the point does anything; a point that is not pressable is a plain mark. */
   pressable: (point: TrendPoint) => boolean
   onPress: (point: TrendPoint) => void
+  /** Pressing does nothing for now; the points are drawn as not pressable. */
+  disabled?: boolean
   /** What pressing a point does, after its name. */
   hint: string
 }
 
 /** The points of one line: a button each when pressing does something, and a plain mark otherwise. */
-const PointMarks = ({ placed, color, width, name, selected, pressable, onPress, hint }: PointMarksProps) =>
+const PointMarks = ({ placed, color, width, name, selected, pressable, onPress, disabled = false, hint }: PointMarksProps) =>
   placed.map(({ point, x, y, r }) => {
     if (!pressable(point)) {
       return <circle key={point.year} cx={x} cy={y} r={r} fill={token("--color-surface")} stroke={color} strokeWidth={width} role="img" aria-label={name(point)} />
@@ -355,13 +373,14 @@ const PointMarks = ({ placed, color, width, name, selected, pressable, onPress, 
         fill={on ? token("--color-selection") : token("--color-surface")}
         stroke={color}
         strokeWidth={width}
-        className="cursor-pointer"
+        className={disabled ? undefined : "cursor-pointer"}
         role="button"
-        tabIndex={0}
+        tabIndex={disabled ? -1 : 0}
         aria-pressed={on}
+        aria-disabled={disabled || undefined}
         aria-label={`${name(point)}. ${hint}`}
-        onClick={() => onPress(point)}
-        onKeyDown={onKey(() => onPress(point))}
+        onClick={disabled ? undefined : () => onPress(point)}
+        onKeyDown={disabled ? undefined : onKey(() => onPress(point))}
       />
     )
   })

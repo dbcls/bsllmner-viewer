@@ -94,7 +94,7 @@ const Tree = ({ groups, condition, termFields }: TreeProps) => (
             {group.clauses.map((clause, clauseIndex) => (
               <Fragment key={`${clause.field}:${clause.value ?? clause.from}`}>
                 {clauseIndex > 0 && <span className="px-0.5 text-fs-badge leading-none font-bold tracking-widest text-brand">OR</span>}
-                <Chip name={clauseLabel(clause, condition.labels)} onRemove={() => void condition.toggle([clause])}>
+                <Chip name={clauseLabel(clause, condition.labels)} onRemove={() => void condition.remove([clause])}>
                   {clauseLabel(clause, condition.labels)}
                   {termFields.has(clause.field) && clause.value && (
                     <>

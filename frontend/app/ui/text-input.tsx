@@ -26,7 +26,8 @@ export const TextInput = ({ value, onChange, onEnter, size = "md", block, icon, 
       value={value}
       onChange={(event) => onChange(event.target.value)}
       onKeyDown={(event) => {
-        if (event.key === "Enter" && onEnter) {
+        // Enter that confirms a conversion of an input method is not a command; Safari reports it after the composition has ended, with keyCode 229.
+        if (event.key === "Enter" && onEnter && !event.nativeEvent.isComposing && event.keyCode !== 229) {
           event.preventDefault()
           onEnter()
         }

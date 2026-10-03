@@ -57,19 +57,24 @@ def _clause(clause: FieldClause, fields: FieldSet, alias: str) -> Predicate:
             [field_def.annotation_field, *statuses],
         )
     if field_def.kind == "assay":
-        return Predicate(f"{alias}.library_strategy = ?", [value])
+        return Predicate(_two_valued(f"{alias}.library_strategy = ?"), [value])
     if field_def.kind == "organism":
         assert isinstance(value, str)
-        return Predicate(f"{alias}.organism_id = ?", [int(value)])
+        return Predicate(_two_valued(f"{alias}.organism_id = ?"), [int(value)])
     if field_def.kind == "date":
         if op == "between":
             assert isinstance(value, Range)
-            return Predicate(f"{alias}.date_published BETWEEN ? AND ?", [value.from_, value.to])
-        return Predicate(f"{alias}.date_published = ?", [value])
+            return Predicate(_two_valued(f"{alias}.date_published BETWEEN ? AND ?"), [value.from_, value.to])
+        return Predicate(_two_valued(f"{alias}.date_published = ?"), [value])
     return Predicate(
         f"{alias}.biosample IN (SELECT biosample FROM biosample_bioproject WHERE bioproject = ?)",
         [value],
     )
+
+
+def _two_valued(predicate: str) -> str:
+    """A comparison on a column that can be NULL is false for a NULL, so that its negation is true."""
+    return f"COALESCE({predicate}, FALSE)"
 
 
 def _keyword(node: FreeText, alias: str) -> Predicate:

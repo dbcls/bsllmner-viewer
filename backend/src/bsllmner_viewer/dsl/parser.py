@@ -6,11 +6,13 @@ import re
 from pathlib import Path
 from typing import Any
 
-from lark import Lark, Token, Transformer, v_args
+from lark import Lark, Token, v_args
 from lark.exceptions import LarkError, UnexpectedCharacters, UnexpectedEOF, UnexpectedInput, UnexpectedToken
+from lark.visitors import Transformer_NonRecursive
 
 from bsllmner_viewer.dsl.ast import BoolOp, FieldClause, FreeText, Node, Position, Range
 from bsllmner_viewer.dsl.errors import DslError, ErrorType
+from bsllmner_viewer.dsl.validator import MAX_DEPTH, check_depth
 
 MAX_LENGTH = 4096
 
@@ -32,7 +34,7 @@ def _position(meta: Any) -> Position:
 
 
 @v_args(meta=True, inline=True)
-class _ToAst(Transformer):  # type: ignore[type-arg]
+class _ToAst(Transformer_NonRecursive):  # type: ignore[type-arg]
     def start(self, _meta: Any, expr: Node) -> Node:
         return expr
 
@@ -88,8 +90,8 @@ class _ToAst(Transformer):  # type: ignore[type-arg]
         return FreeText(value=" ".join(str(t) for t in toks), is_phrase=False, position=_position(_meta))
 
 
-def parse(dsl: str, *, max_length: int = MAX_LENGTH) -> Node:
-    """Parse a condition string. Raises DslError(unexpected_token) on syntax errors and empty input."""
+def check_length(dsl: str, max_length: int = MAX_LENGTH) -> None:
+    """Raise DslError(unexpected_token) when a condition string is longer than `max_length`."""
     if len(dsl) > max_length:
         raise DslError(
             type=ErrorType.unexpected_token,
@@ -97,6 +99,11 @@ def parse(dsl: str, *, max_length: int = MAX_LENGTH) -> Node:
             column=max_length + 1,
             length=1,
         )
+
+
+def parse(dsl: str, *, max_length: int = MAX_LENGTH) -> Node:
+    """Parse a condition string. Raises DslError(unexpected_token) on syntax errors and empty input."""
+    check_length(dsl, max_length)
     if not dsl.strip():
         raise DslError(type=ErrorType.unexpected_token, detail="empty query string", column=1, length=1)
     try:
@@ -131,4 +138,5 @@ def parse(dsl: str, *, max_length: int = MAX_LENGTH) -> Node:
     node: Any = _ToAst().transform(tree)
     if not isinstance(node, FreeText | FieldClause | BoolOp):
         raise DslError(type=ErrorType.unexpected_token, detail="query did not produce a valid AST", column=1, length=1)
+    check_depth(node, MAX_DEPTH)
     return node

@@ -7,8 +7,9 @@ from pathlib import Path
 import duckdb
 import pytest
 
+from bsllmner_viewer.build.errors import BuildError
 from bsllmner_viewer.build.evidence import ONTOLOGY_SYNONYM, Text, trace, trace_term
-from bsllmner_viewer.build.ingest import BuildError, build_full
+from bsllmner_viewer.build.ingest import build_full
 from bsllmner_viewer.build.manifest import load_manifest
 from bsllmner_viewer.build.mk2_filter_keys import MK2_FILTER_KEYS
 from bsllmner_viewer.store.metadata import ATTRIBUTE, DESCRIPTION, RECORD, description_items
@@ -242,7 +243,7 @@ def test_build_rejects_entries_missing_from_the_input(synthetic: Synthetic, tmp_
     original = inputs.read_text()
     inputs.write_text("\n".join(original.splitlines()[1:]) + "\n")
     try:
-        with pytest.raises(ValueError, match="not in the input file"):
+        with pytest.raises(BuildError, match="not in the input file"):
             build_full(load_manifest(synthetic.manifest), tmp_path / "z.duckdb", workers=1)
     finally:
         inputs.write_text(original)

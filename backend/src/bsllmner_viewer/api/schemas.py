@@ -345,8 +345,12 @@ class Evidence(ApiModel):
     name: str = Field(description="Name of the item of the original metadata that the evidence is in")
     metadata_index: int = Field(description="Position of that item in `metadata`")
     in_name: bool = Field(description="True if the evidence is in the name of an attribute, false if in the value")
-    start: int = Field(description="Position of the first character of the match in that name or value")
-    end: int = Field(description="Position after the last character of the match in that name or value")
+    start: int = Field(
+        description="Unicode code point offset of the first code point of the match in that name or value as stored"
+    )
+    end: int = Field(
+        description="Unicode code point offset after the last code point of the match in that name or value as stored"
+    )
     strategy: EvidenceStrategy = Field(description="The matching strategy that found the evidence")
 
 

@@ -41,8 +41,24 @@ describe("Modal", () => {
     expect(onClose).toHaveBeenCalledTimes(2)
     const backdrop = screen.getByRole("dialog").parentElement
     expect(backdrop).not.toBeNull()
+    fireEvent.mouseDown(backdrop as HTMLElement)
     fireEvent.click(backdrop as HTMLElement)
     expect(onClose).toHaveBeenCalledTimes(3)
+  })
+
+  it("does not close when the press starts in the dialog and ends on the backdrop", () => {
+    const onClose = vi.fn()
+    render(
+      <Modal open onClose={onClose} title="Choose a term">
+        <p>body</p>
+      </Modal>,
+    )
+    const backdrop = screen.getByRole("dialog").parentElement as HTMLElement
+    fireEvent.mouseDown(screen.getByText("body"))
+    fireEvent.click(backdrop)
+    expect(onClose).not.toHaveBeenCalled()
+    fireEvent.click(backdrop)
+    expect(onClose).not.toHaveBeenCalled()
   })
 
   it("ignores keys other than Escape", () => {

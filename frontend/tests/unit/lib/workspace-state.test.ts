@@ -18,6 +18,32 @@ describe("workspace state in the URL", () => {
     expect(state.unit).toBe(DEFAULTS.unit)
   })
 
+  it("reads an empty term list as the default and does not write one", () => {
+    const state = readState(new URLSearchParams("row_terms=&col_terms=,&trend_terms="))
+    expect([state.rowTerms, state.colTerms, state.trendTerms]).toEqual([null, null, null])
+    const params = writeState({ ...DEFAULTS, rowTerms: [], colTerms: [], trendTerms: [] })
+    expect([params.has("row_terms"), params.has("col_terms"), params.has("trend_terms")]).toEqual([false, false, false])
+  })
+
+  it("reads only four-digit years for the trend", () => {
+    const years = (text: string) => readState(new URLSearchParams(text)).trendFrom
+    expect(years("trend_from=2010")).toBe(2010)
+    expect(years("trend_from=99999999")).toBeNull()
+    expect(years("trend_from=999")).toBeNull()
+    expect(years("trend_from=1000000")).toBeNull()
+  })
+
+  it("reads a page that is not a safe positive integer as the first page", () => {
+    const page = (text: string) => readState(new URLSearchParams(`page=${text}`)).page
+    expect(page("3")).toBe(3)
+    for (const bad of ["1e21", "0x10", "9007199254740993", "-1", "0", "1.5", "abc", ""]) expect(page(bad)).toBe(1)
+  })
+
+  it("reads at most five trend terms", () => {
+    const terms = readState(new URLSearchParams("trend_terms=a,b,c,d,e,f,g")).trendTerms
+    expect(terms).toEqual(["a", "b", "c", "d", "e"])
+  })
+
   it("keeps the names of the parameters", () => {
     const search = workspaceSearch({
       rowTerms: ["A:1"],

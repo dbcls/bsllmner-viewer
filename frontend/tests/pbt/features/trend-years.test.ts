@@ -14,7 +14,8 @@ describe("yearChoices", () => {
       for (const list of [choices.from, choices.to]) {
         expect(list).toEqual([...list].sort((a, b) => a - b))
         expect(new Set(list).size).toBe(list.length)
-        list.forEach((year, index) => index > 0 && expect(year).toBe((list[index - 1] ?? 0) + 1))
+        const inside = list.filter((year) => first <= year && year <= last)
+        inside.forEach((year, index) => index > 0 && expect(year).toBe((inside[index - 1] ?? 0) + 1))
       }
       const start = from ?? first
       const end = to ?? last
@@ -37,4 +38,10 @@ describe("yearChoices", () => {
       }
     },
   )
+
+  test.prop({ span, far: fc.integer({ min: 100_000, max: 1_000_000_000 }) })("does not list the years between the data and a far chosen year", ({ span: { first, last }, far }) => {
+    const choices = yearChoices(first, last, far, null)
+    expect(choices.from.length).toBeLessThanOrEqual(last - first + 2)
+    expect(choices.to.length).toBeLessThanOrEqual(last - first + 2)
+  })
 })

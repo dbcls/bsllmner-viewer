@@ -16,7 +16,7 @@ The api follows the conventions of the [DDBJ Search API](https://ddbj.nig.ac.jp/
 - JSON property names and query parameter names are camelCase, for example `perPage` and `datasetVersion`. Field names of the condition DSL are snake_case, for example `organism_id`, as in the DSL of the DDBJ Search API.
 - Entry types use the names of the DDBJ Search API: `biosample`, `sra-experiment`, `sra-run`, and `bioproject`.
 - An organism is an object with `identifier` (the NCBI Taxonomy ID as a string) and `name`.
-- A paginated list returns `pagination` (`page`, `perPage`, `total`, and `hasNext`) and `items`. `page` starts at 1, and `perPage` is between 1 and 100.
+- A paginated list returns `pagination` (`page`, `perPage`, `total`, and `hasNext`) and `items`. `page` starts at 1, and `perPage` is between 1 and 100. A `page` after the last page returns status 200 with empty `items` and `hasNext` false, however large `page` is.
 - A `sort` parameter has the form `{field}:{direction}`, where `direction` is `asc` or `desc`.
 - Every response has an `X-Request-ID` header. If the request has an `X-Request-ID` header, then the response repeats its value. Otherwise, the api generates a UUID.
 - Cross-origin requests are allowed from every origin, with every method and header.
@@ -31,7 +31,9 @@ Errors are RFC 7807 Problem Details (`application/problem+json`) with `type`, `t
 
 ### Service information
 
-`GET /api/service-info` returns the name, the version, the description, and the state of the store (`ok` or `unavailable`). It returns status 200 even when the store is unavailable, and it is the endpoint for health monitoring.
+`GET /api/service-info` returns the name, the version, the description, and the state of the store (`ok` or `unavailable`). It is the endpoint for health monitoring.
+
+The api starts only with a store that it can open and whose schema version its code reads. If the store file is missing, is not a DuckDB file, or has another schema version, then the process stops at startup and the endpoint does not answer. While the api runs, the endpoint returns status 200. `store` is `ok` if the api can query the store, and `unavailable` if a query fails.
 
 ## Condition DSL
 
@@ -43,8 +45,8 @@ The grammar is the Lucene subset used by the DDBJ Search API search DSL (the `/d
 
 - `field:value`, `field:"phrase"`, and `field:[a TO b]`
 - keywords without a field: `hypoxia organoid` and `"breast cancer"`
-- phrases in double or single quotes: `"breast cancer"` and `'breast cancer'`. Inside a phrase, a backslash makes the next character part of the phrase.
-- `AND`, `OR`, and `NOT` (upper case), and grouping with `( )`
+- phrases in double or single quotes: `"breast cancer"` and `'breast cancer'`. Inside a phrase, `\"`, `\'`, and `\\` stand for a double quote, a single quote, and a backslash.
+- `AND`, `OR`, and `NOT` (upper case), and grouping with `( )`. An operator is followed by whitespace, the end of the condition, or one of the characters `( ) [ ] { } " ' : ^ ~ * ? /`. If another character follows it, then the operator is part of a word. For example, `NOT (a)` and `NOT(a)` are negations, and `NOTCH1` is one word.
 - The JSON representation of the AST has the same shape, with node types discriminated by `op`.
 
 `GET /api/dsl/parse` converts the string to the AST. The response has the shape of `/db-portal/parse` (`{ast}`) of the DDBJ Search API, with three properties added:
@@ -68,6 +70,7 @@ Compatibility covers the grammar and the AST shape. The set of fields and the ev
 | Publication date | `date_published:[2015-01-01 TO 2020-12-31]` | the BioSample's publication date is in the range |
 | BioProject | `bioproject:PRJNA123456` | the BioSample belongs to the given BioProject |
 
+- An `organism_id` value is a decimal number of ASCII digits with no sign and no leading zero, and at most 2147483647. Any other value is rejected with status 400 and slug `invalid-value`.
 - Annotation field names are the field names of the select configuration. `_status` is a suffix appended to a field name.
 - Other fields use the DDBJ Search API field name when the DDBJ Search API has a field for the same concept.
 - Statuses, status groups, and the evaluation of clauses against BioSamples and experiments are defined in [data-model.md](data-model.md).
@@ -94,13 +97,15 @@ An entry is a BioSample. `GET /api/entries/biosample` lists the BioSamples that 
 
 `GET /api/entries/biosample/{accession}` returns one BioSample with its original metadata ([data-model.md](data-model.md#entities)), its annotations with evidence, its experiments, and its BioProjects. The BioSample does not have to be in the population; its experiments show which of them are. Each annotation with a term also has the clause on its field and term, so that a client can make a condition from it.
 
-The original metadata is a list of items. Each item has its kind (`description`, `record`, or `attribute`), a name to show, and a value. The items come in this order of their kinds, so that the attributes come last and the items that describe the BioSample as a whole come first. Evidence identifies an item by its position in the list (`metadataIndex`). `inName` is true if the evidence is in the name of an attribute, and false if it is in the value of the item. `start` and `end` are character positions in that name or value. `strategy` is the matching strategy that found the evidence ([provenance.md](provenance.md#matching-strategies)).
+The original metadata is a list of items. Each item has its kind (`description`, `record`, or `attribute`), a name to show, and a value. The items come in this order of their kinds, so that the attributes come last and the items that describe the BioSample as a whole come first. Evidence identifies an item by its position in the list (`metadataIndex`). `inName` is true if the evidence is in the name of an attribute, and false if it is in the value of the item. `start` and `end` are Unicode code point offsets in that name or value as stored: `start` is the offset of the first code point of the match, and `end` is the offset after the last one. A character outside the Basic Multilingual Plane is one code point, so a client that indexes text in UTF-16 code units converts the offsets first. `strategy` is the matching strategy that found the evidence ([provenance.md](provenance.md#matching-strategies)).
 
 - The description is always returned: the title, the description paragraphs, the sample name, and the synonyms, named `Title`, `Description`, `Sample name`, and `Synonym`.
 - An item of the record is returned only when evidence of the BioSample points to it. It is named by a short name for its path in the input entry, such as `Owner` for `Owner.Name` and `Status` for `Status.when`. A path without a short name is its own name.
 - An attribute is named by its attribute name. The attributes leave out each attribute whose name bsllmner-mk2 lists in its `filter_keys.json` ([build.md](build.md#runs)) and that no evidence of the BioSample points to. Such an attribute records how the BioSample was submitted and archived, so it is shown only when an annotation of the BioSample was derived from it. For example, `INSDC center name` is left out, but a `Submitter Id` of `E-MTAB-13151:ChIP_ETO2_DMSO_rep1` stays when the ChIP antigen ETO2 was found in it. Keywords still match the values of the attributes that are left out, so a BioSample can match a keyword through a value that its page does not show.
 
-The exports return every matching entry as TSV or as newline-delimited JSON (`application/x-ndjson`), and every matching accession of a type as plain text with one accession per line. Accession lists exist for `biosample`, `sra-experiment`, `sra-run`, and `bioproject`.
+The exports return every matching entry as TSV or as newline-delimited JSON (`application/x-ndjson`), and every matching accession of a type as plain text. Accession lists exist for `biosample`, `sra-experiment`, `sra-run`, and `bioproject`.
+
+An accession list starts with one header line, and then has one accession per line. A client skips the header line, which starts with `#`. The header line has the form `# bsllmner-viewer <type> accessions; q=<q>; dataset=<name> <createdAt> <digest>`. `<q>` is the condition, and `<name>` is the name of the dataset. Both are JSON strings. In a JSON string, a line break and every non-ASCII character are escaped, such as `\n` and `\u00e9`, so the header is always one line. If the condition is empty, then `<q>` is `""`.
 
 In the TSV, a header line names the columns, and every row has as many cells as the header. A cell with several values joins them with `;`. After the entry columns come one column per annotation field. Each annotation in these columns is `value|termId|label|status`: always four parts in this order, with an empty part when the annotation has no value, no term, or no label. A client splits a cell on `;` and then each annotation on `|`. The characters that delimit a cell are percent-encoded inside a part (`%` as `%25`, `|` as `%7C`, `;` as `%3B`, tab as `%09`, carriage return as `%0D`, line feed as `%0A`), so a value that contains them still splits into the same four parts. In the other columns, a tab or a line break in a value is replaced with a space.
 
@@ -110,7 +115,7 @@ In the TSV, a header line names the columns, and every row has as many cells as 
 
 ## Aggregations
 
-An aggregation counts the matches of `q` per element along one or two **dimensions**, in a counting unit. A dimension is a DSL field, such as `disease`, `disease_status`, `library_strategy`, `date_published`, or `bioproject`. Every element carries a clause on each dimension of the aggregation that represents it, for example `disease:"MONDO:0007254"` for a bar of a distribution, or one clause per axis for a cell of a cross-tabulation.
+An aggregation counts the matches of `q` per element along one or two **dimensions**, in a counting unit. A dimension is a DSL field, such as `disease`, `disease_status`, `library_strategy`, or `date_published`. Every element carries a clause on each dimension of the aggregation that represents it, for example `disease:"MONDO:0007254"` for a bar of a distribution, or one clause per axis for a cell of a cross-tabulation.
 
 The two dimensions of a cross-tabulation are different fields, and the dimension of a trend is not `date_published`, because the trend already counts per year. `disease` and `disease_status` are different dimensions. A request that breaks either rule is rejected with status 400 and slug `invalid-dimension`.
 
@@ -135,8 +140,10 @@ Self-exclusion keeps every element of a dimension visible while one of its eleme
 If a request does not name the elements of a dimension, then the api chooses the elements.
 
 - For an annotation term dimension, the api chooses the terms that are assigned directly to the most BioSamples in the population of the aggregation. The count of a term includes its descendants, but the choice does not. A term that is only an ancestor of the assigned terms, such as the root of an ontology, is therefore not chosen.
+- For an assay dimension or an organism dimension, the api chooses the assays or the organisms of the most BioSamples in the population of the aggregation, whatever the counting unit of the request.
 - The api adds the elements that `q` names in a top-level clause, or in a top-level disjunction of clauses, on the dimension without `NOT`. A selected element is therefore present even if it is not one of the most frequent elements.
-- The api returns term, assay, and organism elements in descending order of their counts.
+- The api returns term, assay, and organism elements that it chose, and the elements that `q` names, in descending order of their counts in the counting unit of the request. The count of a term includes its descendants, and the count of a series of a trend is the sum of its counts over the years. Elements with the same count are in ascending order of the element, and organism IDs compare as numbers. The elements of a distribution, the rows and the columns of a cross-tabulation, and the series of a trend all follow this order. Elements that the request names with `elements`, `rowElements`, or `colElements` keep the order of the request.
+- A named organism element is an NCBI Taxonomy ID, and a named year element is a year from 1000 to 9999. Each is a decimal number of ASCII digits with no sign and no leading zero, and an organism ID is at most 2147483647. Any other element is rejected with status 400 and slug `invalid-element`.
 
 The term search (`GET /api/terms`) chooses its terms in the population that it counts them in. If the search text is empty, then it chooses the terms that are assigned directly to the most BioSamples of that population, as for the elements of an annotation term dimension. If the search text is not empty, then every term of the dataset whose label, synonym, or ID contains the text is a candidate. This includes a broad term that is counted only through its descendants, so that a user can find such a term and choose all of its descendants at once. The OpenAPI document describes the order of the hits.
 

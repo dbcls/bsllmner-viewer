@@ -49,6 +49,8 @@ export const SamplesTab = ({ state, onPage, onPerPage, search }: SamplesTabProps
   // A row opens its BioSample as its link does: a click with Cmd or Ctrl, or with the middle button, opens a new tab, which
   // has no list to return to; a plain click opens it here, with the list to return to.
   const openRow = (event: MouseEvent, accession: string) => {
+    // A link or a button in the row does its own work.
+    if (event.target instanceof Element && event.target.closest("a, button")) return
     if (event.metaKey || event.ctrlKey || event.button === 1) window.open(sampleHref(accession), "_blank", "noopener")
     else void navigate(sampleHref(accession), { state: backLinkState(search) })
   }

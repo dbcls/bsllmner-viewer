@@ -21,7 +21,7 @@ export const fieldOfStatusField = (field: string): string | null =>
   field.endsWith(STATUS_FIELD_SUFFIX) ? field.slice(0, -STATUS_FIELD_SUFFIX.length) : null
 
 export const fieldLabel = (field: string): string => {
-  if (field in FIELD_LABELS) return FIELD_LABELS[field] ?? field
+  if (Object.hasOwn(FIELD_LABELS, field)) return FIELD_LABELS[field] ?? field
   const annotated = fieldOfStatusField(field)
   if (annotated !== null) return `${fieldLabel(annotated)} status`
   return field.replaceAll("_", " ").replace(/^./, (c) => c.toUpperCase())
@@ -103,7 +103,7 @@ export const GROUP_LABELS: Record<StatusGroup, string> = {
 }
 
 export const statusInfo = (status: string): StatusInfo =>
-  STATUS_INFO[status as StatusCode] ?? { label: status, group: "no_value", meaning: "", mark: "dash", tone: "muted" }
+  (Object.hasOwn(STATUS_INFO, status) ? STATUS_INFO[status as StatusCode] : undefined) ?? { label: status, group: "no_value", meaning: "", mark: "dash", tone: "muted" }
 
 /** Whether a status says that the field has a value. */
 export const hasStatusValue = (status: string): boolean => statusInfo(status).group !== "no_value"
@@ -112,7 +112,7 @@ export const hasStatusValue = (status: string): boolean => statusInfo(status).gr
 export const VALUE_STATUSES: StatusCode[] = STATUS_ORDER.filter(hasStatusValue)
 
 export const statusLabel = (value: string): string =>
-  value in GROUP_LABELS ? GROUP_LABELS[value as StatusGroup] : statusInfo(value).label
+  Object.hasOwn(GROUP_LABELS, value) ? GROUP_LABELS[value as StatusGroup] : statusInfo(value).label
 
 const UNIT_LABELS: Record<Unit, string> = {
   biosample: "BioSamples",
@@ -127,3 +127,8 @@ export const unitLabel = (unit: Unit): string => UNIT_LABELS[unit]
  * "mixed sample" or "Homo sapiens/Mus musculus xenograft", have no abbreviation or italic form.
  */
 export const organismLabel = (id: string, name: string | null | undefined): string => name ?? id
+
+const ASSAY_LIST = new Intl.ListFormat("en", { type: "disjunction" })
+
+/** The assays joined as a sentence: "A", "A or B", or "A, B, or C". */
+export const assayList = (assays: readonly string[]): string => ASSAY_LIST.format(assays)

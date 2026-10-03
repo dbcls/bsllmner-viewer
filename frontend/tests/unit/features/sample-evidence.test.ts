@@ -8,6 +8,22 @@ describe("segmentText", () => {
     expect(segmentText("", [])).toEqual([{ text: "", matched: false, active: false }])
   })
 
+  it("reads the spans as code points and does not split a character outside the BMP", () => {
+    const text = "ChIPseq for HP1\u{1d6fe} in WT_Rep1"
+    expect(segmentText(text, [{ start: 12, end: 16 }])).toEqual([
+      { text: "ChIPseq for ", matched: false, active: false },
+      { text: "HP1\u{1d6fe}", matched: true, active: false },
+      { text: " in WT_Rep1", matched: false, active: false },
+    ])
+  })
+
+  it("clamps spans that start before the text or end after it", () => {
+    expect(segmentText("a\u{1d6fe}b", [{ start: 1, end: 99 }, { start: -5, end: 0 }])).toEqual([
+      { text: "a", matched: false, active: false },
+      { text: "\u{1d6fe}b", matched: true, active: false },
+    ])
+  })
+
   it("marks only the evidence of the active field when two fields have evidence in one value", () => {
     const text = "E-MTAB-13151:ChIP_ETO2_DMSO_rep1"
     const antigen = { start: 18, end: 22 }

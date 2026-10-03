@@ -15,6 +15,7 @@ from bsllmner_viewer.api.queries import aggregate
 from bsllmner_viewer.api.queries.core import Population, population
 from bsllmner_viewer.api.queries.dimensions import (
     NAMED_BY_CONDITION,
+    check_elements,
     clauses_for,
     default_elements,
     dimension,
@@ -40,6 +41,17 @@ LimitParam = Annotated[int, Query(ge=1, le=200, description="Number of elements 
 MAX_ELEMENTS = 500
 
 
+def _ordered(dim: FieldDef, named: str | None, chosen: list[str], counts: dict[str, int]) -> list[str]:
+    """The default elements of an axis in descending order of their count, and in ascending order of the element
+    among equal counts. Organism IDs compare as numbers, as in the query that chooses them. Named elements keep their
+    order."""
+    if split_csv(named) or dim.kind not in NAMED_BY_CONDITION:
+        return chosen
+    if dim.kind == "organism":
+        return sorted(chosen, key=lambda e: (-counts.get(e, 0), int(e)))
+    return sorted(chosen, key=lambda e: (-counts.get(e, 0), e))
+
+
 def _elements(
     cur: duckdb.DuckDBPyConnection,
     dim: FieldDef,
@@ -53,6 +65,7 @@ def _elements(
     if len(elements) > MAX_ELEMENTS:
         raise ApiError("too-many-elements", 400, f"at most {MAX_ELEMENTS} elements per dimension")
     if elements:
+        check_elements(dim, elements)
         return elements
     chosen = default_elements(cur, dim, pop, limit)
     if dim.kind in NAMED_BY_CONDITION:
@@ -91,8 +104,7 @@ def get_distribution(
         chosen = _elements(cur, dim, elements, ast, pop, limit)
         total = aggregate.population_total(cur, pop, unit)
         counts = aggregate.element_counts(cur, pop, dim, chosen, unit)
-        if not split_csv(elements) and dim.kind in NAMED_BY_CONDITION:
-            chosen = sorted(chosen, key=lambda e: (-counts.get(e, 0), e))
+        chosen = _ordered(dim, elements, chosen, counts)
         labels = labels_for(cur, dim, chosen, store.organism_names)
         out = aggregate.axis_elements(cur, pop, dim, chosen, unit, labels, counts)
         without_term: int | None = None
@@ -146,6 +158,8 @@ def get_crosstab(
         rows_chosen = _elements(cur, row_dim, row_elements, ast, pop, limit)
         cols_chosen = _elements(cur, col_dim, col_elements, ast, pop, limit)
         result = aggregate.crosstab(cur, pop, row_dim, rows_chosen, col_dim, cols_chosen, unit)
+        rows_chosen = _ordered(row_dim, row_elements, rows_chosen, result.row_counts)
+        cols_chosen = _ordered(col_dim, col_elements, cols_chosen, result.col_counts)
         row_labels = labels_for(cur, row_dim, rows_chosen, store.organism_names)
         col_labels = labels_for(cur, col_dim, cols_chosen, store.organism_names)
         row_elements_out = aggregate.axis_elements(cur, pop, row_dim, rows_chosen, unit, row_labels, result.row_counts)
@@ -238,6 +252,10 @@ def get_trend(
             pop = population(series_ast, store.field_set)
             chosen = _elements(cur, dim, elements, ast, pop, limit)
             series_years, counts = aggregate.trend(cur, pop, dim, chosen, unit)
+            over_years: dict[str, int] = {}
+            for (element, _year), n in counts.items():
+                over_years[element] = over_years.get(element, 0) + n
+            chosen = _ordered(dim, elements, chosen, over_years)
             span = _year_span([*span, *series_years])
         years = [y for y in span if (year_from is None or y >= year_from) and (year_to is None or y <= year_to)]
         if dim is not None:

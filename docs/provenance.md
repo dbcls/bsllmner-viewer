@@ -10,7 +10,7 @@ A piece of evidence identifies the following:
 
 - an item of the original metadata,
 - whether the match is in the name or in the value of the item,
-- the character range of the match, and
+- the range of the match in the text, as positions counted in Unicode code points from the start of the stored text, and
 - the matching strategy that found the match.
 
 Of the names of the items, build searches only the names of attributes. The submitter chose those names, and the api gives the names of the other items. A submitter sometimes writes a value as the name of an attribute, as in `spiperone treatment` with the value "yes".
@@ -35,15 +35,17 @@ build tries the strategies in the order of the following table. Each strategy ac
 
 The strategies use these definitions:
 
-- To fold a text is to apply Unicode Normalization Form KC (NFKC) and then case folding.
-- A match is at word boundaries if it does not cut a run of letters and digits. If the match starts with a letter or a digit, then the character before the match is not a letter or a digit. If the match ends with a letter or a digit, then the character after the match is not a letter or a digit. Word boundaries prevent a match inside a longer word. For example, `ATM` does not match "treatment", but `CD4+` matches "CD4+CD8+ T cells".
+- A unit is a character together with the combining marks and the Hangul vowel and final consonant jamo that follow it. A character that NFKC turns into one of them also continues the unit before it. For example, the half-width voiced mark U+FF9E continues the half-width kana before it. For example, the letter `é` is one unit, whether it is written as one code point (U+00E9) or as `e` and U+0301. A match never starts or ends inside a unit. The span of a match is always in the original text, and it covers whole units.
+- To fold a text is to apply Unicode Normalization Form KC (NFKC) to each unit, and then case folding. A composed text and a decomposed text therefore fold to the same text. For example, `Müller` matches "Müller" whichever form each of them uses.
+- A match is at word boundaries if it does not cut a run of letters and digits. If the match starts with a letter or a digit, then the character before the match is not a letter or a digit. If the match ends with a letter or a digit, then the character after the match is not a letter or a digit. A combining character counts as part of the letter before it. Word boundaries prevent a match inside a longer word. For example, `ATM` does not match "treatment", but `CD4+` matches "CD4+CD8+ T cells".
 - A word is a maximal run of letters and digits, together with the `+` and `-` signs right after it. A `+` or `-` that a letter or a digit follows joins two words and is not a sign. For example, `CD19+` and `CD19-` are different words, and "Long-Lived" and "GM+CSF" are two words each.
+- The length of a value is its number of units. A composed value and a decomposed value therefore have the same length.
 
 ### exact
 
 The text contains the value as it is, at word boundaries. A value of any length can match. For example, `AR` matches "AR knockdown".
 
-build searches for a value of fewer than three characters only with `exact`. A short value can also be an ordinary word in another letter case. For example, the drug `NO` (nitric oxide) does not match "No treatment".
+build searches for a value of fewer than three units only with `exact`. A short value can also be an ordinary word in another letter case. For example, the drug `NO` (nitric oxide) does not match "No treatment".
 
 ### case_insensitive
 
@@ -55,7 +57,7 @@ build folds the value and the text. Then it compares them in three forms:
 
 1. Each run of spaces, tabs, line breaks, hyphens, and underscores becomes one space. Each pair of brackets (`()`, `[]`, or `{}`) is removed together with its content. For example, `Sinoatrial node cells` matches "Sinoatrial node (SAN) cells".
 2. The same separators are removed. Brackets are removed together with their content. For example, `HEK293` matches "HEK 293".
-3. The same separators become one space. The bracket characters are removed, but their content stays. For example, `lung carcinoma` matches "lung (carcinoma) cell line".
+3. Each run of the same separators and bracket characters becomes one space. The content of the brackets stays. For example, `lung carcinoma` matches "lung (carcinoma) cell line".
 
 Slashes, periods, and other punctuation stay as they are in all three forms. If a form of the value has fewer than three characters, then that form does not match.
 

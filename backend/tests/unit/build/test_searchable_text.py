@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import random
 import re
 from collections.abc import Iterator
 
@@ -86,7 +87,10 @@ def con() -> Iterator[duckdb.DuckDBPyConnection]:
         "CREATE TABLE biosample "
         "(accession VARCHAR, title VARCHAR, organism_name VARCHAR, description JSON, attributes JSON)"
     )
-    connection.execute("CREATE TABLE annotation (biosample VARCHAR, extracted_value VARCHAR, term_label VARCHAR)")
+    connection.execute(
+        "CREATE TABLE annotation "
+        "(biosample VARCHAR, field VARCHAR, value_index INTEGER, extracted_value VARCHAR, term_label VARCHAR)"
+    )
     connection.execute("CREATE TABLE population (biosample VARCHAR)")
     yield connection
     connection.close()
@@ -106,8 +110,8 @@ def _add(
     attributes = None if values is None else json.dumps([{"name": "n", "value": v} for v in values])
     description = json.dumps([{"name": "Description", "value": v} for v in described])
     con.execute("INSERT INTO biosample VALUES (?, ?, ?, ?, ?)", [accession, title, organism, description, attributes])
-    for value, label in annotations:
-        con.execute("INSERT INTO annotation VALUES (?, ?, ?)", [accession, value, label])
+    for index, (value, label) in enumerate(annotations):
+        con.execute("INSERT INTO annotation VALUES (?, 'f', ?, ?, ?)", [accession, index, value, label])
     if in_population:
         con.execute("INSERT INTO population VALUES (?)", [accession])
 
@@ -231,3 +235,18 @@ def test_searchable_text_of_a_biosample_with_an_empty_attribute_list_still_holds
 ) -> None:
     _add(con, "S1", title="t1", values=[])
     assert " t1 " in _texts(con)["S1"]
+
+
+def test_searchable_text_orders_annotation_values_by_field_and_value_index_whatever_the_row_order(
+    con: duckdb.DuckDBPyConnection,
+) -> None:
+    con.execute("INSERT INTO biosample VALUES ('S1', NULL, NULL, '[]', NULL)")
+    con.execute("INSERT INTO population VALUES ('S1')")
+    keys = [(field, index) for field in ("a", "b", "c") for index in range(1000)]
+    shuffled = random.Random(0).sample(keys, len(keys))
+    con.executemany("INSERT INTO annotation VALUES ('S1', ?, ?, ?, NULL)", [(f, i, f"{f}{i:04d}") for f, i in shuffled])
+    con.execute("SET threads = 4")
+    expected = " | ".join(f"{f}{i:04d}" for f, i in keys)
+    for _ in range(2):
+        con.execute("DROP TABLE IF EXISTS searchable_text")
+        assert expected in _texts(con)["S1"]

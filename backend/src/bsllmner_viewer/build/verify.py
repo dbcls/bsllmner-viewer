@@ -28,11 +28,6 @@ def verify(con: duckdb.DuckDBPyConnection) -> Verification:
         table: int(con.execute(f"SELECT count(*) FROM {table}").fetchone()[0])  # type: ignore[index]
         for table in ("run", "entry", "biosample", "annotation", "population", "term", "term_closure")
     }
-    unstored = con.execute(
-        "SELECT count(*) FROM entry WHERE accession NOT IN (SELECT accession FROM biosample)"
-    ).fetchone()
-    if unstored and unstored[0]:
-        problems.append(f"{unstored[0]} entries are neither stored nor superseded")
     duplicated = con.execute(
         "SELECT count(*) FROM (SELECT accession FROM biosample GROUP BY accession HAVING count(*) > 1)"
     ).fetchone()

@@ -10,9 +10,11 @@ from pathlib import Path
 
 import duckdb
 import orjson
+import yaml
 
-from bsllmner_viewer.build.ingest import BuildError, build_append, build_full, build_refresh
-from bsllmner_viewer.build.manifest import load_manifest
+from bsllmner_viewer.build.errors import BuildError
+from bsllmner_viewer.build.ingest import build_append, build_full, build_refresh
+from bsllmner_viewer.build.manifest import Manifest, load_manifest
 from bsllmner_viewer.build.verify import Verification, verify
 from bsllmner_viewer.store.version import read_version
 
@@ -54,13 +56,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO if args.verbose else logging.WARNING, format="%(asctime)s %(message)s")
     try:
         if args.command == "full":
-            result = build_full(load_manifest(args.manifest), args.out, workers=args.workers, threads=args.threads)
+            result = build_full(_manifest(args.manifest), args.out, workers=args.workers, threads=args.threads)
         elif args.command == "append":
             result = build_append(
-                load_manifest(args.manifest), args.store, args.out, workers=args.workers, threads=args.threads
+                _manifest(args.manifest), args.store, args.out, workers=args.workers, threads=args.threads
             )
         elif args.command == "refresh":
-            result = build_refresh(load_manifest(args.manifest), args.store, args.out, threads=args.threads)
+            result = build_refresh(_manifest(args.manifest), args.store, args.out, threads=args.threads)
         elif args.command == "verify":
             con = duckdb.connect(str(args.store), read_only=True)
             try:
@@ -80,6 +82,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         sys.stderr.write(f"error: {e}\n")
         return 1
     return _report(result)
+
+
+def _manifest(path: Path) -> Manifest:
+    try:
+        return load_manifest(path)
+    except (ValueError, OSError, yaml.YAMLError) as e:
+        raise BuildError(f"manifest {path}: {e}") from e
 
 
 def _report(result: Verification) -> int:

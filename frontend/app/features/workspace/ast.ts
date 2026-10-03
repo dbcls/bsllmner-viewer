@@ -13,7 +13,7 @@ export type Keyword = Extract<AstNode, { op: "free_text" }>
 export const isKeyword = (node: AstNode): node is Keyword => node.op === "free_text"
 
 /** A keyword as it is typed: a phrase in double quotes, words as they are. */
-export const keywordLabel = (node: Keyword): string => (node.is_phrase ? `"${node.value.replaceAll('"', '\\"')}"` : node.value)
+export const keywordLabel = (node: Keyword): string => (node.is_phrase ? `"${node.value.replaceAll("\\", "\\\\").replaceAll('"', '\\"')}"` : node.value)
 
 /** Top-level conjuncts of a condition. */
 export const conjuncts = (ast: AstNode | null): AstNode[] => {

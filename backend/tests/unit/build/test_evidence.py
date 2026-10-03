@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import unicodedata
+from collections.abc import Callable
+
 import pytest
 
 from bsllmner_viewer.build.evidence import (
@@ -9,7 +12,9 @@ from bsllmner_viewer.build.evidence import (
     FUZZY,
     NORMALIZED,
     ONTOLOGY_SYNONYM,
+    TEXT_STRATEGIES,
     Text,
+    find,
     similar,
     trace,
     trace_term,
@@ -194,3 +199,56 @@ def test_the_strategy_type_names_every_strategy_of_build() -> None:
     from bsllmner_viewer.store.metadata import EvidenceStrategy
 
     assert get_args(EvidenceStrategy.__value__) == (*TEXT_STRATEGIES, ONTOLOGY_SYNONYM)
+
+
+def _nfc(text: str) -> str:
+    return unicodedata.normalize("NFC", text)
+
+
+def _nfd(text: str) -> str:
+    return unicodedata.normalize("NFD", text)
+
+
+@pytest.mark.parametrize("convert_value", [_nfc, _nfd])
+@pytest.mark.parametrize("convert_text", [_nfc, _nfd])
+def test_trace_with_composed_or_decomposed_forms_matches_with_the_span_on_whole_units(
+    convert_value: Callable[[str], str], convert_text: Callable[[str], str]
+) -> None:
+    text = convert_text("A M\u00fcller cell line")
+    traced = trace(convert_value("m\u00fcller cell"), [[Text(text)]])
+    assert traced is not None
+    assert traced.strategy == CASE_INSENSITIVE
+    (match,) = traced.matches
+    assert text[match.span.start : match.span.end] == convert_text("M\u00fcller cell")
+
+
+@pytest.mark.parametrize("convert", [_nfc, _nfd])
+def test_trace_with_a_value_that_ends_before_a_combining_character_does_not_match(
+    convert: Callable[[str], str],
+) -> None:
+    for strategy in TEXT_STRATEGIES:
+        assert find(strategy, Text("Jose"), Text(convert("Jos\u00e9 lab"))) == []
+    assert trace("Jose", [[Text(convert("Jos\u00e9 lab"))]]) is None
+
+
+@pytest.mark.parametrize("convert", [_nfc, _nfd])
+def test_text_words_with_a_combining_character_keep_the_unit_in_one_word(convert: Callable[[str], str]) -> None:
+    text = Text(convert("M\u00fcller \u00e9clair"))
+    assert [(w.folded, text.raw[w.start : w.end]) for w in text.words()] == [
+        (_nfc("m\u00fcller"), convert("M\u00fcller")),
+        (_nfc("\u00e9clair"), convert("\u00e9clair")),
+    ]
+
+
+@pytest.mark.parametrize("convert", [_nfc, _nfd])
+def test_trace_with_a_short_value_counts_its_units_and_not_its_code_points(convert: Callable[[str], str]) -> None:
+    value = convert("M\u00fc")
+    assert trace(value, [[Text(convert("m\u00dc cell"))]]) is None
+    assert trace(value, [[Text(convert("M\u00fc cell"))]]) is not None
+
+
+def test_trace_with_a_camel_case_boundary_after_a_unit_does_not_depend_on_the_form() -> None:
+    for convert in (_nfc, _nfd):
+        traced = trace("Cre", [[Text(convert("\u00e9Cre"))]])
+        assert traced is not None
+        assert traced.strategy == NORMALIZED

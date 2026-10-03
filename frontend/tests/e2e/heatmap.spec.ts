@@ -36,6 +36,8 @@ test.describe("heatmap", () => {
     await expectParam(page, "tab", "heatmap")
     await expect(cellButton(page, row.label, col.label)).toHaveAttribute("aria-pressed", "true")
     await expect(cell(page, row.label, col.label)).toHaveText(formatCount(target.count))
+    // A cell of the table of the previous condition does not respond until the table of the new condition is drawn.
+    await expect(page.locator('[aria-busy="true"]')).toHaveCount(0)
     await cellButton(page, row.label, col.label).click()
     await expectQ(page, data.populationQ)
     await expect(cellButton(page, row.label, col.label)).toHaveAttribute("aria-pressed", "false")

@@ -16,7 +16,9 @@ from bsllmner_viewer.api.schemas import (
 )
 from bsllmner_viewer.api.store import Store
 from bsllmner_viewer.dsl.ast import Node, normalize
+from bsllmner_viewer.dsl.errors import DslError, ErrorType
 from bsllmner_viewer.dsl.keyword import keyword_text, typed_keywords
+from bsllmner_viewer.dsl.parser import check_length
 from bsllmner_viewer.dsl.serde import ast_to_json
 from bsllmner_viewer.dsl.transform import narrow, replace_keywords, select_element, selected_clauses
 from bsllmner_viewer.dsl.validator import validate
@@ -34,9 +36,12 @@ def _condition_response(store: Store, ast: Node | None) -> ConditionResponse:
     if ast is not None:
         ast = normalize(ast)
         validate(ast, store.field_set)
+    dsl = q_of(ast)
+    if dsl is not None:
+        check_length(dsl)
     return ConditionResponse(
         dataset_version=version_ref(store),
-        dsl=q_of(ast),
+        dsl=dsl,
         ast=None if ast is None else _ast_model(store, ast),
         labels=condition_labels(store, ast),
         selected=[to_api_clause(c) for c in selected_clauses(ast)],
@@ -52,10 +57,13 @@ def _condition_response(store: Store, ast: Node | None) -> ConditionResponse:
 )
 def parse_dsl(store: StoreDep, q: str = Query(min_length=1)) -> ParseResponse:
     ast = parse_condition(store, q)
-    assert ast is not None
+    if ast is None:
+        raise DslError(type=ErrorType.unexpected_token, detail="empty query string", column=1, length=1)
+    canonical = q_of(ast) or ""
+    check_length(canonical)
     return ParseResponse(
         dataset_version=version_ref(store),
-        q=q_of(ast) or "",
+        q=canonical,
         ast=_ast_model(store, ast),
         labels=condition_labels(store, ast),
         selected=[to_api_clause(c) for c in selected_clauses(ast)],

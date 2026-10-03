@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react"
+import { fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 
@@ -26,6 +26,17 @@ describe("TextInput", () => {
     render(<TextInput value="" onChange={onChange} onEnter={onEnter} icon="search" aria-label="Search terms" />)
     await user.type(screen.getByRole("textbox", { name: "Search terms" }), "a{Enter}")
     expect(onChange).toHaveBeenCalledWith("a")
+    expect(onEnter).toHaveBeenCalledOnce()
+  })
+
+  it("ignores Enter while an input method is composing", () => {
+    const onEnter = vi.fn()
+    render(<TextInput value="" onChange={vi.fn()} onEnter={onEnter} aria-label="Keyword" />)
+    const input = screen.getByRole("textbox", { name: "Keyword" })
+    fireEvent.keyDown(input, { key: "Enter", isComposing: true })
+    fireEvent.keyDown(input, { key: "Enter", keyCode: 229 })
+    expect(onEnter).not.toHaveBeenCalled()
+    fireEvent.keyDown(input, { key: "Enter" })
     expect(onEnter).toHaveBeenCalledOnce()
   })
 })

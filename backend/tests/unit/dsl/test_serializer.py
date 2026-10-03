@@ -88,7 +88,8 @@ def test_serialize_value_starting_with_a_single_quote_is_quoted_because_it_would
     assert node.value_kind == "phrase"
     assert serialize(node) == 'tissue:"\'x"'
     assert structurally_equal(parse(serialize(node)), node)
-    assert serialize(FreeText("x 's")) == '"x \'s"'
+    assert serialize(FreeText("x 's")) == "x 's"
+    assert serialize(FreeText("'x y")) == '"\'x y"'
 
 
 def test_serialize_single_quote_inside_or_at_the_end_of_a_word_stays_bare() -> None:

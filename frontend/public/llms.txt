@@ -30,7 +30,7 @@ Every query takes one condition string, `q`. The language is the Lucene subset o
 - `GET /api/crosstab?row=&col=&q=`: counts per pair of two fields, with expected counts that reveal gaps
 - `GET /api/trend?q=`: counts per year of BioSample publication
 - `GET /api/projects?q=`: BioProjects of the matching BioSamples
-- `GET /api/export/accessions/{type}?q=`: every matching accession of `biosample`, `sra-experiment`, `sra-run`, or `bioproject`, one per line
+- `GET /api/export/accessions/{type}?q=`: every matching accession of `biosample`, `sra-experiment`, `sra-run`, or `bioproject`, as one `#` header line and then one accession per line
 
 ## Notes
 

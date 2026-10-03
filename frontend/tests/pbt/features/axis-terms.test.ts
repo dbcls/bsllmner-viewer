@@ -16,7 +16,7 @@ describe("axisTermsText", () => {
     "gives back the same terms in the same order, without a lookup, when it is replaced as it is on an annotation field",
     async (values) => {
       const findTerm = vi.fn(never)
-      expect(await resolvePasted(pastedLines(axisTermsText(values)), true, findTerm)).toEqual(values)
+      expect((await resolvePasted(pastedLines(axisTermsText(values)), true, findTerm)).terms).toEqual(values)
       expect(findTerm).not.toHaveBeenCalled()
     },
   )
@@ -25,7 +25,7 @@ describe("axisTermsText", () => {
     "gives back the same elements in the same order when it is replaced as it is on another dimension",
     async (values) => {
       const findTerm = vi.fn(never)
-      expect(await resolvePasted(pastedLines(axisTermsText(values)), false, findTerm)).toEqual(values)
+      expect((await resolvePasted(pastedLines(axisTermsText(values)), false, findTerm)).terms).toEqual(values)
       expect(findTerm).not.toHaveBeenCalled()
     },
   )
@@ -41,18 +41,38 @@ describe("resolvePasted", () => {
         return Promise.resolve(labels.get(label) ?? null)
       })
       const expected = [...new Set(entries.map((entry) => (entry.includes(":") ? entry : labels.get(entry) ?? (entry.length % 2 === 0 ? `TERM:${entry}` : null))).filter((v): v is string => v !== null))]
-      expect(await resolvePasted(entries, true, findTerm)).toEqual(expected)
+      expect((await resolvePasted(entries, true, findTerm)).terms).toEqual(expected)
       expect(findTerm.mock.calls.every(([label]) => !label.includes(":"))).toBe(true)
     },
   )
 
-  it("reads entries separated by new lines, commas, and semicolons, and skips blank ones", () => {
-    expect(pastedLines(" MCF-7 \n\nHeLa, K-562;;A-549 \n")).toEqual(["MCF-7", "HeLa", "K-562", "A-549"])
+  it("reads one entry per line and skips blank ones", () => {
+    expect(pastedLines(" MCF-7 \n\r\nHeLa \n\nK-562\n")).toEqual(["MCF-7", "HeLa", "K-562"])
+  })
+
+  it("keeps a comma and a semicolon inside an entry", () => {
+    expect(pastedLines("CD4-positive, alpha-beta T cell\nRS4;11")).toEqual(["CD4-positive, alpha-beta T cell", "RS4;11"])
   })
 
   it("gives nothing for a list of blanks", async () => {
-    expect(await resolvePasted(pastedLines(" \n , ; "), true, never)).toEqual([])
+    expect((await resolvePasted(pastedLines(" \n \t\n"), true, never)).terms).toEqual([])
   })
+
+  it("takes only an entry of a prefix, a colon, and a local ID without blanks as a term ID", async () => {
+    const findTerm = vi.fn((label: string) => Promise.resolve(`FOUND:${label.length}`))
+    const result = await resolvePasted(["MONDO:0007254", "type 2: diabetes", "a: b", "stage:"], true, findTerm)
+    expect(findTerm.mock.calls.map(([label]) => label)).toEqual(["type 2: diabetes", "a: b", "stage:"])
+    expect(result.terms[0]).toBe("MONDO:0007254")
+  })
+
+  test.prop([fc.array(fc.oneof(termId, fc.stringMatching(/^[a-z]{1,6}$/)), { maxLength: 20 })])(
+    "counts the entries that are repeats as recognised and the labels that name nothing as missed",
+    async (entries) => {
+      const result = await resolvePasted(entries, true, (label) => Promise.resolve(label.length % 2 === 0 ? `TERM:${label}` : null))
+      const named = entries.filter((entry) => entry.includes(":") || entry.length % 2 === 0)
+      expect(result.missed).toBe(entries.length - named.length)
+    },
+  )
 })
 
 const dimension = fc.constantFrom("cell_line", "tissue", "disease", "library_strategy")
@@ -125,9 +145,19 @@ describe("replaceTerms", () => {
       }
       expect(result.terms).toEqual(unique.slice(0, max))
       expect(result.terms?.length).toBeLessThanOrEqual(max)
-      expect(result.alert).toBe(unique.length > max ? `The first ${max} of ${unique.length} terms are shown` : `${unique.length} of ${entries.length} terms recognised`)
+      expect(result.alert).toBe(unique.length > max ? `The first ${max} of ${unique.length} terms are shown` : `${entries.length} of ${entries.length} terms recognised`)
     },
   )
+
+  it("counts a repeated term as recognised", async () => {
+    const result = await replaceTerms(["A:1", "A:1", "B:2"], (list) => resolvePasted(list, true, never))
+    expect(result).toEqual({ terms: ["A:1", "B:2"], alert: "3 of 3 terms recognised" })
+  })
+
+  it("does not count the labels that name nothing as recognised", async () => {
+    const result = await replaceTerms(["A:1", "nothing", "also nothing"], (list) => resolvePasted(list, true, () => Promise.resolve(null)))
+    expect(result).toEqual({ terms: ["A:1"], alert: "1 of 3 terms recognised" })
+  })
 
   it("keeps every term when there is no limit", async () => {
     const entries = Array.from({ length: 600 }, (_, i) => `T:${i}`)

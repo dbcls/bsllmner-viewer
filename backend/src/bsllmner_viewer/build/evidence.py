@@ -10,6 +10,7 @@ import re
 import unicodedata
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from functools import cache
 from typing import Final
 
 from bsllmner_viewer.store.metadata import EvidenceStrategy
@@ -75,18 +76,47 @@ class _Word:
     end: int
 
 
-def _fold_char(ch: str) -> str:
-    return unicodedata.normalize("NFKC", ch).casefold()
+def _is_continuation(ch: str) -> bool:
+    """Whether the character continues the unit of the character before it.
+
+    These are the combining marks, the Hangul vowel and final consonant jamo, and the characters that NFKC turns into
+    one of them (the half-width voiced marks and the Hangul compatibility vowels). Such a character composes with the
+    character before it.
+    """
+    return ch >= "\u0300" and _continues(ch)
+
+
+@cache
+def _continues(ch: str) -> bool:
+    return any(
+        unicodedata.category(c)[0] == "M" or "\u1160" <= c <= "\u11ff" or "\ud7b0" <= c <= "\ud7ff"
+        for c in unicodedata.normalize("NFKD", ch)[:1]
+    )
+
+
+def _units(raw: str) -> list[tuple[int, int]]:
+    """The (start, end) of each unit of the text: a character with the combining characters after it.
+
+    NFKC composes only within a unit, so a precomposed character and its decomposed form fold to the same text, and a
+    position between two units is a position in the text for both forms.
+    """
+    starts = [i for i, ch in enumerate(raw) if i == 0 or not _is_continuation(ch)]
+    return list(zip(starts, [*starts[1:], len(raw)], strict=True))
+
+
+def _fold_unit(unit: str) -> str:
+    return unicodedata.normalize("NFKC", unit).casefold()
 
 
 class Text:
     """A text to search, or a value to search for, with the forms that the strategies compare.
 
     Each form is computed when a strategy first needs it, so a text in which every value matches `exact` is never
-    folded.
+    folded. The text is a sequence of units (a character with the combining characters after it), and a match never
+    starts or ends inside a unit.
     """
 
-    __slots__ = ("_folded", "_normalized", "_origin", "_words", "raw")
+    __slots__ = ("_folded", "_normalized", "_origin", "_unit_ends", "_words", "raw")
 
     def __init__(self, raw: str) -> None:
         self.raw = raw
@@ -94,18 +124,31 @@ class Text:
         self._origin: list[int] = []
         self._normalized: dict[int, tuple[str, list[int]]] = {}
         self._words: list[_Word] | None = None
+        self._unit_ends: dict[int, int] | None = None
+
+    def length(self) -> int:
+        """The number of units, which does not depend on whether the text is composed or decomposed."""
+        return len(self.raw) if self.raw.isascii() else len(_units(self.raw))
+
+    def end_of(self, start: int) -> int:
+        """The end of the unit that starts at `start`."""
+        if self.raw.isascii():
+            return start + 1
+        if self._unit_ends is None:
+            self._unit_ends = dict(_units(self.raw))
+        return self._unit_ends[start]
 
     def folded(self) -> tuple[str, list[int]]:
-        """The folded text, and for each of its characters the position of the character it came from."""
+        """The folded text, and for each of its characters the position of the unit it came from."""
         if self._folded is None:
             if self.raw.isascii():
                 self._folded, self._origin = self.raw.lower(), list(range(len(self.raw)))
             else:
                 chars: list[str] = []
-                for index, ch in enumerate(self.raw):
-                    for folded in _fold_char(ch):
+                for start, end in _units(self.raw):
+                    for folded in _fold_unit(self.raw[start:end]):
                         chars.append(folded)
-                        self._origin.append(index)
+                        self._origin.append(start)
                 self._folded = "".join(chars)
         return self._folded, self._origin
 
@@ -118,9 +161,19 @@ class Text:
 
     def words(self) -> list[_Word]:
         if self._words is None:
-            self._words = [
-                _Word("".join(_fold_char(ch) for ch in m.group()), m.start(), m.end()) for m in _WORD.finditer(self.raw)
-            ]
+            if self.raw.isascii():
+                self._words = [_Word(m.group().lower(), m.start(), m.end()) for m in _WORD.finditer(self.raw)]
+            else:
+                units = _units(self.raw)
+                bases = "".join(self.raw[start] for start, _ in units)
+                self._words = [
+                    _Word(
+                        "".join(_fold_unit(self.raw[a:b]) for a, b in units[m.start() : m.end()]),
+                        units[m.start()][0],
+                        units[m.end() - 1][1],
+                    )
+                    for m in _WORD.finditer(bases)
+                ]
         return self._words
 
 
@@ -159,33 +212,47 @@ def _normalize(chars: str, origin: list[int], *, strip: bool, keep_brackets: boo
     return "".join(out), out_origin
 
 
+def _base(raw: str, i: int) -> str:
+    """The first character of the unit that holds the character at `i`."""
+    while i > 0 and _is_continuation(raw[i]):
+        i -= 1
+    return raw[i]
+
+
+def _in_word(raw: str, i: int) -> bool:
+    """Whether the unit that holds the character at `i` is a letter or a digit."""
+    return _base(raw, i).isalnum()
+
+
 def _run_before(raw: str, start: int) -> str:
     i = start
-    while i > 0 and raw[i - 1].isalnum():
+    while i > 0 and _in_word(raw, i - 1):
         i -= 1
     return raw[i:start]
 
 
 def _run_after(raw: str, end: int) -> str:
     i = end
-    while i < len(raw) and raw[i].isalnum():
+    while i < len(raw) and _in_word(raw, i):
         i += 1
     return raw[end:i]
 
 
 def _at_boundaries(raw: str, start: int, end: int, *, affixes: bool = False) -> bool:
-    """Whether the span does not cut a run of letters and digits.
+    """Whether the span does not cut a unit or a run of letters and digits.
 
     With `affixes`, the span may cut a run at a known affix, or where a lowercase letter meets an uppercase letter, as
     names of genotypes join a gene to its neighbors (`CreNeurod1`, `pSTAT3`, `LynBKO`). A digit that meets an uppercase
     letter is not such a place: TP53 and TP53BP1 are different genes.
     """
-    if raw[start].isalnum() and start > 0 and raw[start - 1].isalnum():
-        camel = raw[start - 1].islower() and raw[start].isupper()
+    if (start > 0 and _is_continuation(raw[start])) or (end < len(raw) and _is_continuation(raw[end])):
+        return False
+    if start > 0 and _in_word(raw, start) and _in_word(raw, start - 1):
+        camel = _base(raw, start - 1).islower() and raw[start].isupper()
         if not (affixes and (camel or _run_before(raw, start) in _PREFIXES)):
             return False
-    if raw[end - 1].isalnum() and end < len(raw) and raw[end].isalnum():
-        camel = raw[end - 1].islower() and raw[end].isupper()
+    if end < len(raw) and _in_word(raw, end - 1) and _in_word(raw, end):
+        camel = _base(raw, end - 1).islower() and raw[end].isupper()
         run = _run_after(raw, end)
         if not (affixes and (camel or run in _SUFFIXES or _POINT_MUTATION.fullmatch(run))):
             return False
@@ -199,6 +266,8 @@ def _balanced(raw: str, start: int, end: int) -> Span:
     closed = sum(inside.count(ch) for ch in _CLOSE)
     while opened > closed and end < len(raw) and raw[end] in _CLOSE:
         end += 1
+        while end < len(raw) and _is_continuation(raw[end]):
+            end += 1
         closed += 1
     while closed > opened and start > 0 and raw[start - 1] in _OPEN:
         start -= 1
@@ -244,7 +313,7 @@ def _case_insensitive(query: Text, text: Text) -> list[Span]:
         # A match must begin and end with whole characters of the raw text, not inside the folding of one.
         if (at > 0 and origin[at - 1] == origin[at]) or (end < len(hay) and origin[end] == origin[end - 1]):
             continue
-        span = Span(origin[at], origin[end - 1] + 1)
+        span = Span(origin[at], text.end_of(origin[end - 1]))
         if (not spans or span.start >= spans[-1].end) and _at_boundaries(text.raw, span.start, span.end):
             spans.append(span)
     return spans
@@ -258,7 +327,7 @@ def _normalized(query: Text, text: Text) -> list[Span]:
             continue
         hay, origin = text.normalized(form)
         for at in _starts(hay, needle):
-            start, end = origin[at], origin[at + len(needle) - 1] + 1
+            start, end = origin[at], text.end_of(origin[at + len(needle) - 1])
             if _at_boundaries(text.raw, start, end, affixes=True):
                 spans.append(_balanced(text.raw, start, end))
     return _without_overlaps(spans)
@@ -361,7 +430,7 @@ def find(strategy: EvidenceStrategy, query: Text, text: Text) -> list[Span]:
 def trace(value: str, groups: Sequence[Sequence[Text]]) -> Traced | None:
     """The evidence of a value: the matches of the first strategy, and in it the first group, that has any."""
     query = Text(value.strip())
-    strategies = TEXT_STRATEGIES if len(query.raw) >= SHORT_VALUE else (EXACT,)
+    strategies = TEXT_STRATEGIES if query.length() >= SHORT_VALUE else (EXACT,)
     for strategy in strategies:
         for index, texts in enumerate(groups):
             matches = [Match(at, span) for at, text in enumerate(texts) for span in find(strategy, query, text)]
@@ -378,7 +447,7 @@ def trace_term(names: Sequence[str], groups: Sequence[Sequence[Text]]) -> Traced
     """
     queries = [Text(name) for name in dict.fromkeys(names) if name]
     for strategy in TEXT_STRATEGIES:
-        named = [q for q in queries if strategy == EXACT or len(q.raw) >= SHORT_TERM_NAME]
+        named = [q for q in queries if strategy == EXACT or q.length() >= SHORT_TERM_NAME]
         for index, texts in enumerate(groups):
             found: dict[int, list[Span]] = {}
             for query in named:

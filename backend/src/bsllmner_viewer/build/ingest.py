@@ -5,10 +5,13 @@ Every operation writes a new store file. The input store of append and refresh i
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import logging
+import os
 import tempfile
 from collections.abc import Iterable, Iterator
+from contextlib import contextmanager
 from itertools import islice
 from multiprocessing import Pool
 from pathlib import Path
@@ -19,6 +22,7 @@ import pyarrow as pa
 
 from bsllmner_viewer.build.convert import ConvertResult, ConvertTask, convert_run, utc_now
 from bsllmner_viewer.build.derive import derive
+from bsllmner_viewer.build.errors import BuildError
 from bsllmner_viewer.build.manifest import Manifest, RunSpec
 from bsllmner_viewer.build.ontology import read_ontology
 from bsllmner_viewer.build.reference import (
@@ -29,10 +33,10 @@ from bsllmner_viewer.build.reference import (
     sql_literal,
 )
 from bsllmner_viewer.build.rows import insert_rows
-from bsllmner_viewer.build.selectresult import load_select_config
+from bsllmner_viewer.build.selectresult import RunMetadata, load_select_config, read_run_metadata
 from bsllmner_viewer.build.verify import Verification, verify
 from bsllmner_viewer.store.schema import RAW_TABLES, create_raw_tables
-from bsllmner_viewer.store.version import write_meta
+from bsllmner_viewer.store.version import SchemaVersionError, require_current_schema, write_meta
 
 log = logging.getLogger(__name__)
 
@@ -40,26 +44,18 @@ _CHUNK_ROWS = 500_000
 _RUN_TABLES = ("run", "field", "entry", "entry_annotation", "entry_evidence")
 
 
-class BuildError(Exception):
-    """A manifest or input that violates the build's validation rules."""
-
-
 def build_full(manifest: Manifest, out: Path, *, workers: int = 4, threads: int | None = None) -> Verification:
-    con = _open_new_store(out, threads)
-    try:
+    with _new_store(out, threads) as con:
         _load_fields(con, manifest, manifest.runs)
         _ingest_runs(con, manifest, manifest.runs, first_index=0, workers=workers, existing_model=None)
         _load_reference(con, manifest)
         return _finish(con, manifest)
-    finally:
-        con.close()
 
 
 def build_append(
     manifest: Manifest, store: Path, out: Path, *, workers: int = 4, threads: int | None = None
 ) -> Verification:
-    con = _open_new_store(out, threads)
-    try:
+    with _new_store(out, threads) as con:
         existing = _copy_run_tables(con, store)
         new_runs = _new_runs(manifest, existing)
         if not new_runs:
@@ -69,40 +65,81 @@ def build_append(
         _ingest_runs(con, manifest, new_runs, first_index=len(existing), workers=workers, existing_model=model)
         _load_reference(con, manifest)
         return _finish(con, manifest)
-    finally:
-        con.close()
 
 
 def build_refresh(manifest: Manifest, store: Path, out: Path, *, threads: int | None = None) -> Verification:
-    con = _open_new_store(out, threads)
-    try:
+    with _new_store(out, threads) as con:
         existing = _copy_run_tables(con, store)
         if [r.name for r in manifest.runs] != existing:
             raise BuildError("a reference refresh requires the manifest to list exactly the runs in the store")
         _load_reference(con, manifest)
         return _finish(con, manifest)
-    finally:
-        con.close()
 
 
-def _open_new_store(out: Path, threads: int | None) -> duckdb.DuckDBPyConnection:
+@contextmanager
+def _new_store(out: Path, threads: int | None) -> Iterator[duckdb.DuckDBPyConnection]:
+    """A connection to a new store that is written next to `out` and renamed to `out` when the block completes.
+
+    If the block raises, nothing is left at `out` or next to it.
+    """
     if out.exists():
         raise BuildError(f"{out} already exists; every build writes a new store file")
     out.parent.mkdir(parents=True, exist_ok=True)
-    con = duckdb.connect(str(out))
-    if threads:
-        con.execute(f"SET threads = {int(threads)}")
-    con.execute("SET preserve_insertion_order = false")
-    create_raw_tables(con)
-    return con
+    partial = out.with_name(out.name + ".partial")
+    _require_unused(partial, out)
+    _remove_store_files(partial)
+    con = duckdb.connect(str(partial))
+    try:
+        if threads:
+            con.execute(f"SET threads = {int(threads)}")
+        con.execute("SET preserve_insertion_order = false")
+        create_raw_tables(con)
+        yield con
+    except BaseException:
+        con.close()
+        _remove_store_files(partial)
+        raise
+    con.close()
+    try:
+        os.link(partial, out)
+    except FileExistsError:
+        _remove_store_files(partial)
+        raise BuildError(f"{out} already exists; every build writes a new store file") from None
+    _remove_store_files(partial)
+
+
+def _require_unused(partial: Path, out: Path) -> None:
+    """Stop when another build holds the partial file: DuckDB keeps an exclusive lock on a store file that it writes."""
+    try:
+        fd = os.open(partial, os.O_RDWR)
+    except FileNotFoundError:
+        return
+    try:
+        fcntl.lockf(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        raise BuildError(f"another build is writing {out}") from None
+    finally:
+        os.close(fd)
+
+
+def _remove_store_files(path: Path) -> None:
+    path.unlink(missing_ok=True)
+    path.with_name(path.name + ".wal").unlink(missing_ok=True)
 
 
 def _copy_run_tables(con: duckdb.DuckDBPyConnection, store: Path) -> list[str]:
-    """Copy run-derived raw tables from an existing store; returns its run names in manifest order."""
+    """Copy run-derived raw tables from an existing store; returns its run names in manifest order.
+
+    The store must have the current schema version, so the raw tables of both stores have the same columns.
+    """
     if not store.exists():
         raise BuildError(f"store {store} does not exist")
     con.execute(f"ATTACH '{sql_literal(store)}' AS src (READ_ONLY)")
     try:
+        try:
+            require_current_schema(con, store, catalog="src")
+        except SchemaVersionError as e:
+            raise BuildError(str(e)) from e
         for table in _RUN_TABLES:
             con.execute(f"INSERT INTO {table} SELECT * FROM src.{table}")
         names = [str(r[0]) for r in con.execute("SELECT name FROM src.run ORDER BY manifest_index").fetchall()]
@@ -165,8 +202,10 @@ def _ingest_runs(
             )
             for i, run in enumerate(runs)
         ]
+        _validate_runs(
+            [(run.name, read_run_metadata(t.result_file)) for run, t in zip(runs, tasks, strict=True)], existing_model
+        )
         results = _convert_all(tasks, workers)
-        _validate_runs(results, existing_model)
         for i, (run, result) in enumerate(zip(runs, results, strict=True)):
             config_path = manifest.resolve(run.select_config)
             con.execute(
@@ -204,15 +243,15 @@ def _convert_all(tasks: list[ConvertTask], workers: int) -> list[ConvertResult]:
         return list(pool.imap(convert_run, tasks))
 
 
-def _validate_runs(results: list[ConvertResult], existing_model: str | None) -> None:
-    models = {r.metadata.model for r in results}
+def _validate_runs(runs: list[tuple[str, RunMetadata]], existing_model: str | None) -> None:
+    models = {metadata.model for _, metadata in runs}
     if existing_model is not None:
         models.add(existing_model)
     if len(models) > 1:
         raise BuildError(f"runs use different models: {', '.join(sorted(models))}")
-    for r in results:
-        if r.metadata.status != "completed":
-            raise BuildError(f"run {r.name} has status {r.metadata.status!r}, expected 'completed'")
+    for name, metadata in runs:
+        if metadata.status != "completed":
+            raise BuildError(f"run {name} has status {metadata.status!r}, expected 'completed'")
 
 
 def _load_reference(con: duckdb.DuckDBPyConnection, manifest: Manifest) -> None:
@@ -220,14 +259,16 @@ def _load_reference(con: duckdb.DuckDBPyConnection, manifest: Manifest) -> None:
         if table.startswith("ref_"):
             con.execute(f"DELETE FROM {table}")
     ref = manifest.reference
+    position = 0
     for ontology in ref.ontologies:
         files = [manifest.resolve(f) for f in ontology.files]
         con.execute(
             "INSERT INTO ref_ontology VALUES (?, ?, ?, ?)",
             [ontology.name, [str(f) for f in ontology.files], [sha256_of(f) for f in files], ontology.snapshot_date],
         )
-        for index, file in enumerate(files):
-            _load_ontology_file(con, ontology.name, index, file)
+        for file in files:
+            _load_ontology_file(con, ontology.name, position, file)
+            position += 1
         log.info("loaded ontology %s", ontology.name)
     _insert_rows(
         con,
@@ -263,6 +304,7 @@ def _load_reference(con: duckdb.DuckDBPyConnection, manifest: Manifest) -> None:
 
 
 def _load_ontology_file(con: duckdb.DuckDBPyConnection, name: str, index: int, file: Path) -> None:
+    """Load one ontology file; `index` is its position among all ontology files of the manifest."""
     terms: list[tuple[str, str, int, str | None]] = []
     synonyms: list[tuple[str, str]] = []
     parents: list[tuple[str, str]] = []

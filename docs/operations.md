@@ -86,7 +86,7 @@ The api opens the store named by `BSLLMNER_VIEWER_STORE` when it starts and keep
 
 A store file that is being served is never modified. Old files can be deleted once no api process refers to them.
 
-A store holds the version of the store schema that it was written with, and the api starts only with a store of the schema version that its own code reads. If an update of the code changes the schema, then write a new store with `refresh` before you restart the api.
+A store holds the version of the store schema that it was written with, and the api starts only with a store of the schema version that its own code reads. If an update of the code changes the schema, then write a new store with a full build before you restart the api. `refresh` and `append` reject a store of another schema version.
 
 ## Deployment
 

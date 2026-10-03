@@ -46,5 +46,5 @@ export const gridLines = (max: number, plot: Plot = PLOT): GridLine[] => {
   return lines
 }
 
-/** Whether the year label at `index` (of `count` years) is drawn; past 20 years every other one is skipped. */
-export const showYearLabel = (index: number, count: number): boolean => count <= 20 || index % 2 === 0
+/** Whether the year label at `index` (of `count` years) is drawn; past 20 years every other one is skipped, counted back from the last. */
+export const showYearLabel = (index: number, count: number): boolean => count <= 20 || (count - 1 - index) % 2 === 0

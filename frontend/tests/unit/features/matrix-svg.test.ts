@@ -47,6 +47,20 @@ describe("matrixSvg", () => {
     expect(token("--color-ink-soft")).not.toBe(token("--color-ink"))
   })
 
+  it("cuts a long label by code points so that the markup stays well formed", () => {
+    const label = `a${"\u{1f600}".repeat(40)}`
+    const markup = matrixSvg({
+      rowLabels: [{ value: "a", label, total: 1 }],
+      colLabels: [{ value: "b", label, total: 1 }],
+      cells: [],
+      corner: { row: "R", col: "C" },
+      total: 1,
+    })
+    expect(markup).toContain(`>a${"\u{1f600}".repeat(25)}<`)
+    expect(markup).toContain(`>a${"\u{1f600}".repeat(13)}<`)
+    expect(() => encodeURIComponent(markup)).not.toThrow()
+  })
+
   it("escapes the names in the corner", () => {
     expect(cornerOf(svgOf({ row: "a<b", col: "c&d" }), "a<b")?.textContent).toBe("a<b ↓c&d →")
   })

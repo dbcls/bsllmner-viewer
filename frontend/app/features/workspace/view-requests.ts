@@ -11,7 +11,7 @@ import {
   type TrendParams,
   trendQuery,
 } from "~/lib/api/queries"
-import type { WorkspaceState } from "~/lib/workspace-state"
+import { TREND_LIMIT, type WorkspaceState } from "~/lib/workspace-state"
 
 import { offeredDimension, trendFields } from "./trend/field"
 
@@ -19,8 +19,6 @@ import { offeredDimension, trendFields } from "./trend/field"
 export const DISTRIBUTION_LIMIT = 10
 /** The number of elements per axis that the Heatmap view asks for when it names none. */
 export const HEATMAP_LIMIT = 10
-/** The number of lines of the elements that the Trend view asks for: the most that it can draw, one per color. */
-export const TREND_LIMIT = 5
 
 /** The cards of the Distribution view, one per annotation field, in the order of the dataset. */
 export const distributionFields = (fields: string[]): string[] => [...fields]
@@ -39,8 +37,10 @@ export const distributionParams = (state: WorkspaceState, field: string): Distri
 /** What a Heatmap draws: its row and column dimensions, and the terms named for them. `fields` is null before the dataset is known. */
 export const crosstabAxes = (state: WorkspaceState, fields: string[] | null) => {
   const dimensions = fields === null ? null : crosstabDimensions(fields)
-  const col = offeredDimension(state.col, dimensions)
-  const row = offeredDimension(state.row, dimensions, col)
+  const wanted = offeredDimension(state.col, dimensions)
+  const row = offeredDimension(state.row, dimensions, wanted)
+  // A column that the dataset lacks falls back to the first dimension, which can be the row; the column then takes the next one.
+  const col = wanted === row ? offeredDimension(state.col, dimensions, row) : wanted
   // The terms of a dimension that the dataset lacks are not terms of the dimension that takes its place.
   return {
     row,

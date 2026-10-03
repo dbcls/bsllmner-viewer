@@ -1,8 +1,14 @@
 /** Client-side downloads: TSV tables, SVG markup, and PNG renderings of SVG elements. */
 
+/** Characters that XML 1.0 does not allow: most control characters, lone surrogates, and U+FFFE and U+FFFF. */
+// eslint-disable-next-line no-control-regex
+const XML_FORBIDDEN = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g
+
 /** Text for the content or an attribute value of an SVG element. */
 export const escapeXml = (text: string): string =>
-  text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;")
+  text
+    .replace(XML_FORBIDDEN, "")
+    .replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;")
 
 const download = (name: string, content: Blob): void => {
   const url = URL.createObjectURL(content)
@@ -14,7 +20,7 @@ const download = (name: string, content: Blob): void => {
 }
 
 const tsvCell = (value: string | number | null | undefined): string =>
-  value === null || value === undefined ? "" : String(value).replaceAll("\t", " ").replaceAll("\n", " ")
+  value === null || value === undefined ? "" : String(value).replace(/[\t\r\n]/g, " ")
 
 export const downloadTsv = (name: string, header: string[], rows: (string | number | null | undefined)[][]): void => {
   const lines = [header, ...rows].map((row) => row.map(tsvCell).join("\t"))

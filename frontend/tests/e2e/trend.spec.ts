@@ -198,6 +198,8 @@ test.describe("trend", () => {
     await expectQ(page, narrowed)
     await expectParam(page, "tab", "trend")
     await expect(point).toHaveAttribute("aria-pressed", "true")
+    // A point of the trend of the previous condition does not respond until the trend of the new condition is drawn.
+    await expect(page.locator('[aria-busy="true"]')).toHaveCount(0)
     await point.dispatchEvent("click")
     await expectQ(page, data.populationQ)
     await expect(point).toHaveAttribute("aria-pressed", "false")

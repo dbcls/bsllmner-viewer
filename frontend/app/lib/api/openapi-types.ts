@@ -247,7 +247,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Accession list of the matching entries, one per line */
+        /** Accession list of the matching entries, with a header line and then one accession per line */
         get: operations["exportAccessions"];
         put?: never;
         post?: never;
@@ -283,7 +283,7 @@ export interface paths {
         };
         /**
          * Get service information
-         * @description The name, the version, and the state of the store. Returns 200 whether or not the store is available; `store` reports the actual state. Intended for health monitoring.
+         * @description The name, the version, and the state of the store, for health monitoring. The api starts only with a store that it can open and whose schema version its code reads, so a missing, invalid, or mismatched store stops the process at startup. While the api runs, the response has status 200, and `store` is `ok` if the api can query the store and `unavailable` if a query fails.
          */
         get: operations["getServiceInfo"];
         put?: never;
@@ -729,12 +729,12 @@ export interface components {
             inName: boolean;
             /**
              * Start
-             * @description Position of the first character of the match in that name or value
+             * @description Unicode code point offset of the first code point of the match in that name or value as stored
              */
             start: number;
             /**
              * End
-             * @description Position after the last character of the match in that name or value
+             * @description Unicode code point offset after the last code point of the match in that name or value as stored
              */
             end: number;
             /** @description The matching strategy that found the evidence */

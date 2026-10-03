@@ -188,7 +188,7 @@ def test_typed_keywords_bare_words_form_one_keyword_and_quoted_parts_are_phrases
 def test_typed_keywords_word_the_dsl_cannot_write_bare_becomes_a_phrase() -> None:
     assert typed_keywords("HIF-1/2 liver") == [FreeText("liver"), FreeText("HIF-1/2", True)]
     assert typed_keywords("a:b") == [FreeText("a:b", True)]
-    assert typed_keywords("2020-01-01") == [FreeText("2020-01-01", True)]
+    assert typed_keywords("2020-01-01 1999-01-01x") == [FreeText("2020-01-01 1999-01-01x")]
     assert typed_keywords("(x") == [FreeText("(x", True)]
 
 
@@ -275,3 +275,24 @@ def test_keyword_text_puts_words_before_phrases_and_ignores_other_conjuncts() ->
 def test_keyword_text_of_a_condition_without_keywords_is_empty() -> None:
     assert keyword_text(None) == ""
     assert keyword_text(parse("disease:A")) == ""
+
+
+def test_word_matches_phrase_with_a_dotted_capital_i_matches_the_text_that_duckdb_lowercases() -> None:
+    assert _patterns("İstanbul city", phrase=True) == [("% istanbul city %",)]
+    assert _patterns("İstanbul") == [("% istanbul%",)]
+
+
+@pytest.mark.parametrize("dsl", ["AND cancer", "cancer NOT mouse", "NOT NOT a", "a OR b", "x AND (y NOT z)"])
+def test_normalize_writes_operator_words_of_a_keyword_in_lower_case_so_that_serialize_keeps_the_keyword(
+    dsl: str,
+) -> None:
+    ast = normalize(parse(dsl))
+    reparsed = parse(serialize(ast))
+    assert structurally_equal(normalize(reparsed), ast)
+    assert serialize(ast) == serialize(reparsed)
+
+
+def test_normalize_keeps_operator_words_in_a_phrase() -> None:
+    node = normalize(FreeText("AND cancer", is_phrase=True))
+    assert node == FreeText("AND cancer", is_phrase=True)
+    assert normalize(FreeText("AND cancer NOT x")) == FreeText("and cancer not x")

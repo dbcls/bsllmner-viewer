@@ -1,6 +1,7 @@
 import { useDataset } from "~/lib/api/queries"
 import { buildCommit } from "~/lib/build-info"
 import { formatCount } from "~/lib/format"
+import { assayList } from "~/lib/labels"
 import { cn, ExternalLink } from "~/ui"
 
 const CRATE_URL = "https://biosampleplus.s3.ap-northeast-1.amazonaws.com/index.html"
@@ -29,7 +30,7 @@ export const Footer = () => {
   const commit = buildCommit()
   const data = dataset.data
   const assays = data?.targetAssays ?? []
-  const assayText = assays.length > 1 ? `${assays.slice(0, -1).join(", ")}, or ${assays.at(-1)}` : assays.join("")
+  const assayText = assayList(assays)
   return (
     <footer className="flex shrink-0 items-center justify-between gap-6 border-t border-border-soft bg-surface px-workspace-gutter py-2.5 text-fs-label text-ink-soft">
       <div className="min-w-0">

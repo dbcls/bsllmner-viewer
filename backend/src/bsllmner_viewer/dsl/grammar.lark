@@ -28,10 +28,12 @@ value: PHRASE    -> v_phrase
      | WORD      -> v_word
 
 // AND / OR / NOT must outrank WORD so a bare ``NOT`` is recognised as the
-// operator instead of being absorbed into ``free_text_atom: WORD``.
-AND.10: "AND"
-OR.10: "OR"
-NOT.10: "NOT"
+// operator instead of being absorbed into ``free_text_atom: WORD``. An operator
+// must not be followed by a WORD character, so ``NOTCH1`` and ``ORGANOID`` are
+// words while ``NOT(a)``, ``a OR "x"``, and ``NOT'x'`` read the operator.
+AND.10: /AND(?![^\s:()\[\]"'{}^~*?\/])/
+OR.10: /OR(?![^\s:()\[\]"'{}^~*?\/])/
+NOT.10: /NOT(?![^\s:()\[\]"'{}^~*?\/])/
 
 PHRASE.5: /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/
 RANGE.5: /\[[^\s\]]+\s+TO\s+[^\s\]]+\]/

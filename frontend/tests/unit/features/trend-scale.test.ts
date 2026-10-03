@@ -106,10 +106,17 @@ describe("showYearLabel", () => {
     for (let index = 0; index < 20; index++) expect(showYearLabel(index, 20)).toBe(true)
   })
 
-  it("moreThanTwentyYears_skipsOddIndices", () => {
+  it("shows the label of the last year whatever the number of years", () => {
+    for (let count = 1; count <= 60; count++) expect(showYearLabel(count - 1, count)).toBe(true)
+  })
+
+  it("skips every other label counted back from the last year when there are more than twenty years", () => {
+    // 22 years: the last label is index 21, so the even indices are the ones that are skipped.
+    const shown = Array.from({ length: 22 }, (_, index) => showYearLabel(index, 22))
+    expect(shown.map((on, index) => (on ? index : -1)).filter((index) => index >= 0)).toEqual([1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21])
+    // 25 years: the first label is shown too.
     expect(showYearLabel(0, 25)).toBe(true)
     expect(showYearLabel(1, 25)).toBe(false)
-    expect(showYearLabel(2, 25)).toBe(true)
     expect(showYearLabel(24, 25)).toBe(true)
   })
 })

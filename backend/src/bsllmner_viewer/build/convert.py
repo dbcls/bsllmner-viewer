@@ -3,16 +3,25 @@
 from __future__ import annotations
 
 import datetime
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import orjson
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from bsllmner_viewer.build.errors import BuildError
 from bsllmner_viewer.build.evidence import Text, Traced, trace
 from bsllmner_viewer.build.inputs import Attribute, InputDoc, plausible_publication_date, read_input
-from bsllmner_viewer.build.selectresult import AnnotationRow, RunMetadata, iter_entries, load_select_result
+from bsllmner_viewer.build.selectresult import (
+    AnnotationRow,
+    ResultEntry,
+    RunMetadata,
+    iter_entries,
+    load_select_result,
+)
 from bsllmner_viewer.store.metadata import ATTRIBUTE, DESCRIPTION, RECORD, MetadataKind, description_items
 
 ENTRY_SCHEMA = pa.schema(
@@ -135,25 +144,35 @@ def trace_entry(doc: InputDoc, annotations: list[AnnotationRow]) -> list[_Eviden
     return found
 
 
+def _result_entries(task: ConvertTask, raw_entries: list[dict[str, Any]]) -> Iterator[ResultEntry]:
+    try:
+        yield from iter_entries(raw_entries, list(task.fields))
+    except ValueError as e:
+        raise BuildError(f"run {task.name}: {task.result_file.name}: {e}") from e
+
+
 def convert_run(task: ConvertTask) -> ConvertResult:
     """Read one run and write its entries and annotations as Parquet files.
 
-    Raises ValueError when a result entry's accession is not in the input file.
+    Raises BuildError when a result entry's accession is not in the input file or occurs twice in the result.
     """
-    docs = {doc.accession: doc for doc in read_input(task.input_file)}
+    try:
+        docs = {doc.accession: doc for doc in read_input(task.input_file)}
+    except BuildError as error:
+        raise BuildError(f"run {task.name}: {error}") from error
     metadata, raw_entries = load_select_result(task.result_file)
     entries: dict[str, list[object]] = {name: [] for name in ENTRY_SCHEMA.names}
     annotations: dict[str, list[object]] = {name: [] for name in ANNOTATION_SCHEMA.names}
     evidence: dict[str, list[object]] = {name: [] for name in EVIDENCE_SCHEMA.names}
     seen: set[str] = set()
-    for entry in iter_entries(raw_entries, list(task.fields)):
+    for entry in _result_entries(task, raw_entries):
         doc = docs.get(entry.accession)
         if doc is None:
-            raise ValueError(
+            raise BuildError(
                 f"run {task.name}: entry {entry.accession} is not in the input file {task.input_file.name}"
             )
         if entry.accession in seen:
-            continue
+            raise BuildError(f"run {task.name}: entry {entry.accession} occurs more than once in the result file")
         seen.add(entry.accession)
         entries["run_id"].append(task.run_id)
         entries["accession"].append(entry.accession)

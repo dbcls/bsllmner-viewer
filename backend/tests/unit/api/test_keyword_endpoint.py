@@ -63,7 +63,7 @@ def test_keyword_endpoint_treats_and_or_not_as_ordinary_words(client: TestClient
 
 def test_keyword_endpoint_writes_a_word_the_dsl_cannot_write_bare_as_a_phrase(client: TestClient) -> None:
     body = _set(client, None, "HIF-1/2 2020-01-01 a:b")
-    assert body["dsl"] == '"HIF-1/2" AND "2020-01-01" AND "a:b"'
+    assert body["dsl"] == '2020-01-01 AND "HIF-1/2" AND "a:b"'
     again = _set(client, str(body["dsl"]), "")
     assert again["dsl"] is None
 
