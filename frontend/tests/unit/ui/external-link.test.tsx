@@ -39,4 +39,15 @@ describe("ExternalLink", () => {
     expect(link).toHaveClass("relative")
     expect(link.querySelector(".sr-only")?.parentElement).toBe(link)
   })
+
+  it("underlines a link in a sentence, and no other kind of link", () => {
+    render(
+      <>
+        <ExternalLink kind="inline" href="https://example.org/a">in a sentence</ExternalLink>
+        <ExternalLink href="https://example.org/b">in a table</ExternalLink>
+      </>,
+    )
+    expect(screen.getByRole("link", { name: /in a sentence/ })).toHaveClass("underline")
+    expect(screen.getByRole("link", { name: /in a table/ })).not.toHaveClass("underline")
+  })
 })

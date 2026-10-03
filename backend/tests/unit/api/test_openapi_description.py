@@ -129,6 +129,9 @@ class TestInfo:
         assert "](/llms.txt)" in description
         assert "](/llms-full.txt)" in description
 
+    def test_the_description_names_the_caching_rules_that_the_responses_follow(self, document: dict[str, Any]) -> None:
+        assert "`If-None-Match`" in document["info"]["description"]
+
 
 class TestStatusIsNotADimension:
     def test_no_description_offers_a_status_field_as_a_dimension_or_a_single_status_as_a_value(

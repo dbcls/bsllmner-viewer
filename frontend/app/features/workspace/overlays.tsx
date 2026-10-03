@@ -40,7 +40,7 @@ export const ExportMenu = ({ q, totalEntries }: ExportMenuProps) => (
             href: exportEntriesUrl("biosample", q, "tsv"),
             ...(totalEntries === undefined ? {} : { hint: `${formatCount(totalEntries)} rows` }),
           },
-          { label: "JSON lines", href: exportEntriesUrl("biosample", q, "ndjson") },
+          { label: "NDJSON", href: exportEntriesUrl("biosample", q, "ndjson") },
         ],
       },
       {
@@ -103,9 +103,9 @@ const failureLine = (response: Response, body: string): string => {
 
 /** The sentence under the title of the API dialog. Only the requests of the views that count in a unit say that the unit is the same. */
 export const apiDialogDescription = (tab: Tab): string => {
-  if (tab === "distribution") return "Each card of the Distribution view is one request for the current condition, listed in the order of the cards. Same q, same unit."
-  const sameness = tab === "samples" || tab === "projects" ? "Same q." : "Same q, same unit."
-  return `Returns the ${TAB_LABELS[tab]} view for the current condition. ${sameness}`
+  if (tab === "distribution") return "Each card of the Distribution view is one request for the current condition, counted in the same unit, in the order of the cards."
+  if (tab === "samples" || tab === "projects") return `Returns the ${TAB_LABELS[tab]} view for the current condition.`
+  return `Returns the ${TAB_LABELS[tab]} view for the current condition, counted in the same unit.`
 }
 
 const UNREACHABLE = "Could not reach the server."
@@ -147,7 +147,7 @@ export const ApiModal = ({ open, onClose, state, onAlert }: ApiModalProps) => {
       <div className="px-6 pb-6">
         <h3 className={BLOCK_HEADING}>{requests.length > 1 ? "Requests" : "Request"}</h3>
         <div className="relative mb-4">
-          <pre aria-busy={requests.length === 0 && !datasetFailed ? true : undefined} className="max-h-60 min-h-12 overflow-auto rounded-button bg-ink py-3 pr-28 pl-3.5 font-mono text-fs-label leading-relaxed break-all whitespace-pre-wrap text-brand-soft">
+          <pre tabIndex={0} role="region" aria-label="Request" aria-busy={requests.length === 0 && !datasetFailed ? true : undefined} className="max-h-64 min-h-12 overflow-auto rounded-button bg-ink py-3 pr-28 pl-3.5 font-mono text-fs-label leading-relaxed break-all whitespace-pre-wrap text-brand-soft">
             {requests.length === 0 && !datasetFailed ? <Skeleton className="w-2/3" /> : curl}
           </pre>
           <span className="absolute top-2 right-2">
@@ -155,7 +155,7 @@ export const ApiModal = ({ open, onClose, state, onAlert }: ApiModalProps) => {
               kind="inverse"
               onCopy={async () => {
                 const ok = await copyText(curl)
-                if (!ok) onAlert("Copy failed")
+                if (!ok) onAlert("Copy failed.")
                 return ok
               }}
             >
@@ -170,6 +170,9 @@ export const ApiModal = ({ open, onClose, state, onAlert }: ApiModalProps) => {
           <ErrorNotice message={response.text} {...(response.retry ? { onRetry: () => setAttempt((n) => n + 1) } : {})} />
         ) : (
           <pre
+            tabIndex={0}
+            role="region"
+            aria-label="Response (excerpt)"
             aria-busy={response.kind === "loading" || undefined}
             className="max-h-64 overflow-auto rounded-button border border-border-soft bg-surface-subtle px-3.5 py-3 font-mono text-fs-label leading-relaxed whitespace-pre-wrap text-ink-mid"
           >

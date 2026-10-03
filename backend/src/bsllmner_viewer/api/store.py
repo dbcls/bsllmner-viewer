@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import hashlib
+import importlib.util
 import os
 import shutil
-from collections.abc import Iterator
+import sys
+from collections.abc import Callable, Iterator, MutableMapping
 from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
+from typing import Any, cast
 
 import duckdb
 import orjson
@@ -20,6 +22,23 @@ from bsllmner_viewer.store.organisms import ORGANISM_NAMES
 from bsllmner_viewer.store.version import DatasetVersion, SchemaVersionError, read_version, require_current_schema
 
 STORE_ENV = "BSLLMNER_VIEWER_STORE"
+
+
+def record_missing_pandas(
+    modules: MutableMapping[str, Any] = sys.modules, find: Callable[[str], object | None] = importlib.util.find_spec
+) -> None:
+    """Record pandas as missing in `modules` when `find` does not find it, so that importing it fails at once.
+
+    DuckDB checks every Python value that it binds as a query parameter against `pandas.NaT` and `pandas.NA`, and it
+    tries to import pandas again for each check until an import succeeds. Without pandas, each check searches the whole
+    import path, which makes a query with a thousand parameters several times slower. pandas is not a dependency of
+    the api. When pandas is installed or imported, it is left alone, so that DuckDB can use it.
+    """
+    if "pandas" not in modules and find("pandas") is None:
+        modules["pandas"] = None
+
+
+record_missing_pandas()
 
 
 @dataclass(frozen=True, slots=True)

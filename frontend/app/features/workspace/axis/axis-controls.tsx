@@ -1,5 +1,7 @@
 import { ACTION_ICON, Button, InlineLabel, Select, Skeleton } from "~/ui"
 
+import { type ElementNoun, nounFor } from "./axis-terms"
+
 /** What the axis controls read of an element on the axis. */
 export type AxisElement = { value: string; label: string }
 
@@ -13,6 +15,8 @@ type AxisControlsProps = {
   /** The label of a first option that leaves the axis without a dimension, such as "None". */
   placeholder?: string
   elements: readonly AxisElement[]
+  /** What the elements of the dimension are called after their number. */
+  noun: ElementNoun
   /** The number of elements on their way, while the view loads for the first time; null once they are known. */
   pending: number | null
   /** The elements are not known, as the request that lists them failed and the URL names none. */
@@ -23,7 +27,7 @@ type AxisControlsProps = {
 }
 
 /** One axis of a chart view on one line: its name, its dimension, and a button with the number of elements shown, which opens them in a dialog. */
-export const AxisControls = ({ name, selectLabel, dimension, dimensions, placeholder, elements, pending, unknown = false, onDimension, onOpenTerms }: AxisControlsProps) => {
+export const AxisControls = ({ name, selectLabel, dimension, dimensions, placeholder, elements, noun, pending, unknown = false, onDimension, onOpenTerms }: AxisControlsProps) => {
   const count = pending ?? elements.length
   return (
     <span role="group" aria-label={name} className="inline-flex items-center gap-1.5">
@@ -47,7 +51,7 @@ export const AxisControls = ({ name, selectLabel, dimension, dimensions, placeho
               <Skeleton kind="block" className="h-2.5 w-4" />
             </span>
           )}{" "}
-          {count === 1 ? "term" : "terms"}
+          {nounFor(count, noun)}
         </Button>
       )}
     </span>

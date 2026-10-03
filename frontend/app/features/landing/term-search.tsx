@@ -69,7 +69,7 @@ export const TermSearch = () => {
               className={cn("max-h-picker-list overflow-auto", busyClass(terms.isPlaceholderData))}
             >
               {failed && (
-                <div className="px-6 py-4">
+                <div className="p-4">
                   <ErrorNotice {...loadFailureProps(terms.error, "search terms", () => void terms.refetch())} />
                 </div>
               )}

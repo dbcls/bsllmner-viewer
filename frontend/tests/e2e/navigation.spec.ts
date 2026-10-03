@@ -95,7 +95,7 @@ test.describe("workspace navigation", () => {
     await expect(page.getByText(first.identifier, { exact: true }).first()).toBeVisible()
     if (detail.title) await expect(page.getByText(detail.title, { exact: true }).first()).toBeVisible()
     await expect(page.getByText("Original metadata")).toBeVisible()
-    await expect(page.getByText("Annotation terms", { exact: true })).toBeVisible()
+    await expect(page.getByText("Annotations", { exact: true })).toBeVisible()
     if (detail.annotations.some((annotation) => annotation.evidence.length > 0)) await expect(page.locator("mark").first()).toBeVisible()
     await page.getByRole("link", { name: "Back to Samples" }).click()
     await expect(page).toHaveURL((url) => url.pathname === "/entries")

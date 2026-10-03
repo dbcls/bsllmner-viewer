@@ -76,7 +76,7 @@ export const FieldChip = ({ field, value, onRemove }: FieldChipProps) => (
     </span>
     <span className="flex min-w-0 flex-1 items-center gap-1.5 px-1.5">
       <span className="min-w-0 truncate py-1 text-trim-cap">{value}</span>
-      <Icon name={ACTION_ICON.clear} size="sm" className="ml-auto text-ink-soft" />
+      <Icon name={ACTION_ICON.clear} size="sm" className="ml-auto text-fs-body-sm text-ink-soft" />
     </span>
   </button>
 )

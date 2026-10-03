@@ -37,7 +37,7 @@ test.describe("trend", () => {
     // The legend names the lines by their terms; their IDs appear only with the Term IDs switch on.
     await expect(main.getByText(disease.label, { exact: true })).toBeVisible()
     await expect(main).toContainText("✓ in condition")
-    const points = main.locator('svg g[data-series="condition"] circle')
+    const points = main.locator('svg g[data-series="condition"]').getByRole("button")
     await expect(points).toHaveCount(total.length)
     for (const [index, point] of total.entries()) {
       await expect(points.nth(index)).toHaveAttribute("aria-label", `Condition, ${point.year}: ${formatCount(point.count)} BioSamples. Toggle this year in the condition`)
@@ -55,7 +55,8 @@ test.describe("trend", () => {
       await expect(main.getByText(s.label, { exact: true })).toBeVisible()
     }
     await expect(main.locator("svg polyline")).toHaveCount(series.length)
-    await expect(axisTermsButton(page, "Lines")).toHaveText(`${series.length} terms`)
+    // An assay is a value of the dimension, not a term.
+    await expect(axisTermsButton(page, "Lines")).toHaveText(`${series.length} ${series.length === 1 ? "value" : "values"}`)
     await choose(page.getByRole("combobox", { name: "Line dimension" }), "Disease")
     await expectParam(page, "trend_field", null)
   })
@@ -87,12 +88,12 @@ test.describe("trend", () => {
     await expect(main.locator('svg g[data-series="all"]')).toHaveCount(0)
     await flip(page, "All entries")
     await expectParam(page, "trend_all", "on")
-    const points = main.locator('svg g[data-series="all"] circle')
+    const points = main.locator('svg g[data-series="all"]').getByRole("button")
     await expect(points).toHaveCount(allEntries.length)
     for (const [index, point] of allEntries.entries()) {
       await expect(points.nth(index)).toHaveAttribute("aria-label", new RegExp(`^All entries, ${point.year}: ${formatCount(point.count)} BioSamples\\.`))
     }
-    await expect(main.locator('svg g[data-series="condition"] circle')).toHaveCount(total.length)
+    await expect(main.locator('svg g[data-series="condition"]').getByRole("button")).toHaveCount(total.length)
     const first = allEntries[0]
     if (!first) throw new Error("the trend has no year")
     const widened = await select(request, q, first.clauses)
@@ -110,7 +111,7 @@ test.describe("trend", () => {
     const to = whole.years[whole.years.length - 2] as number
     const limited = await trend(request, { field: "disease", q, yearFrom: from, yearTo: to })
     await page.goto(workspaceUrl({ tab: "trend", q }))
-    const points = page.getByRole("main").locator('svg g[data-series="condition"] circle')
+    const points = page.getByRole("main").locator('svg g[data-series="condition"]').getByRole("button")
     await expect(points).toHaveCount(whole.total.length)
     await choose(page.getByRole("combobox", { name: "First year" }), String(from))
     await expectParam(page, "trend_from", String(from))
@@ -170,7 +171,7 @@ test.describe("trend", () => {
     if (!firstYear) throw new Error("the condition has no publication year")
     const withYear = await select(request, q, firstYear.clauses)
     await page.goto(workspaceUrl({ tab: "trend", q }))
-    const point = page.getByRole("main").locator('svg g[data-series="condition"] circle').first()
+    const point = page.getByRole("main").locator('svg g[data-series="condition"]').getByRole("button").first()
     await point.click()
     await expectQ(page, withYear)
     await expectParam(page, "tab", "trend")
@@ -191,9 +192,9 @@ test.describe("trend", () => {
     if (!target) throw new Error("no other assay matches the condition")
     const narrowed = await select(request, data.populationQ, target.point.clauses, "narrow")
     await page.goto(workspaceUrl({ tab: "trend", trend_field: "library_strategy", q }))
-    const point = page.getByRole("main").locator(`svg g[data-series="${target.series.value}"] circle[role="button"][aria-label*=", ${target.point.year}: "]`)
+    const point = page.getByRole("main").locator(`svg g[data-series="${target.series.value}"]`).getByRole("button", { name: `, ${target.point.year}: ` })
     await expect(point).toHaveAttribute("aria-pressed", "false")
-    // Circles of different lines can overlap on the plot, so the click is sent to this circle itself.
+    // Points of different lines can overlap on the plot, so the click is sent to this point itself.
     await point.dispatchEvent("click")
     await expectQ(page, narrowed)
     await expectParam(page, "tab", "trend")

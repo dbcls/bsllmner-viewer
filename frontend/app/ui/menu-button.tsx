@@ -38,6 +38,8 @@ type MenuButtonProps = {
   monoHints?: boolean
   /** The name of the button and the menu, when other buttons on the page have the same text. */
   "aria-label"?: string
+  /** The button cannot be pressed, as when there is nothing for the items to act on yet. */
+  disabled?: boolean
 }
 
 const isGroup = (entry: MenuButtonItem | MenuButtonGroup): entry is MenuButtonGroup => "items" in entry
@@ -53,7 +55,7 @@ const MENU_PLACE = { align: "right", matchWidth: true } as const
  * menu moves the focus to its first item, the arrow keys, Home, and End move through the items, and Escape or Tab
  * closes the menu and gives the focus back to the button.
  */
-export const MenuButton = ({ label, icon, items, appearance = "text", monoHints = false, "aria-label": ariaLabel }: MenuButtonProps) => {
+export const MenuButton = ({ label, icon, items, appearance = "text", monoHints = false, "aria-label": ariaLabel, disabled = false }: MenuButtonProps) => {
   const grouped = items.some(isGroup)
   const [open, setOpen] = useState(false)
   const anchorRef = useRef<HTMLSpanElement>(null)
@@ -66,6 +68,11 @@ export const MenuButton = ({ label, icon, items, appearance = "text", monoHints 
     measure()
     setOpen(true)
   }
+
+  // A menu that is open when the button becomes disabled closes, and does not open again by itself.
+  useEffect(() => {
+    if (disabled) setOpen(false)
+  }, [disabled])
 
   const close = () => {
     setOpen(false)
@@ -136,6 +143,7 @@ export const MenuButton = ({ label, icon, items, appearance = "text", monoHints 
 
   const triggerProps = {
     "aria-label": ariaLabel,
+    disabled,
     "aria-haspopup": "menu" as const,
     "aria-expanded": open,
     "aria-controls": open ? menuId : undefined,
@@ -144,7 +152,7 @@ export const MenuButton = ({ label, icon, items, appearance = "text", monoHints 
   }
 
   const menu =
-    open && position !== null
+    open && !disabled && position !== null
       ? createPortal(
         <div
           ref={menuRef}

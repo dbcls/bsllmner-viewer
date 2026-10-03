@@ -17,7 +17,10 @@ describe("apiDialogDescription", () => {
     if (!withUnit) expect(apiDialogDescription(tab)).not.toMatch(/unit/i)
   })
 
-  it("says Same q. on the Samples and Projects tabs", () => {
-    for (const tab of ["samples", "projects"] as const) expect(apiDialogDescription(tab)).toContain("Same q.")
+  it("names the view and the current condition, and no parameter of the request", () => {
+    for (const tab of TABS) {
+      expect(apiDialogDescription(tab)).toContain("for the current condition")
+      expect(apiDialogDescription(tab)).not.toMatch(/\bq\b/)
+    }
   })
 })

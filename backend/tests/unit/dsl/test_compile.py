@@ -132,3 +132,47 @@ def test_compile_clause_on_a_column_that_can_be_null_and_its_negation_cover_the_
     ast = parse(dsl)
     assert total(ast) + total(not_(ast)) == 3
     assert total(ast) == 1
+
+
+def test_compile_keyword_tables_reads_the_keyword_from_a_temp_table_and_moves_the_parameters_to_it() -> None:
+    pred = compile_condition(parse("breast cancer"), FIELDS, keyword_tables=True)
+    (table,) = pred.tables
+    assert table.name.startswith("keyword_")
+    assert table.sql == "SELECT biosample FROM searchable_text WHERE " + "(text LIKE ?) AND (text LIKE ?)"
+    assert table.params == ("% breast %", "% cancer%")
+    assert pred.sql == f"(pn.biosample IN (SELECT biosample FROM {table.name}))"
+    assert pred.params == []
+
+
+def test_compile_keyword_tables_names_a_keyword_by_its_text() -> None:
+    a = compile_condition(parse("liver"), FIELDS, keyword_tables=True).tables[0]
+    b = compile_condition(parse("liver"), FIELDS, keyword_tables=True).tables[0]
+    c = compile_condition(parse("lung"), FIELDS, keyword_tables=True).tables[0]
+    assert a == b
+    assert a.name != c.name
+
+
+def test_compile_keyword_tables_makes_one_table_for_a_repeated_keyword() -> None:
+    pred = compile_condition(parse("liver AND organism_id:9606 OR NOT liver"), FIELDS, keyword_tables=True)
+    assert len(pred.tables) == 1
+    assert pred.sql.count(pred.tables[0].name) == 2
+    assert pred.params == [9606]
+
+
+def test_compile_keyword_tables_makes_a_table_for_each_different_keyword() -> None:
+    pred = compile_condition(parse("liver OR lung"), FIELDS, keyword_tables=True)
+    assert len({t.name for t in pred.tables}) == 2
+
+
+def test_compile_keyword_tables_keeps_the_accession_word_in_the_predicate() -> None:
+    pred = compile_condition(parse("liver SAMN1"), FIELDS, keyword_tables=True)
+    (table,) = pred.tables
+    assert pred.sql == f"(pn.biosample = ? AND pn.biosample IN (SELECT biosample FROM {table.name}))"
+    assert pred.params == ["SAMN1"]
+    assert compile_condition(parse("SAMN1"), FIELDS, keyword_tables=True).tables == []
+
+
+def test_compile_keyword_tables_without_a_keyword_has_no_table() -> None:
+    assert compile_condition(parse("organism_id:9606"), FIELDS, keyword_tables=True).tables == []
+    assert compile_condition(None, FIELDS, keyword_tables=True).tables == []
+    assert compile_condition(parse("liver"), FIELDS).tables == []

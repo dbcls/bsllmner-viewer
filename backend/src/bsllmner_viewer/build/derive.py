@@ -58,7 +58,6 @@ def derive(con: duckdb.DuckDBPyConnection, target_assays: list[str]) -> None:
         ORDER BY term_id
         """
     )
-    con.execute("CREATE UNIQUE INDEX term_term_id ON term (term_id)")
     con.execute(
         """
         CREATE TABLE term_synonym AS
@@ -68,7 +67,6 @@ def derive(con: duckdb.DuckDBPyConnection, target_assays: list[str]) -> None:
     )
     _derive_evidence(con)
     _omit_attributes(con)
-    con.execute("CREATE UNIQUE INDEX biosample_accession ON biosample (accession)")
     con.execute(
         """
         CREATE TABLE term_parent AS
@@ -117,7 +115,6 @@ def derive(con: duckdb.DuckDBPyConnection, target_assays: list[str]) -> None:
         ORDER BY x.experiment
         """
     )
-    con.execute("CREATE UNIQUE INDEX experiment_accession ON experiment (accession)")
     con.execute(
         """
         CREATE TABLE sra_run AS
@@ -144,7 +141,6 @@ def derive(con: duckdb.DuckDBPyConnection, target_assays: list[str]) -> None:
         ORDER BY x.bioproject
         """
     )
-    con.execute("CREATE UNIQUE INDEX bioproject_accession ON bioproject (accession)")
     con.execute(
         """
         CREATE TABLE chip_atlas AS
@@ -205,20 +201,6 @@ def derive(con: duckdb.DuckDBPyConnection, target_assays: list[str]) -> None:
             SELECT term_id, lower(synonym) AS text FROM term_synonym
         ) x ON x.term_id = c.term_id
         ORDER BY c.field, c.term_id
-        """
-    )
-    con.execute(
-        """
-        CREATE TABLE field_status_count AS
-        SELECT a.field, a.status,
-               count(DISTINCT pn.biosample) AS n_biosample,
-               count(DISTINCT pn.experiment) AS n_experiment,
-               count(DISTINCT bp.bioproject) AS n_bioproject
-        FROM population pn
-        JOIN annotation a ON a.biosample = pn.biosample
-        LEFT JOIN biosample_bioproject bp ON bp.biosample = pn.biosample
-        GROUP BY a.field, a.status
-        ORDER BY a.field, a.status
         """
     )
     _derive_whole_population_counts(con, target_assays)

@@ -17,7 +17,7 @@ export const MATRIX_PRESETS: Preset[] = [
   {
     id: "disease-tissue",
     title: "Disease × Tissue",
-    description: "Which tissues are sampled for each disease, and which pairs no project covers.",
+    description: "Which tissues are sampled for each disease, and which pairs no BioProject covers.",
     state: { tab: "heatmap", row: "disease", col: "tissue", unit: "bioproject" },
   },
   {
@@ -35,13 +35,13 @@ export const MATRIX_PRESETS: Preset[] = [
   {
     id: "cell-line-assay",
     title: "Cell line × Assay",
-    description: "Independent projects per cell line and assay. Find lines with RNA-Seq but no ATAC-seq.",
+    description: "Independent BioProjects per cell line and assay. Find cell lines with RNA-Seq but no ATAC-seq.",
     state: { tab: "heatmap", row: "cell_line", col: "library_strategy", q: "organism_id:9606", unit: "bioproject" },
   },
   {
     id: "disease-assay",
     title: "Disease × Assay",
-    description: "Independent projects per disease and assay. Find diseases that an assay does not cover.",
+    description: "Independent BioProjects per disease and assay. Find diseases that an assay does not cover.",
     state: { tab: "heatmap", row: "disease", col: "library_strategy", unit: "bioproject" },
   },
 ]

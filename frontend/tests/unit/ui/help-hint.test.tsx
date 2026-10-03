@@ -1,7 +1,9 @@
 import { fireEvent, render, screen } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { describe, expect, it } from "vitest"
 
 import { HelpHint } from "~/ui/help-hint"
+import { Modal } from "~/ui/modal"
 
 const renderHint = () =>
   render(
@@ -74,5 +76,48 @@ describe("HelpHint", () => {
     )
     expect(screen.getByRole("tooltip").getAttribute("class")).toContain("bottom-full")
     expect(screen.getByRole("tooltip").getAttribute("class")).not.toContain("top-full")
+  })
+})
+
+describe("HelpHint keyboard and pointer", () => {
+  it("closes a bubble opened by hover or focus with Escape and shows it again on the next hover", () => {
+    renderHint()
+    const button = screen.getByRole("button", { name: "About annotation status" })
+    fireEvent.focus(button)
+    fireEvent.keyDown(document, { key: "Escape" })
+    expect(screen.queryByRole("tooltip")).toBeNull()
+    fireEvent.mouseEnter(button)
+    expect(screen.getByRole("tooltip")).toBeInTheDocument()
+    fireEvent.keyDown(document, { key: "Escape" })
+    expect(screen.queryByRole("tooltip")).toBeNull()
+  })
+
+  it("stays open when the pointer moves from the button onto the bubble", () => {
+    renderHint()
+    const button = screen.getByRole("button", { name: "About annotation status" })
+    fireEvent.mouseEnter(button)
+    const bubble = screen.getByRole("tooltip")
+    fireEvent.mouseLeave(button, { relatedTarget: bubble })
+    fireEvent.mouseEnter(bubble)
+    expect(screen.getByRole("tooltip")).toBeInTheDocument()
+    fireEvent.mouseLeave(bubble.parentElement as HTMLElement)
+    expect(screen.queryByRole("tooltip")).toBeNull()
+  })
+
+  it("closes a pinned bubble when a modal dialog opens over it", async () => {
+    const user = userEvent.setup()
+    const Harness = ({ dialog }: { dialog: boolean }) => (
+      <>
+        <HelpHint label="About annotation status">No value is not a negative result.</HelpHint>
+        <Modal open={dialog} onClose={() => undefined} title="Same result via the API">
+          <button type="button">Copy</button>
+        </Modal>
+      </>
+    )
+    const { rerender } = render(<Harness dialog={false} />)
+    await user.click(screen.getByRole("button", { name: "About annotation status" }))
+    expect(screen.getByRole("tooltip")).toBeInTheDocument()
+    rerender(<Harness dialog />)
+    expect(screen.queryByRole("tooltip")).toBeNull()
   })
 })

@@ -37,4 +37,14 @@ describe("FigureExport", () => {
     await user.click(screen.getByRole("button", { name: "Export the Disease distribution" }))
     expect(screen.getAllByRole("menuitem").map((element) => element.textContent)).toEqual(["TSVData table", "SVGVector image", "PNGBitmap image"])
   })
+
+  it("cannot be opened while its figure has nothing to save", async () => {
+    const user = userEvent.setup()
+    const callbacks = { onTsv: vi.fn(), onSvg: vi.fn(), onPng: vi.fn() }
+    render(<FigureExport figure="Disease distribution" disabled {...callbacks} />)
+    const button = screen.getByRole("button", { name: "Export the Disease distribution" })
+    expect(button).toBeDisabled()
+    await user.click(button)
+    expect(screen.queryByRole("menu")).toBeNull()
+  })
 })

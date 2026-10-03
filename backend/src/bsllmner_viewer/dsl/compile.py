@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -12,32 +13,48 @@ from bsllmner_viewer.dsl.keyword import Accession, word_matches
 from bsllmner_viewer.dsl.validator import resolve_operator
 
 
+@dataclass(frozen=True, slots=True)
+class TempTable:
+    """A temporary table that a predicate reads, defined by the SELECT that fills it."""
+
+    name: str
+    sql: str
+    params: tuple[Any, ...]
+
+
 @dataclass
 class Predicate:
-    """A SQL boolean expression with positional parameters."""
+    """A SQL boolean expression with positional parameters and the temporary tables it reads."""
 
     sql: str
     params: list[Any] = field(default_factory=list)
+    tables: list[TempTable] = field(default_factory=list)
 
 
-def compile_condition(ast: Node | None, fields: FieldSet, alias: str = "pn") -> Predicate:
-    """Compile a validated AST. `None` compiles to `TRUE`."""
+def compile_condition(ast: Node | None, fields: FieldSet, alias: str = "pn", keyword_tables: bool = False) -> Predicate:
+    """Compile a validated AST. `None` compiles to `TRUE`.
+
+    With `keyword_tables`, the BioSamples that match the searchable-text words of a keyword are selected into a
+    temporary table that the caller creates, so that the scan of the searchable text runs once however many times the
+    predicate is evaluated.
+    """
     if ast is None:
         return Predicate("TRUE")
-    return _node(ast, fields, alias)
+    return _node(ast, fields, alias, keyword_tables)
 
 
-def _node(node: Node, fields: FieldSet, alias: str) -> Predicate:
+def _node(node: Node, fields: FieldSet, alias: str, keyword_tables: bool) -> Predicate:
     if isinstance(node, FreeText):
-        return _keyword(node, alias)
+        return _keyword(node, alias, keyword_tables)
     if isinstance(node, FieldClause):
         return _clause(node, fields, alias)
-    parts = [_node(c, fields, alias) for c in node.children]
+    parts = [_node(c, fields, alias, keyword_tables) for c in node.children]
     params = [p for part in parts for p in part.params]
+    tables = list(dict.fromkeys(t for part in parts for t in part.tables))
     if node.op == "NOT":
-        return Predicate(f"NOT ({parts[0].sql})", params)
+        return Predicate(f"NOT ({parts[0].sql})", params, tables)
     joiner = " AND " if node.op == "AND" else " OR "
-    return Predicate("(" + joiner.join(p.sql for p in parts) + ")", params)
+    return Predicate("(" + joiner.join(p.sql for p in parts) + ")", params, tables)
 
 
 def _clause(clause: FieldClause, fields: FieldSet, alias: str) -> Predicate:
@@ -77,7 +94,7 @@ def _two_valued(predicate: str) -> str:
     return f"COALESCE({predicate}, FALSE)"
 
 
-def _keyword(node: FreeText, alias: str) -> Predicate:
+def _keyword(node: FreeText, alias: str, keyword_tables: bool) -> Predicate:
     """Every word must hold: an accession word against the accessions, the others against the searchable text."""
     # Every word must hold, so a repeated word adds nothing.
     matches = list(dict.fromkeys(word_matches(node)))
@@ -87,6 +104,7 @@ def _keyword(node: FreeText, alias: str) -> Predicate:
     params: list[Any] = []
     text_conditions: list[str] = []
     text_params: list[str] = []
+    tables: list[TempTable] = []
     for match in matches:
         if isinstance(match, Accession):
             conditions.append(_ACCESSION_SQL[match.kind].format(alias=alias))
@@ -95,11 +113,20 @@ def _keyword(node: FreeText, alias: str) -> Predicate:
         text_conditions.append("(" + " OR ".join("text LIKE ?" for _ in match.patterns) + ")")
         text_params.extend(match.patterns)
     if text_conditions:
-        conditions.append(
-            f"{alias}.biosample IN (SELECT biosample FROM searchable_text WHERE {' AND '.join(text_conditions)})"
-        )
-        params.extend(text_params)
-    return Predicate("(" + " AND ".join(conditions) + ")", params)
+        select = f"SELECT biosample FROM searchable_text WHERE {' AND '.join(text_conditions)}"
+        if keyword_tables:
+            table = _keyword_table(select, tuple(text_params))
+            tables.append(table)
+            conditions.append(f"{alias}.biosample IN (SELECT biosample FROM {table.name})")
+        else:
+            conditions.append(f"{alias}.biosample IN ({select})")
+            params.extend(text_params)
+    return Predicate("(" + " AND ".join(conditions) + ")", params, tables)
+
+
+def _keyword_table(sql: str, params: tuple[Any, ...]) -> TempTable:
+    digest = hashlib.sha256(repr((sql, params)).encode()).hexdigest()[:16]
+    return TempTable(f"keyword_{digest}", sql, params)
 
 
 _ACCESSION_SQL = {

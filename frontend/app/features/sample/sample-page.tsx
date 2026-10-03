@@ -93,9 +93,9 @@ export const SamplePage = ({ accession }: SamplePageProps) => {
 
 /** The frame of the page: centered at the content width, with the gutter of the pages. */
 const PageFrame = ({ busy = false, children }: { busy?: boolean; children: ReactNode }) => (
-  <div aria-busy={busy || undefined} className="mx-auto w-full max-w-content-max px-page-gutter py-4">
+  <main id="main" aria-busy={busy || undefined} className="mx-auto w-full max-w-content-max px-page-gutter py-4">
     {children}
-  </div>
+  </main>
 )
 
 const EntryLinks = ({ accession }: { accession: string }) => (
@@ -135,13 +135,13 @@ const CardHeading = ({ children, help, aside }: CardHeadingProps) => (
   </div>
 )
 
-const TH = "border-b border-border-soft px-2 py-1.5 text-left text-fs-label font-semibold text-ink-soft"
+const TH = "border-b border-border-soft px-1.5 py-2 text-left text-fs-label font-semibold text-ink-soft"
 
 /**
  * The cells of a row of a table of a card (a row is a `group`). The last row has no rule: the bottom edge of the card ends
  * the table.
  */
-const TD = "border-b border-brand-soft px-2 py-1.5 group-last:border-b-0"
+const TD = "border-b border-brand-soft px-1.5 py-1.5 group-last:border-b-0"
 
 /** The rule under a row of a card that lists rows without a table. The last row has none, as in the tables. */
 const ROW_RULE = "border-b border-brand-soft last:border-b-0"
@@ -216,7 +216,7 @@ const SampleSkeleton = ({ accession, back, annotationRows }: SampleSkeletonProps
     </div>
     <div className="grid grid-cols-2 items-start gap-4">
       <SkeletonMetadataCard />
-      <SkeletonCard title="Annotation terms" rows={annotationRows} />
+      <SkeletonCard title="Annotations" rows={annotationRows} />
     </div>
     <div className="mt-4 grid grid-cols-2 items-start gap-4">
       <SkeletonTableCard title="BioProjects" columns={BIOPROJECT_COLUMNS} widths={["w-20", "w-48", "w-20"]} rows={2} />
@@ -334,7 +334,7 @@ const MetadataRow = ({ item, index, annotations, highlighted }: MetadataRowProps
   return (
     <div
       className={cn(
-        "grid grid-cols-[130px_1fr] gap-2.5 rounded-tag px-1.5 py-1.5 text-fs-body-sm",
+        "grid grid-cols-metadata-row gap-2.5 rounded-tag px-1.5 py-1.5 text-fs-body-sm",
         ROW_RULE,
         (name.active.length > 0 || value.active.length > 0) && "bg-selection-soft",
       )}
@@ -375,7 +375,7 @@ type AnnotationsProps = {
 
 const Annotations = ({ entry, highlighted, onHighlight }: AnnotationsProps) => (
   <Card padding="lg">
-    <CardHeading help={<HelpHint label="About the annotation status">{STATUS_HELP}</HelpHint>}>Annotation terms</CardHeading>
+    <CardHeading help={<HelpHint label="About annotation status">{STATUS_HELP}</HelpHint>}>Annotations</CardHeading>
     {entry.annotations.map((annotation) => (
       <AnnotationRow key={annotation.field} annotation={annotation} highlighted={highlighted} onHighlight={onHighlight} />
     ))}
@@ -384,7 +384,7 @@ const Annotations = ({ entry, highlighted, onHighlight }: AnnotationsProps) => (
 
 const STATUS_HELP = (
   <StatusMeanings statuses={VALUE_STATUSES.map((code) => ({ code, ...statusInfo(code) }))}>
-    {"A field that shows no value has no extracted value. The sample can still have the property."}
+    {"A field without a value has no extracted value. The BioSample can still have the property."}
   </StatusMeanings>
 )
 
@@ -406,7 +406,7 @@ const AnnotationRow = ({
       onMouseEnter={() => onHighlight(annotation.field)}
       onMouseLeave={() => onHighlight(null)}
       className={cn(
-        "grid grid-cols-[130px_1fr_112px] items-center gap-x-2.5 rounded-tag px-1.5 py-1.5 text-fs-body-sm",
+        "grid grid-cols-annotation-row items-center gap-x-2.5 rounded-tag px-1.5 py-1.5 text-fs-body-sm",
         ROW_RULE,
         highlighted === annotation.field && "bg-selection-soft",
       )}

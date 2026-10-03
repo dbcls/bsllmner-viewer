@@ -213,8 +213,8 @@ const STATUS_HELP = (
       <span className="font-semibold">Unmapped</span>: a value was extracted, but no ontology term was assigned to it.
     </span>
     <span className="mt-1 block">
-      <span className="font-semibold">No value</span>: no value was extracted, or the extraction failed. It does not mean that the sample lacks the
-      property.
+      <span className="font-semibold">No value</span>: no value was extracted, or the extraction failed. It does not mean that the BioSample lacks
+      the property.
     </span>
   </>
 )

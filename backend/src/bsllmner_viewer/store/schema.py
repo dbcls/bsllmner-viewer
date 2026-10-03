@@ -1,7 +1,9 @@
 """Store schema.
 
 Raw tables persist what build read (runs, entries, reference data). Derived tables are recomputed from
-the raw tables by every build operation and are the only tables the api reads for queries.
+the raw tables by every build operation. The api queries the derived tables, and reads from the raw tables only the
+store metadata, the runs, the fields, and the ontology files. `omitted_attribute` is the one derived table that the api
+does not read: it records the attribute names that derivation left out, so that a store can be checked against them.
 """
 
 from __future__ import annotations
@@ -49,7 +51,6 @@ DERIVED_TABLES: tuple[str, ...] = (
     "searchable_text",
     "field_term_count",
     "term_search",
-    "field_status_count",
     "population_count",
     "assay_count",
     "organism_count",

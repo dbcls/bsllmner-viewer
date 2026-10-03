@@ -42,23 +42,21 @@
   --color-selection-soft: #FFFBEA;
   --color-selection-mid:  #FFE58A;
 
-  /* Annotation status: mapped is the brand purple pair, unmapped goldenrod, no value grey. */
+  /* The LLM-selected status, and the darkest step of the count scale. */
   --color-brand-mid:      #7F58A4;  /* LLM-selected glyph and small text (AA on white) */
   --color-brand-deeper:   #3A1F52;  /* darkest step of the count scale */
-  --color-unmapped:       #C9A227;
-  --color-unmapped-mid:   #D9B84A;
-  --color-unmapped-light: #E7C77A;
-  --color-failed:         #E9A79E;
   --color-grid:           #EDEBF2;
   --color-skeleton:       #ECE9F2;  /* the place of content that is on its way */
 
   /* Lines that split the trend, in a fixed order. The brand purple is the line of the condition itself;
-     the red of gaps and the goldenrod of unmapped values are not used for a line. */
+     the red of gaps and the goldenrod of the warn status are not used for a line. Every pair of the five colors stays
+     apart under protanopia, deuteranopia, and tritanopia (OKLab delta E 8 or more) and in normal vision (15 or more),
+     and so does each of them with the condition purple and the All entries grey. */
   --color-series-1:     #2A78D6;
   --color-series-2:     #EB6834;
   --color-series-3:     #1BAF7A;
-  --color-series-4:     #E87BA4;
-  --color-series-5:     #008300;
+  --color-series-4:     #D81B60;
+  --color-series-5:     #256D1B;
 
   /* The dot of an assay, one per target assay in their order. Light and quiet beside the brand purple, and away from
      the purple, the goldenrod, and the red that mark statuses. Every pair stays apart under protanopia and
@@ -116,6 +114,11 @@
   --spacing-menu:         280px;
   --spacing-listbox:      320px;  /* tallest open list of a Select before it scrolls */
 
+  /* === Grid templates ===================================================== */
+  --grid-template-columns-landing:        minmax(0, 1.6fr) minmax(0, 1fr);  /* the left card and the right column of the top page */
+  --grid-template-columns-metadata-row:   130px 1fr;          /* a row of the original metadata of a BioSample */
+  --grid-template-columns-annotation-row: 130px 1fr 112px;    /* a row of the annotations of a BioSample */
+
   /* === Border widths ===================================================== */
   --border-width-gap: 1.5px;  /* dashed frame of a gap cell */
 
@@ -136,6 +139,9 @@
   --shadow-card-hover: 0 4px 16px -4px rgba(80, 46, 107, 0.12);
   --shadow-modal:      0 20px 50px -10px rgba(20, 15, 30, 0.35);
   --shadow-box-focus:  0 0 0 2px var(--color-brand-tint);  /* halo of a focused box, around its brand edge */
+  --shadow-focus:       0 0 0 4px var(--color-focus);  /* the outer ring of focus, around the brand-deep outline */
+  --shadow-focus-inset: inset 0 0 0 4px var(--color-focus);  /* the same ring drawn inside an element that fills a clipped box */
+  --shadow-frozen-edge: 6px 0 6px -6px rgba(26, 23, 38, 0.35);  /* the right edge of the frozen first column of a table that has scrolled */
 }
 
 /* Trims a line of text to the height of its capitals, so a flex container that centers the text centers the
@@ -160,7 +166,7 @@
     outline: 2px solid var(--color-brand-deep);
     outline-offset: 1px;
     border-radius: 3px;
-    box-shadow: 0 0 0 4px var(--color-focus);
+    box-shadow: var(--shadow-focus);
   }
 
   /* Text inputs keep their own border-radius and swap the border color
@@ -191,18 +197,6 @@ input::placeholder,
 textarea::placeholder {
   color: var(--color-ink-soft);
   opacity: 1;
-}
-
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
 }
 
 html,

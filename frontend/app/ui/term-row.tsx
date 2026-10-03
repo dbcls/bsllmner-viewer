@@ -24,7 +24,7 @@ type TermRowProps = TermRowContentProps & {
 
 type RowPadding = "sm" | "lg"
 
-const ROW_PADDING: Record<RowPadding, string> = { sm: "px-3.5", lg: "px-6" }
+const ROW_PADDING: Record<RowPadding, string> = { sm: "px-4", lg: "px-6" }
 
 export type TextPart = { text: string; match: boolean }
 

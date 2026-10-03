@@ -80,13 +80,21 @@ describe("the sample page", () => {
     expect(await screen.findByText("BioSample SAMD1 is not in the dataset.")).toBeInTheDocument()
     expect(screen.queryByRole("button", { name: /^Try again/ })).toBeNull()
   })
+
+  it("puts the notice in the main landmark, which the skip link of the shell targets", async () => {
+    net.entry = 404 as never
+    renderSample()
+    const notice = await screen.findByText("BioSample SAMD1 is not in the dataset.")
+    expect(screen.getByRole("main")).toHaveAttribute("id", "main")
+    expect(screen.getByRole("main")).toContainElement(notice)
+  })
 })
 
 describe("the term picker", () => {
   it("shows a notice with Try again in place of the results when the search fails", async () => {
     net.terms = 500
     renderWithQuery(<TermPicker open onClose={vi.fn()} fields={["disease"]} q={null} isSelected={() => false} onPick={vi.fn()} />)
-    await userEvent.type(screen.getByRole("textbox", { name: "Search terms" }), "liver")
+    await userEvent.type(screen.getByRole("textbox", { name: "Search terms by label, synonym, or ID" }), "liver")
     expect(await screen.findByText("Could not search terms.")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /^Try again/ })).toBeInTheDocument()
     net.terms = "ok"
@@ -161,6 +169,14 @@ describe("the error boundary of the route", () => {
     expect(await screen.findByText("404 Not Found")).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Go to the top page" })).toHaveAttribute("href", "/")
     expect(screen.queryByRole("button", { name: "Reload" })).toBeNull()
+  })
+
+  it("puts the message in the main landmark and offers a link that skips to it", async () => {
+    renderBoundary({ status: 404, statusText: "Not Found", internal: false, data: "" })
+    const main = await screen.findByRole("main")
+    expect(main).toHaveAttribute("id", "main")
+    expect(main).toHaveTextContent("404 Not Found")
+    expect(screen.getByRole("link", { name: "Skip to main content" })).toHaveAttribute("href", "#main")
   })
 
   it("offers to reload the page for any other failure", async () => {

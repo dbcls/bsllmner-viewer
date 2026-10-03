@@ -42,11 +42,23 @@ export const LOOKUP_FAILED = "Could not look up the terms."
 const TERM_ID = /^[^\s:]+:\S+$/
 
 /**
+ * The most labels that are looked up at the same time. Each lookup is a term search, which takes one of the slots that a
+ * worker of the api has for the requests that read the store, so the lookups leave slots for the views.
+ */
+export const LABEL_LOOKUPS = 4
+
+/** What an entry names: an element value, nothing (null), or a value that the api does not take. */
+type Named = string | null | typeof REJECTED
+
+const REJECTED = Symbol("rejected")
+
+/**
  * The element values that pasted entries name, in the order of the entries and without repeats, the number of entries
  * that name nothing, and the number of entries that the api does not take (too long, or refused with a 4xx response). On
  * an annotation field, an entry in the form of a term ID is taken as it is, and any other entry is a label that
  * `findTerm` resolves to a term ID, or to null when nothing matches. On another dimension, such as the assay, an entry is
- * the value itself. A failure of the server or of the network is thrown.
+ * the value itself. Up to `LABEL_LOOKUPS` labels are looked up at the same time. A failure of the server or of the
+ * network is thrown after the lookups in progress end, and no lookup starts after it.
  */
 export const resolvePasted = async (
   entries: readonly string[],
@@ -54,43 +66,59 @@ export const resolvePasted = async (
   findTerm: (label: string) => Promise<string | null>,
   isValid: (entry: string) => boolean = () => true,
 ): Promise<Pasted> => {
-  const found: string[] = []
-  let missed = 0
-  let rejected = 0
-  for (const entry of entries) {
+  const named: Named[] = entries.map((entry) => {
     const asIs = !termField || TERM_ID.test(entry)
-    if (asIs && entry.length > MAX_ENTRY_LENGTH) {
-      rejected += 1
-      continue
-    }
-    if (asIs && !isValid(entry)) {
-      missed += 1
-      continue
-    }
-    if (asIs) {
-      found.push(entry)
-      continue
-    }
-    try {
-      const id = await findTerm(entry)
-      if (id === null) missed += 1
-      else found.push(id)
-    } catch (error) {
-      if (!isClientError(error)) throw error
-      rejected += 1
+    if (!asIs) return null
+    if (entry.length > MAX_ENTRY_LENGTH) return REJECTED
+    return isValid(entry) ? entry : null
+  })
+  const labels = entries.flatMap((entry, index) => (termField && !TERM_ID.test(entry) ? [{ entry, index }] : []))
+  const queue = labels.values()
+  const failures: unknown[] = []
+  const lookUp = async () => {
+    while (failures.length === 0) {
+      const next = queue.next()
+      if (next.done) return
+      const { entry, index } = next.value
+      try {
+        named[index] = await findTerm(entry)
+      } catch (error) {
+        if (isClientError(error)) named[index] = REJECTED
+        else failures.push(error)
+      }
     }
   }
-  return { terms: [...new Set(found)], missed, rejected }
+  await Promise.all(Array.from({ length: Math.min(LABEL_LOOKUPS, labels.length) }, lookUp))
+  if (failures.length > 0) throw failures[0]
+  const found = named.filter((value): value is string => typeof value === "string")
+  return {
+    terms: [...new Set(found)],
+    missed: named.filter((value) => value === null).length,
+    rejected: named.filter((value) => value === REJECTED).length,
+  }
 }
 
 /** The most terms that the api takes for one dimension of an aggregation. */
 export const MAX_AXIS_TERMS = AXIS_TERM_LIMIT
 
-/** The most terms that an axis shows, and the subject of the alert that says so. */
-export type TermLimit = { max: number; subject: string }
+/**
+ * What the screen calls the elements of a dimension: the terms of an annotation field, and the values of any other
+ * dimension, such as an assay, an organism, or a year.
+ */
+export type ElementNoun = "term" | "value"
 
-/** The alert that says that an axis cannot take more terms. */
-export const limitAlert = (limit: TermLimit): string => `${limit.subject} shows up to ${limit.max} terms`
+export const elementNoun = (dimension: string, fields: readonly string[]): ElementNoun =>
+  // Until the dataset lists its fields, every dimension is taken for a field, as most are.
+  fields.length === 0 || fields.includes(dimension) ? "term" : "value"
+
+/** The noun after a number of elements: "1 term", "3 values". */
+export const nounFor = (count: number, noun: ElementNoun): string => (count === 1 ? noun : `${noun}s`)
+
+/** The most elements that an axis shows, the subject of the alert that says so, and what the elements are called (terms when not given). */
+export type TermLimit = { max: number; subject: string; noun?: ElementNoun }
+
+/** The alert that says that an axis cannot take more elements. */
+export const limitAlert = (limit: TermLimit): string => `${limit.subject} shows up to ${limit.max} ${nounFor(limit.max, limit.noun ?? "term")}.`
 
 /**
  * The terms of an axis after a found term is picked: without the term when the axis has it, and with the term at the end
@@ -112,10 +140,11 @@ export const replaceTerms = async (
   limit?: TermLimit,
 ): Promise<{ terms: string[] | null; alert: string }> => {
   const { terms: unique, missed, rejected } = await resolve(entries)
-  const rejectedNote = rejected > 0 ? `, ${rejected} rejected` : ""
-  if (unique.length === 0) return { terms: null, alert: `No terms recognised${rejectedNote}` }
-  if (limit && unique.length > limit.max) return { terms: unique.slice(0, limit.max), alert: `The first ${limit.max} of ${unique.length} terms are shown${rejectedNote}` }
-  return { terms: unique, alert: `${entries.length - missed - rejected} of ${entries.length} terms recognised${rejectedNote}` }
+  const nouns = `${limit?.noun ?? "term"}s`
+  const rejectedNote = rejected > 0 ? `, ${rejected} not valid` : ""
+  if (unique.length === 0) return { terms: null, alert: `No ${nouns} recognized${rejectedNote}.` }
+  if (limit && unique.length > limit.max) return { terms: unique.slice(0, limit.max), alert: `The first ${limit.max} of ${unique.length} ${nouns} are shown${rejectedNote}.` }
+  return { terms: unique, alert: `${entries.length - missed - rejected} of ${entries.length} ${nouns} recognized${rejectedNote}.` }
 }
 
 /**

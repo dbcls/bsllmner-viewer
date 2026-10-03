@@ -14,7 +14,7 @@ import { HeatmapTab } from "./heatmap/heatmap-tab"
 import { ApiModal, ExportMenu } from "./overlays"
 import { ProjectsTab } from "./projects/projects-tab"
 import { SamplesTab } from "./samples/samples-tab"
-import { useWorkspaceState } from "./state"
+import { TAB_LABELS, useWorkspaceState } from "./state"
 import { Tabs } from "./tabs"
 import { TermPicker } from "./term-picker/term-picker"
 import { TrendTab } from "./trend/trend-tab"
@@ -63,7 +63,7 @@ export const WorkspacePage = () => {
 
   const share = async () => {
     const ok = await copyText(window.location.href)
-    if (!ok) showAlert("Copy failed")
+    if (!ok) showAlert("Copy failed.")
     return ok
   }
 
@@ -78,7 +78,8 @@ export const WorkspacePage = () => {
       />
       <div className="flex min-h-0 flex-1 items-stretch">
         <ConditionPanel q={state.q} condition={condition} onAddTerm={() => setPickerOpen(true)} />
-        <main className="min-w-0 flex-1 pb-4">
+        <main id="main" className="min-w-0 flex-1 pb-4">
+          <h1 className="sr-only">{TAB_LABELS[state.tab]}</h1>
           <Tabs state={state} onTab={(tab) => update({ tab, page: 1 })} />
           <div className="px-workspace-gutter pt-4">
             {broken && (
@@ -103,6 +104,7 @@ export const WorkspacePage = () => {
                 condition={condition}
                 onUnit={(unit) => update({ unit })}
                 onTermIds={() => update({ termIds: !state.termIds })}
+                onAlert={showAlert}
               />
             )}
             {!broken && state.tab === "heatmap" && (

@@ -2365,6 +2365,8 @@ export interface operations {
             /** @description The header line and the accessions */
             200: {
                 headers: {
+                    /** @description Dataset version of the export: the name as a JSON string, the creation time, and the digest */
+                    "X-Dataset-Version"?: string;
                     [name: string]: unknown;
                 };
                 content: {
@@ -2454,6 +2456,8 @@ export interface operations {
             /** @description The entries, one per line after the header line of the TSV */
             200: {
                 headers: {
+                    /** @description Dataset version of the export: the name as a JSON string, the creation time, and the digest */
+                    "X-Dataset-Version"?: string;
                     [name: string]: unknown;
                 };
                 content: {

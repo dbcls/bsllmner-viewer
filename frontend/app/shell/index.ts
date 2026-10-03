@@ -1,1 +1,1 @@
-export { ShellLayout } from "./layout"
+export { ShellFallback, ShellLayout } from "./layout"

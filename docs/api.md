@@ -21,7 +21,7 @@ The api follows the conventions of the [DDBJ Search API](https://ddbj.nig.ac.jp/
 - A `sort` parameter has the form `{field}:{direction}`, where `direction` is `asc` or `desc`.
 - Every response has an `X-Request-ID` header. If the request has an `X-Request-ID` header, then the response repeats its value. Otherwise, the api generates a UUID.
 - Cross-origin requests are allowed from every origin, with every method and header.
-- Every JSON response includes `datasetVersion`, the identifier of the dataset version defined in [build.md](build.md): the name, the creation time, the model, and a digest of the complete version information. The exceptions are `GET /api/service-info` and the problem documents. The exports are not JSON. The header line of an accession list has the identifier, but the TSV and the NDJSON do not. To record the version of an export, get the identifier from `GET /api/dataset`.
+- Every JSON response includes `datasetVersion`, the identifier of the dataset version defined in [build.md](build.md): the name, the creation time, the model, and a digest of the complete version information. The exceptions are `GET /api/service-info` and the problem documents. The exports are not JSON. They name the dataset version in the `X-Dataset-Version` response header, with the name, the creation time, and the digest ([Entries](#entries)).
 - Counts change with every build of the dataset. To cite a result, record the `name`, `createdAt`, `model`, and `digest` of `datasetVersion`, the address of the api, and the date of access.
 
 ### Errors
@@ -72,6 +72,16 @@ The api limits the size of a request and the resources that one request uses. Th
 - A query that needs more memory than a worker may use, or more temporary disk space, is stopped. The api answers status 503 with slug `query-too-large`. A narrower condition needs less.
 
 The numbers in this list are the defaults. [operations.md](operations.md#limits-of-a-worker) lists the settings that change them.
+
+### Caching
+
+A response changes only when the api serves another store, another version of its code, or other versions of the packages that it runs on. A client can therefore keep the responses that it gets, and ask the api whether they are still current.
+
+- A GET response with status 200 has an `ETag` header and the header `Cache-Control: no-cache`. The exports and `GET /api/service-info` do not have these headers.
+- To check a response that you keep, send the same request with its `ETag` value in the `If-None-Match` header. If the response is still current, then the api answers status 304 without a body. Otherwise, the api answers status 200 with the current response and its `ETag`. A browser sends `If-None-Match` by itself. A script of another origin can read the `ETag` header.
+- The `ETag` belongs to the method, the path, and the query string. The same parameters in another order make another request with another `ETag`.
+- The web server in front of the api can compress a response. It then marks the `ETag` as weak, for example `W/"0123abcd"`. The api accepts the value with and without `W/` in `If-None-Match`.
+- The api answers status 304 without reading the store, so the request does not take a slot of [Limits](#limits). Each api worker also keeps recent responses in memory, and it answers a repeated request without reading the store.
 
 ## Condition DSL
 
@@ -127,6 +137,7 @@ A term without a field is a keyword, such as `hypoxia organoid` or `"breast canc
 - A word matches whole words, so `cell` does not match `cellulose`. The last word of a keyword also matches the start of a word, so `organoid` matches `organoids` and `H3K27` matches `H3K27ac`. A last word of one character matches whole words only.
 - A word that contains symbols, such as `IL-4` or `CD4+`, matches its parts in sequence (`IL 4`) and its parts written together (`IL4`). A word of the text that joins its parts with symbols, such as `MCF-7`, also matches the parts written together, so `MCF7` matches `MCF-7`.
 - A quoted keyword is a phrase. Its words must occur in sequence within one value, such as one attribute value or the title.
+- A phrase and other keywords are joined with `AND`, for example `"breast cancer" AND organoid`. As in the DDBJ Search API, a phrase next to words without an operator, such as `"breast cancer" organoid`, is rejected with status 400 and slug `unexpected-token`. The `keyword` of `POST /api/dsl/keyword` accepts that text and returns a condition that joins its parts with `AND`.
 - Words with symbols and phrases do not match the start of a word.
 - A word in the form of an accession matches the entry that has that accession, case-insensitively. The accession can be that of a BioSample, an SRA Experiment, an SRA Run, or a BioProject, for example `SAMN14864678` or `SRR11745799`. An SRA Experiment or SRA Run accession matches only the entry of its experiment. A client finds the BioSample of an SRA Run by using its accession as the keyword.
 - Wildcards are rejected with an error, as in the DDBJ Search API. A keyword without a letter or a digit is rejected with an error.
@@ -147,7 +158,9 @@ The original metadata is a list of items in three kinds: the description, the re
 
 The exports return every matching entry as TSV or as newline-delimited JSON (`application/x-ndjson`), and every matching accession of a type as plain text. Each line of the NDJSON is an item of the entry list. The entries are in the order of the entry list, and the accessions are in ascending order.
 
-An accession list starts with one header line, and then has one accession per line. A client skips the header line, which starts with `#`. The header line has the form `# bsllmner-viewer <type> accessions; q=<q>; dataset=<name> <createdAt> <digest>`. `<q>` is the condition, and `<name>` is the name of the dataset. Both are JSON strings. In a JSON string, a line break and every non-ASCII character are escaped, such as `\n` and `\u00e9`, so the header is always one line. If the condition is empty, then `<q>` is `""`.
+Every export has the response header `X-Dataset-Version: <name> <createdAt> <digest>`, for example `X-Dataset-Version: "bsllmner-mistral-all" 2026-10-03T21:29:30Z 0f8b06f33b9f2567`. `<name>` is the name of the dataset as a JSON string. In a JSON string, a line break and every non-ASCII character are escaped, such as `\n` and `\u00e9`, so the value is always one line of ASCII. A browser of another origin can read the header.
+
+An accession list starts with one header line, and then has one accession per line. A client skips the header line, which starts with `#`. The header line has the form `# bsllmner-viewer <type> accessions; q=<q>; dataset=<name> <createdAt> <digest>`, with the same dataset version as the response header. `<q>` is the condition as a JSON string, so the header line is always one line. If the condition is empty, then `<q>` is `""`. The TSV and the NDJSON have no header line for the dataset version, so that every line of the NDJSON is an item and the first line of the TSV names the columns.
 
 In the TSV, a header line names the columns, and every row has as many cells as the header. A cell with several values joins them with `;`. After the entry columns come one column per annotation field. Each annotation in these columns is `value|termId|label|status`: always four parts in this order, with an empty part when the annotation has no value, no term, or no label. A client splits a cell on `;` and then each annotation on `|`. The characters that delimit a cell are percent-encoded inside a part (`%` as `%25`, `|` as `%7C`, `;` as `%3B`, tab as `%09`, carriage return as `%0D`, line feed as `%0A`), so a value that contains them still splits into the same four parts. In the other columns, a tab or a line break in a value is replaced with a space. The TSV writes every other value as it is, so a spreadsheet program can read a cell that starts with `=`, `+`, `-`, or `@` as a formula. A client that needs the exact values reads the newline-delimited JSON.
 

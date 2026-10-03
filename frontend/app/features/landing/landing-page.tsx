@@ -20,14 +20,14 @@ export const LandingPage = () => {
   const dataset = useDataset()
   const totals = dataset.data?.totals
   return (
-    <div className="mx-auto w-full max-w-content-max flex-1 px-page-gutter py-4">
-      <div className="grid grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] items-start gap-4">
+    <main id="main" className="mx-auto w-full max-w-content-max flex-1 px-page-gutter py-4">
+      <div className="grid grid-cols-landing items-start gap-4">
         <Card padding="lg">
           <PageHeading>bsllmner-viewer: Ontology-annotated BioSamples</PageHeading>
           <p className="mt-3 mb-8 max-w-2xl text-fs-body text-ink-mid text-pretty">
             Search BioSamples by the ontology terms that annotate them, and compare the results in tables and charts.{" "}
-            <ExternalLink href={MK2_URL}>bsllmner-mk2</ExternalLink> reads the attributes of each BioSample with a large language model (LLM),
-            extracts values such as the cell line, the tissue, and the disease, and maps each value to an ontology term.
+            <ExternalLink kind="inline" href={MK2_URL}>bsllmner-mk2</ExternalLink> reads the attributes of each BioSample with a large language model (LLM).
+            It extracts values such as the cell line, the tissue, and the disease, and then maps each value to an ontology term.
           </p>
           <div className="mb-3">
             <SectionHeading>Search by ontology terms</SectionHeading>
@@ -64,7 +64,7 @@ export const LandingPage = () => {
           </Card>
         </div>
       </div>
-    </div>
+    </main>
   )
 }
 

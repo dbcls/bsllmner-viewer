@@ -88,7 +88,7 @@ def default_elements(
     limit: int,
 ) -> list[str]:
     """Elements shown when the request does not name them."""
-    pop_cte, pop_params = pop.cte(), pop.params
+    pop_cte, pop_params = pop.cte(cur), pop.params
     if dim.kind == "term":
         rows = cur.execute(
             f"WITH {pop_cte} SELECT a.term_id, count(DISTINCT p.biosample) AS n FROM pop p "

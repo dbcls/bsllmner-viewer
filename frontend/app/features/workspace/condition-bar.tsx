@@ -39,7 +39,7 @@ const Rail = ({ index, count }: RailProps) => {
       <span aria-hidden="true">
         {!last && <span className={cn(LINE, "-bottom-1 left-1/2 w-0.5 -translate-x-1/2", first ? "top-3.5" : "top-0")} />}
         {last && !first ? (
-          <span className="absolute top-0 left-1/2 -right-1 h-3.75 -translate-x-px rounded-bl-md border-b-2 border-l-2 border-brand-light" />
+          <span className="absolute top-0 left-1/2 -right-1 h-3.75 -translate-x-px rounded-bl-button border-b-2 border-l-2 border-brand-light" />
         ) : (
           <span className={cn(LINE, "top-3.5 left-1/2 -right-1 h-0.5 -translate-y-1/2")} />
         )}
@@ -78,12 +78,15 @@ type TreeProps = {
   termFields: ReadonlySet<string>
 }
 
+/** The values of a row of the condition, as high as the first line of the rail (h-7), whose AND badge is at its middle (top-3.5). */
+const ROW_VALUES = "inline-flex min-h-7 max-w-full items-center border border-transparent px-1"
+
 const Tree = ({ groups, condition, termFields }: TreeProps) => (
   <div className="flex flex-col gap-1">
     {groups.map((group, index) =>
       group.kind === "keyword" ? (
         <Row key="keyword" index={index} count={groups.length} label="Keyword">
-          <span className="inline-flex min-h-7 max-w-full items-center border border-transparent px-1">
+          <span className={ROW_VALUES}>
             <Chip name={group.text} onRemove={() => void condition.setKeyword("")}>
               {group.text}
             </Chip>
@@ -91,7 +94,7 @@ const Tree = ({ groups, condition, termFields }: TreeProps) => (
         </Row>
       ) : group.kind === "clauses" ? (
         <Row key={group.field} index={index} count={groups.length} label={groupLabel(group.field)}>
-          <span className="inline-flex min-h-7 max-w-full flex-wrap items-center gap-1 border border-transparent px-1">
+          <span className={cn(ROW_VALUES, "flex-wrap gap-1")}>
             {group.clauses.map((clause, clauseIndex) => (
               <Fragment key={`${clause.field}:${clause.value ?? clause.from}`}>
                 {clauseIndex > 0 && <span className="px-0.5 text-fs-badge leading-none font-bold tracking-widest text-brand">OR</span>}
@@ -100,7 +103,7 @@ const Tree = ({ groups, condition, termFields }: TreeProps) => (
                   {termFields.has(clause.field) && clause.value && (
                     <>
                       {" "}
-                      <TermIdHover termId={clause.value} label={clauseLabel(clause, condition.labels)} />
+                      <TermIdHover termId={clause.value} label={clauseLabel(clause, condition.labels)} onTint />
                     </>
                   )}
                 </Chip>
@@ -110,7 +113,7 @@ const Tree = ({ groups, condition, termFields }: TreeProps) => (
         </Row>
       ) : (
         <Row key={`expression-${index}`} index={index} count={groups.length} label="Expression">
-          <span className="inline-flex min-h-7 max-w-full items-center border border-transparent px-1">
+          <span className={ROW_VALUES}>
             <Chip kind="soft">
               {describeAst(group.node, condition.labels)}
             </Chip>

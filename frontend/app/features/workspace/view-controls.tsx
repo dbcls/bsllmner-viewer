@@ -30,7 +30,7 @@ export const ViewControls = ({ unit, onUnit, termIds, onTermIds, help, controls,
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-fs-label text-ink-soft">
         <span className="inline-flex items-center">
           <span className="inline-flex items-center gap-1.5">
-            <InlineLabel>Count</InlineLabel>
+            <InlineLabel>Unit</InlineLabel>
             <Segmented
               ariaLabel="Counting unit"
               options={UNITS.map((value) => ({ value, label: unitLabel(value) }))}

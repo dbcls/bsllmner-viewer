@@ -43,3 +43,13 @@ describe("retryDelay", () => {
     expect(retryDelay(1, new TypeError("x"))).toBe(2000)
   })
 })
+
+describe("queryClient", () => {
+  it("does not fetch a response again while the page is open, since the store does not change while the api serves it", () => {
+    expect(queryClient.getDefaultOptions().queries?.staleTime).toBe(Infinity)
+  })
+
+  it("keeps a response that no view uses for 30 minutes", () => {
+    expect(queryClient.getDefaultOptions().queries?.gcTime).toBe(30 * 60_000)
+  })
+})

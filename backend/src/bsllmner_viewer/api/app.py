@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.datastructures import Headers, MutableHeaders
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from bsllmner_viewer.api.cache import ResponseCache
 from bsllmner_viewer.api.deps import reject_unknown_query_params
 from bsllmner_viewer.api.limits import SERVER_THREADS, Limits
 from bsllmner_viewer.api.problems import (
@@ -22,6 +23,7 @@ from bsllmner_viewer.api.problems import (
     install_problem_handlers,
 )
 from bsllmner_viewer.api.routers import aggregations, dataset, dsl, entries, export, projects, service_info, terms
+from bsllmner_viewer.api.routers.export import VERSION_HEADER
 from bsllmner_viewer.api.store import Store, store_path_from_env
 
 API_VERSION = "0.1.0"
@@ -47,7 +49,8 @@ INFO_DESCRIPTION = (
     "Start with [/llms.txt](/llms.txt): condition examples and recipes for common tasks. "
     "[/llms-full.txt](/llms-full.txt) has the rules that span operations: the condition language, the descendants of "
     "terms, counting units and populations, self-exclusion, default elements, expected counts, export formats, "
-    "errors, and limits. A description in this document names the heading of the rule that it relies on."
+    "errors, limits, and caching with `ETag` and `If-None-Match`. A description in this document names the heading of "
+    "the rule that it relies on."
 )
 
 _ERROR_STATUS_CODES = ("400", "404", "422", "500", "503")
@@ -115,12 +118,14 @@ def create_app(store_path: Path | None = None, limits: Limits | None = None) -> 
         license_info={"name": "Apache-2.0", "url": "https://www.apache.org/licenses/LICENSE-2.0"},
     )
     app.add_middleware(UnhandledErrorMiddleware)
+    # Inside the CORS and request ID middleware, so that a kept response gets the headers of the request that reuses it.
+    app.add_middleware(ResponseCache)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
         allow_methods=["*"],
         allow_headers=["*"],
-        expose_headers=["Retry-After", REQUEST_ID_HEADER],
+        expose_headers=["Retry-After", REQUEST_ID_HEADER, VERSION_HEADER, "ETag"],
     )
     app.add_middleware(RequestIdMiddleware)
     install_problem_handlers(app)

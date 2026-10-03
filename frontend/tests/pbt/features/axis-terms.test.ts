@@ -85,7 +85,7 @@ describe("resolvePasted", () => {
   })
 
   test.prop([fc.array(fc.oneof(termId, fc.stringMatching(/^[a-z]{1,6}$/)), { maxLength: 20 })])(
-    "counts the entries that are repeats as recognised and the labels that name nothing as missed",
+    "counts the entries that are repeats as recognized and the labels that name nothing as missed",
     async (entries) => {
       const result = await resolvePasted(entries, true, (label) => Promise.resolve(label.length % 2 === 0 ? `TERM:${label}` : null))
       const named = entries.filter((entry) => entry.includes(":") || entry.length % 2 === 0)
@@ -132,7 +132,7 @@ describe("toggleTerm", () => {
         expect(result).toEqual({ terms: values.filter((v) => v !== value), alert: null })
       } else if (values.length >= max) {
         expect(result.terms).toEqual(values)
-        expect(result.alert).toBe(`An axis shows up to ${max} terms`)
+        expect(result.alert).toBe(`An axis shows up to ${max} ${max === 1 ? "term" : "terms"}.`)
       } else {
         expect(result).toEqual({ terms: [...values, value], alert: null })
       }
@@ -147,7 +147,7 @@ describe("toggleTerm", () => {
     const full = Array.from({ length: MAX_AXIS_TERMS }, (_, i) => `T:${i}`)
     const result = toggleTerm(full, "T:new", { max: MAX_AXIS_TERMS, subject: "A heatmap axis" })
     expect(result.terms).toEqual(full)
-    expect(result.alert).toBe(`A heatmap axis shows up to ${MAX_AXIS_TERMS} terms`)
+    expect(result.alert).toBe(`A heatmap axis shows up to ${MAX_AXIS_TERMS} terms.`)
   })
 })
 
@@ -159,12 +159,12 @@ describe("replaceTerms", () => {
       const unique = [...new Set(entries)]
       if (unique.length === 0) {
         expect(result.terms).toBeNull()
-        expect(result.alert).toBe("No terms recognised")
+        expect(result.alert).toBe("No terms recognized.")
         return
       }
       expect(result.terms).toEqual(unique.slice(0, max))
       expect(result.terms?.length).toBeLessThanOrEqual(max)
-      expect(result.alert).toBe(unique.length > max ? `The first ${max} of ${unique.length} terms are shown` : `${entries.length} of ${entries.length} terms recognised`)
+      expect(result.alert).toBe(unique.length > max ? `The first ${max} of ${unique.length} terms are shown.` : `${entries.length} of ${entries.length} terms recognized.`)
     },
   )
 
@@ -172,21 +172,21 @@ describe("replaceTerms", () => {
     expect(MAX_AXIS_TERMS).toBe(100)
   })
 
-  it("counts a repeated term as recognised", async () => {
+  it("counts a repeated term as recognized", async () => {
     const result = await replaceTerms(["A:1", "A:1", "B:2"], (list) => resolvePasted(list, true, never))
-    expect(result).toEqual({ terms: ["A:1", "B:2"], alert: "3 of 3 terms recognised" })
+    expect(result).toEqual({ terms: ["A:1", "B:2"], alert: "3 of 3 terms recognized." })
   })
 
-  it("does not count the labels that name nothing as recognised", async () => {
+  it("does not count the labels that name nothing as recognized", async () => {
     const result = await replaceTerms(["A:1", "nothing", "also nothing"], (list) => resolvePasted(list, true, () => Promise.resolve(null)))
-    expect(result).toEqual({ terms: ["A:1"], alert: "1 of 3 terms recognised" })
+    expect(result).toEqual({ terms: ["A:1"], alert: "1 of 3 terms recognized." })
   })
 
   it("reports the rejected entries in the alert and uses the others", async () => {
     const rejected = new ApiError({ type: "about:blank", title: "x", status: 422 })
     const find = (label: string) => (label === "bad" ? Promise.reject(rejected) : Promise.resolve(null))
-    expect(await replaceTerms(["A:1", "bad", "none"], (list) => resolvePasted(list, true, find))).toEqual({ terms: ["A:1"], alert: "1 of 3 terms recognised, 1 rejected" })
-    expect(await replaceTerms(["bad"], (list) => resolvePasted(list, true, find))).toEqual({ terms: null, alert: "No terms recognised, 1 rejected" })
+    expect(await replaceTerms(["A:1", "bad", "none"], (list) => resolvePasted(list, true, find))).toEqual({ terms: ["A:1"], alert: "1 of 3 terms recognized, 1 not valid." })
+    expect(await replaceTerms(["bad"], (list) => resolvePasted(list, true, find))).toEqual({ terms: null, alert: "No terms recognized, 1 not valid." })
   })
 
   it("keeps every term when there is no limit", async () => {
@@ -198,7 +198,7 @@ describe("replaceTerms", () => {
     const entries = Array.from({ length: 101 }, (_, i) => `T:${i}`)
     const result = await replaceTerms(entries, (list) => resolvePasted(list, true, never), { max: MAX_AXIS_TERMS, subject: "A heatmap axis" })
     expect(result.terms).toEqual(entries.slice(0, MAX_AXIS_TERMS))
-    expect(result.alert).toBe("The first 100 of 101 terms are shown")
+    expect(result.alert).toBe("The first 100 of 101 terms are shown.")
   })
 })
 

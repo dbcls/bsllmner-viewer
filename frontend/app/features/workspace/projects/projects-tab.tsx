@@ -95,7 +95,7 @@ export const ProjectsTab = ({ state, condition, onPage, onPastEnd, onSort, onPer
       </TableScroller>
       <CardFooter>
         <div className="ml-auto">
-          <Pager page={state.page} perPage={state.perPage} total={total} onChange={table.onFootPage} failed={failed} />
+          <Pager page={state.page} perPage={state.perPage} total={total} onChange={table.onFootPage} failed={failed} label="Pages (bottom)" />
         </div>
       </CardFooter>
     </Card>

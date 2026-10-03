@@ -1,5 +1,6 @@
 import type { AnchorHTMLAttributes, ButtonHTMLAttributes, ReactNode } from "react"
 
+import { buttonClass } from "./button"
 import { cn } from "./cn"
 import { ACTION_ICON, Icon, type IconName } from "./icons"
 
@@ -18,7 +19,7 @@ export const LinkButton = ({ children, tone = "brand", mono, size = "sm", icon, 
     {...rest}
     type={type}
     className={cn(
-      "cursor-pointer whitespace-nowrap hover:text-brand-deep",
+      "cursor-pointer whitespace-nowrap enabled:hover:text-brand-deep disabled:cursor-not-allowed disabled:opacity-55",
       icon && "inline-flex items-center gap-1",
       tone === "brand" ? "text-brand" : "text-ink-soft",
       mono && "font-mono",
@@ -32,7 +33,8 @@ export const LinkButton = ({ children, tone = "brand", mono, size = "sm", icon, 
 
 type ExternalLinkProps = Omit<AnchorHTMLAttributes<HTMLAnchorElement>, "className" | "target" | "rel"> & {
   children: ReactNode
-  kind?: "text" | "button"
+  /** `inline` is a link in a sentence, underlined so that it is told apart from the text around it by more than its color. */
+  kind?: "text" | "inline" | "button"
   /**
    * A glyph before the text that names where the link goes, such as the GitHub mark. A link with one does not also show
    * the new-tab icon after its text: the button is told apart by its own glyph.
@@ -52,14 +54,14 @@ export const ExternalLink = ({ children, kind = "text", icon, ...rest }: Externa
     onClick={(event) => event.stopPropagation()}
     className={cn(
       "relative",
-      kind === "text" && "text-brand hover:text-brand-deep",
-      kind === "button" &&
-        "inline-flex items-center gap-1.5 rounded-button border border-border-soft bg-surface px-3 py-1.5 text-fs-body-sm leading-none font-semibold text-ink hover:bg-brand-soft",
+      kind !== "button" && "text-brand hover:text-brand-deep",
+      kind === "inline" && "underline underline-offset-2",
+      kind === "button" && buttonClass("secondary", "sm"),
     )}
   >
-    {icon && <Icon name={icon} className={kind === "text" ? "mr-1" : undefined} />}
-    {children}
-    {!icon && <Icon name={ACTION_ICON.openInNewTab} size="sm" className={kind === "text" ? "ml-1" : undefined} />}
+    {icon && <Icon name={icon} className={kind === "button" ? undefined : "mr-1"} />}
+    {kind === "button" ? <span className="text-trim-cap">{children}</span> : children}
+    {!icon && <Icon name={ACTION_ICON.openInNewTab} size="sm" className={kind === "button" ? undefined : "ml-1"} />}
     <span className="sr-only">(opens in a new tab)</span>
   </a>
 )

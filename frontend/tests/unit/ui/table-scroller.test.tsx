@@ -1,7 +1,11 @@
-import { fireEvent, render, screen } from "@testing-library/react"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import { FrozenTd, FrozenTh, TableScroller } from "~/ui/table-scroller"
+
+afterEach(() => {
+  vi.restoreAllMocks()
+})
 
 beforeEach(() => {
   vi.stubGlobal(
@@ -40,7 +44,7 @@ const renderTable = () => {
     scroller.scrollLeft = left
     fireEvent.scroll(scroller)
   }
-  const shade = () => view.container.querySelector("[aria-hidden='true']")
+  const shade = () => view.container.querySelector("[data-scroll-shade]")
   const edges = () => [screen.getByRole("columnheader", { name: "BioSample" }), screen.getByRole("cell", { name: "SAMD00000001" })].map((cell) => cell.className.includes("shadow-"))
   return { scrollTo, shade, edges }
 }
@@ -72,5 +76,36 @@ describe("TableScroller", () => {
     expect(header).toContain("bg-surface-subtle")
     expect(body).toContain("sticky")
     expect(body).toContain("group-hover:bg-brand-soft")
+  })
+})
+
+describe("TableScroller keyboard scrolling", () => {
+  const renderBox = (wide: boolean, withLink: boolean) => {
+    vi.spyOn(HTMLElement.prototype, "scrollWidth", "get").mockReturnValue(wide ? 1000 : 400)
+    vi.spyOn(HTMLElement.prototype, "clientWidth", "get").mockReturnValue(400)
+    const view = render(
+      <TableScroller>
+        <table>
+          <tbody>
+            <tr>
+              <td>{withLink ? <a href="#x">link</a> : "empty"}</td>
+            </tr>
+          </tbody>
+        </table>
+      </TableScroller>,
+    )
+    return view.container.querySelector<HTMLElement>("[data-table-scroller]") as HTMLElement
+  }
+
+  it("becomes a named stop of Tab when it scrolls and holds nothing to focus", () => {
+    const box = renderBox(true, false)
+    expect(box).toHaveAttribute("tabindex", "0")
+    expect(screen.getByRole("region", { name: "Scrollable table" })).toBe(box)
+  })
+
+  it("adds no stop when it does not scroll or when a link inside takes the focus", () => {
+    expect(renderBox(false, false)).not.toHaveAttribute("tabindex")
+    cleanup()
+    expect(renderBox(true, true)).not.toHaveAttribute("tabindex")
   })
 })

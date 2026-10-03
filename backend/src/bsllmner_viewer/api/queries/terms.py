@@ -45,13 +45,12 @@ def search_terms(
     candidate, so that a broad term counted only through its descendants is still found. The candidates are ordered by
     tier, then by the BioSamples assigned directly in the population, then in the whole dataset.
     """
-    groups: dict[tuple[str, tuple[Any, ...]] | None, list[str]] = {}
+    groups: dict[Population | None, list[str]] = {}
     for name, pop in populations.items():
-        groups.setdefault(None if pop is None else (pop.sql, pop.params), []).append(name)
+        groups.setdefault(pop, []).append(name)
     text = query.strip()
     rows: list[tuple[Any, ...]] = []
-    for key, names in groups.items():
-        pop = None if key is None else Population(*key)
+    for pop, names in groups.items():
         rows += _listed(cur, names, pop, limit) if not text else _matched(cur, names, pop, text, limit)
     rows.sort(key=(lambda r: (r[4], -r[5], -r[6], -r[7], r[1], r[8])) if text else (lambda r: (-r[5], r[1], r[8])))
     rows = rows[:limit]
@@ -89,7 +88,7 @@ def _listed(
         ).fetchall()
     return cur.execute(
         f"""
-        WITH {pop.cte()},
+        WITH {pop.cte(cur)},
         d AS (
             SELECT a.field, a.term_id, count(DISTINCT p.biosample) AS n FROM pop p
             JOIN annotation a ON a.biosample = p.biosample AND a.term_id IS NOT NULL AND a.field IN ({marks})
@@ -131,7 +130,7 @@ def _matched(
         ).fetchall()
     return cur.execute(
         f"""
-        WITH {pop.cte()}, s AS ({matched}),
+        WITH {pop.cte(cur)}, s AS ({matched}),
         d AS (
             SELECT a.field, a.term_id, count(DISTINCT p.biosample) AS n FROM pop p
             JOIN annotation a ON a.biosample = p.biosample

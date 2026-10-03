@@ -79,8 +79,15 @@ test.describe("distribution", () => {
     if (disease.withoutTerm === null) throw new Error("the distribution of disease has no count without a term")
     const percent = `${Math.round((disease.withoutTerm / disease.total) * 100)}%`
     await page.goto(workspaceUrl({ tab: "distribution" }))
-    const row = page.getByRole("main").getByText("No Disease term", { exact: true }).locator("..")
+    // The innermost block that holds both the Export button of the Disease card and a "No term" row is the card.
+    const card = page
+      .getByRole("main")
+      .locator("div")
+      .filter({ has: page.getByRole("button", { name: "Export the Disease distribution" }) })
+      .filter({ has: page.getByText("No term", { exact: true }) })
+      .last()
+    const row = card.getByText("No term", { exact: true }).locator("..")
     await expect(row).toContainText(`${formatCount(disease.withoutTerm)} (${percent})`)
-    await expect(page.getByRole("main").getByRole("button", { name: /No Disease term/ })).toHaveCount(0)
+    await expect(card.getByRole("button", { name: /No term/ })).toHaveCount(0)
   })
 })

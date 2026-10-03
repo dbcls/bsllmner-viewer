@@ -6,8 +6,11 @@ import { cn, FrozenTh } from "~/ui"
  * The cells of a row of a table of the workspace (a row is a `group`). The rule is on the cells rather than the row: the
  * tables have separate borders, which the frozen column needs. The last row has none, so that it does not double the line
  * over the footer.
+ *
+ * The first cell of a row starts, and the last cell ends, at the same x as the text of the card's header (16px from the
+ * card's edge).
  */
-export const TABLE_CELL = "border-b border-brand-soft px-2.5 py-1.5 group-last:border-b-0"
+export const TABLE_CELL = "border-b border-brand-soft px-2.5 py-1.5 first:pl-4 last:pr-4 group-last:border-b-0"
 
 type ThProps = {
   children: ReactNode
@@ -21,7 +24,7 @@ type ThProps = {
 /** The heading of a column of a table of the workspace. */
 export const Th = ({ children, width, frozen = false, align = "left" }: ThProps) => {
   const className = cn(
-    "border-b border-border-soft px-2.5 py-2 text-fs-label font-semibold whitespace-nowrap text-ink-soft",
+    "border-b border-border-soft px-2.5 py-2 first:pl-4 last:pr-4 text-fs-label font-semibold whitespace-nowrap text-ink-soft",
     align === "right" ? "text-right" : "text-left",
     width && cn(width, "truncate"),
   )

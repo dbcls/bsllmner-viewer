@@ -9,15 +9,29 @@ from bsllmner_viewer.api.schemas import AnnotationValue, EntryItem, Organism
 
 
 def count_entries(cur: duckdb.DuckDBPyConnection, pop: Population) -> int:
-    row = cur.execute(f"WITH {pop.cte()} SELECT count(DISTINCT p.biosample) FROM pop p", list(pop.params)).fetchone()
+    row = cur.execute(f"WITH {pop.cte(cur)} SELECT count(DISTINCT p.biosample) FROM pop p", list(pop.params)).fetchone()
     return int(row[0]) if row else 0
 
 
 def page_keys(cur: duckdb.DuckDBPyConnection, pop: Population, page: int, per_page: int) -> list[str]:
     """BioSample accessions of one page, in the order of accession."""
     rows = cur.execute(
-        f"WITH {pop.cte()} SELECT DISTINCT p.biosample FROM pop p ORDER BY 1 LIMIT ? OFFSET ?",
+        f"WITH {pop.cte(cur)} SELECT DISTINCT p.biosample FROM pop p ORDER BY 1 LIMIT ? OFFSET ?",
         [*pop.params, per_page, (page - 1) * per_page],
+    ).fetchall()
+    return [str(r[0]) for r in rows]
+
+
+def keys_after(cur: duckdb.DuckDBPyConnection, pop: Population, after: str | None, limit: int) -> list[str]:
+    """BioSample accessions that follow `after` (or the first ones), in the order of accession.
+
+    The population table is in the order of BioSample, so a page that starts after a key skips the pages before it
+    without counting them, as an offset would.
+    """
+    start = "" if after is None else "WHERE p.biosample > ? "
+    rows = cur.execute(
+        f"WITH {pop.cte(cur)} SELECT DISTINCT p.biosample FROM pop p {start}ORDER BY 1 LIMIT ?",
+        [*pop.params, *([] if after is None else [after]), limit],
     ).fetchall()
     return [str(r[0]) for r in rows]
 
@@ -39,7 +53,7 @@ def entry_rows(
     }
     experiments: dict[str, list[tuple[str, str | None]]] = {}
     for bs, ex, strategy in cur.execute(
-        f"WITH {pop.cte()} SELECT p.biosample, p.experiment, p.library_strategy FROM pop p "
+        f"WITH {pop.cte(cur)} SELECT p.biosample, p.experiment, p.library_strategy FROM pop p "
         f"WHERE p.biosample IN ({placeholders}) ORDER BY 1, 2",
         [*pop.params, *accessions],
     ).fetchall():

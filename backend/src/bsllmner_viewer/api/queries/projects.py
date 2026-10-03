@@ -18,7 +18,7 @@ _ORDER: dict[ProjectSort, str] = {
 
 def count_projects(cur: duckdb.DuckDBPyConnection, pop: Population) -> int:
     row = cur.execute(
-        f"WITH {pop.cte()} SELECT count(DISTINCT bp.bioproject) FROM pop p "
+        f"WITH {pop.cte(cur)} SELECT count(DISTINCT bp.bioproject) FROM pop p "
         "JOIN biosample_bioproject bp ON bp.biosample = p.biosample",
         list(pop.params),
     ).fetchone()
@@ -30,7 +30,7 @@ def project_page(
 ) -> list[tuple[str, str | None, int, int, list[str]]]:
     rows = cur.execute(
         f"""
-        WITH {pop.cte()}
+        WITH {pop.cte(cur)}
         SELECT bp.bioproject, any_value(b.title), count(DISTINCT p.biosample) AS n_biosample,
                count(DISTINCT p.experiment) AS n_experiment,
                list(DISTINCT p.library_strategy ORDER BY p.library_strategy) AS assays

@@ -85,7 +85,7 @@ export const StatusPill = ({ mark, tone, label, size = "md" }: StatusPillProps) 
   <span
     className={cn(
       "inline-flex items-center rounded-tag whitespace-nowrap",
-      size === "md" ? "gap-1.5 px-2 py-0.5 text-fs-label" : "gap-1 px-1.5 py-px text-fs-micro",
+      size === "md" ? "gap-1.5 px-2 py-0.5 text-fs-label" : "h-5 gap-1 px-1.5 text-fs-micro",
       pillClass[tone],
     )}
   >

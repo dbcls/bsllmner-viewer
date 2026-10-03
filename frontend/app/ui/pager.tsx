@@ -11,10 +11,12 @@ type PagerProps = {
   onChange: (page: number) => void
   /** The list could not be loaded: there is no range to show, and no page to step to. */
   failed?: boolean
+  /** The name of the navigation landmark. Two pagers on one page need different names. */
+  label?: string
 }
 
 const STEP =
-  "inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-button border border-border-soft bg-surface text-ink-mid hover:bg-brand-soft disabled:cursor-default disabled:opacity-40 disabled:hover:bg-surface"
+  "inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-button border border-border-soft bg-surface text-ink-mid hover:bg-brand-soft disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:bg-surface"
 
 const formatCount = (value: number): string => value.toLocaleString("en-US")
 
@@ -23,11 +25,11 @@ const formatCount = (value: number): string => value.toLocaleString("en-US")
  * are always drawn, and a step that leads nowhere is disabled, so the pager keeps its width on every page. While the
  * list is counted, the range is a skeleton and both steps are disabled; a list that could not be loaded shows a dash.
  */
-export const Pager = ({ page, perPage, total, onChange, failed = false }: PagerProps) => {
+export const Pager = ({ page, perPage, total, onChange, failed = false, label = "Pages" }: PagerProps) => {
   const pages = total === undefined ? page : pageCount(total, perPage)
   const range = total === undefined ? null : pageRange(page, perPage, total)
   return (
-    <nav aria-label="Pages" aria-busy={(total === undefined && !failed) || undefined} className="flex items-center gap-2">
+    <nav aria-label={label} aria-busy={(total === undefined && !failed) || undefined} className="flex items-center gap-2">
       <span className="text-fs-micro whitespace-nowrap text-ink-soft tabular-nums">
         {failed ? (
           "–"

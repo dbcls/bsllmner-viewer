@@ -118,7 +118,7 @@ describe("opening the children of a row", () => {
     fireEvent.click(await chevron("F0"))
     await vi.waitFor(() => expect(net.children.size).toBe(1))
     await answer("F0")
-    expect(onAlert).toHaveBeenCalledWith("A heatmap axis shows up to 100 terms")
+    expect(onAlert).toHaveBeenCalledWith("A heatmap axis shows up to 100 terms.")
     expect(onUpdate).not.toHaveBeenCalled()
   })
 

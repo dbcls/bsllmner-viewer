@@ -1,4 +1,8 @@
-/** Client-side downloads: TSV tables, SVG markup, and PNG renderings of SVG elements. */
+/** Client-side downloads: TSV tables, SVG markup, and PNG renderings of SVG markup. */
+
+import { token } from "./color"
+import { embedFonts } from "./figure-fonts"
+import { setPngResolution } from "./png"
 
 /** Characters that XML 1.0 does not allow: most control characters, lone surrogates, and U+FFFE and U+FFFF. */
 // eslint-disable-next-line no-control-regex
@@ -27,57 +31,66 @@ export const downloadTsv = (name: string, header: string[], rows: (string | numb
   download(name, new Blob([`${lines.join("\n")}\n`], { type: "text/tab-separated-values" }))
 }
 
-const serializeSvg = (svg: SVGSVGElement): string => {
-  const clone = svg.cloneNode(true) as SVGSVGElement
-  clone.setAttribute("xmlns", "http://www.w3.org/2000/svg")
-  const width = svg.viewBox.baseVal.width || svg.clientWidth
-  const height = svg.viewBox.baseVal.height || svg.clientHeight
-  clone.setAttribute("width", String(width))
-  clone.setAttribute("height", String(height))
-  return new XMLSerializer().serializeToString(clone)
+/** What the screen says when a figure could not be saved, as when its fonts could not be loaded. */
+export const FIGURE_SAVE_FAILED = "Could not save the figure."
+
+/** The SVG markup of a figure with its fonts embedded, saved as a file. */
+export const downloadSvgMarkup = async (name: string, markup: string): Promise<void> => {
+  download(name, new Blob([await embedFonts(markup)], { type: "image/svg+xml" }))
 }
 
-export const downloadSvg = (name: string, svg: SVGSVGElement): void => {
-  downloadSvgMarkup(name, serializeSvg(svg))
+/** The scale of a saved PNG: 4 gives about 550 dpi when a 960px figure is printed 7 inches wide. */
+export const PNG_SCALE = 4
+/** The most that a canvas holds in Chromium and Firefox: the length of a side, and the area, in px. */
+const CANVAS_MAX_SIDE = 16384
+const CANVAS_MAX_AREA = 268_435_456
+/** The resolution of an unscaled figure, in dots per inch. */
+const BASE_DPI = 96
+
+/** The scale for a figure of `width` x `height`: `preferred`, or less when the canvas would pass its limits. */
+export const pngScale = (width: number, height: number, preferred = PNG_SCALE): number =>
+  Math.min(preferred, CANVAS_MAX_SIDE / Math.max(width, height), Math.sqrt(CANVAS_MAX_AREA / (width * height)))
+
+/** The scale to try after `scale` produced no image: half of it, and never less than 1. Nothing when `scale` is already 1 or less. */
+export const smallerPngScale = (scale: number): number | null => (scale <= 1 ? null : Math.max(1, scale / 2))
+
+/** The figure drawn on a white canvas at `scale` as a PNG, or null when the browser makes no canvas or no image of that size. */
+const renderPng = async (image: HTMLImageElement, width: number, height: number, scale: number): Promise<Blob | null> => {
+  const canvas = document.createElement("canvas")
+  canvas.width = Math.max(1, Math.floor(width * scale))
+  canvas.height = Math.max(1, Math.floor(height * scale))
+  const context = canvas.getContext("2d")
+  if (!context) return null
+  context.fillStyle = token("--color-surface")
+  context.fillRect(0, 0, canvas.width, canvas.height)
+  context.drawImage(image, 0, 0, canvas.width, canvas.height)
+  return new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"))
 }
 
-export const downloadSvgMarkup = (name: string, markup: string): void => {
-  download(name, new Blob([markup], { type: "image/svg+xml" }))
-}
-
-export const downloadPng = (name: string, svg: SVGSVGElement, scale = 2): Promise<void> =>
-  downloadPngMarkup(
-    name,
-    serializeSvg(svg),
-    svg.viewBox.baseVal.width || svg.clientWidth,
-    svg.viewBox.baseVal.height || svg.clientHeight,
-    scale,
-  )
-
-export const downloadPngMarkup = (name: string, markup: string, width: number, height: number, scale = 2): Promise<void> =>
-  new Promise((resolve, reject) => {
-    const image = new Image()
-    image.onload = () => {
-      const canvas = document.createElement("canvas")
-      canvas.width = width * scale
-      canvas.height = height * scale
-      const context = canvas.getContext("2d")
-      if (!context) {
-        reject(new Error("canvas is not available"))
-        return
-      }
-      context.fillStyle = "white"
-      context.fillRect(0, 0, canvas.width, canvas.height)
-      context.scale(scale, scale)
-      context.drawImage(image, 0, 0)
-      canvas.toBlob((blob) => {
-        if (blob) download(name, blob)
-        resolve()
-      }, "image/png")
+/**
+ * The SVG markup of a figure drawn on a white canvas at `pngScale`, saved as a PNG file with a resolution of 96 dpi times
+ * the scale. The fonts are embedded in the image. A browser that makes no image of a canvas of that size gets a smaller
+ * scale, down to 1; at 1 it is an error.
+ */
+export const downloadPngMarkup = async (name: string, markup: string, width: number, height: number): Promise<void> => {
+  const image = new Image()
+  image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(await embedFonts(markup))}`
+  try {
+    await image.decode()
+  } catch {
+    throw new Error("could not render the SVG")
+  }
+  let scale: number | null = pngScale(width, height)
+  while (scale !== null) {
+    const blob = await renderPng(image, width, height, scale)
+    if (blob) {
+      download(name, new Blob([setPngResolution(new Uint8Array(await blob.arrayBuffer()), BASE_DPI * scale)], { type: "image/png" }))
+      return
     }
-    image.onerror = () => reject(new Error("could not render the SVG"))
-    image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(markup)}`
-  })
+    scale = smallerPngScale(scale)
+  }
+  throw new Error("could not make the PNG")
+}
 
 export const copyText = async (text: string): Promise<boolean> => {
   try {

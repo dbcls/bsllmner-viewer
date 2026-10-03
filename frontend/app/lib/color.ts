@@ -58,8 +58,35 @@ export const countScale = (t: number): string => {
   return mix(token("--color-brand-light"), token("--color-brand-deeper"), (t - 0.5) * 2)
 }
 
-/** Whether text on a count-scale background should be white. */
-export const countScaleIsDark = (t: number): boolean => t > 0.55
+/** The red, green, and blue of a hex color or of an `rgb(r, g, b)` color, as `mix` writes it. */
+const channels = (color: string): Rgb => {
+  const rgb = /^rgb\((\d+),\s*(\d+),\s*(\d+)\)$/.exec(color)
+  return rgb ? [Number(rgb[1]), Number(rgb[2]), Number(rgb[3])] : toRgb(color)
+}
+
+/** The relative luminance of a color, as WCAG defines it. */
+const luminance = (color: string): number => {
+  const [r, g, b] = channels(color).map((value) => {
+    const c = value / 255
+    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4
+  }) as Rgb
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b
+}
+
+/** The WCAG contrast ratio of two colors, from 1 to 21. */
+export const contrastRatio = (a: string, b: string): number => {
+  const [high, low] = [luminance(a), luminance(b)].sort((x, y) => y - x) as [number, number]
+  return (high + 0.05) / (low + 0.05)
+}
+
+/**
+ * Whether text on a count-scale background should be white: the text takes whichever of white and the ink has the higher
+ * contrast with the cell. In the middle of the scale neither reaches 4.5:1; the better of the two is 4.2:1 or more.
+ */
+export const countScaleIsDark = (t: number): boolean => {
+  const background = countScale(t)
+  return contrastRatio(background, token("--color-surface")) > contrastRatio(background, token("--color-ink"))
+}
 
 /** The ratios to the expected count at which the color of `ratioScale` changes. */
 export const RATIO_STEPS = { low: 0.5, mid: 2, high: 4 }

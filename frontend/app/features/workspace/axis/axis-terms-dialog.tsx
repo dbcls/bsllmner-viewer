@@ -6,7 +6,7 @@ import { Button, Chip, Modal, Segmented, Skeleton, TextArea } from "~/ui"
 
 import { PickerSearch } from "../term-picker/term-picker"
 import type { AxisElement } from "./axis-controls"
-import { axisTermsText, pastedLines } from "./axis-terms"
+import { axisTermsText, elementNoun, pastedLines } from "./axis-terms"
 
 type Way = "search" | "paste"
 
@@ -77,6 +77,7 @@ const AxisTerms = ({
   // Until the user edits the list, it shows the terms on the axis now.
   const text = pasted ?? axisTermsText(values)
   const entries = pastedLines(text)
+  const termField = elementNoun(dimension, fields) === "term"
   return (
     <>
       <div className="flex items-start gap-3 px-6 pb-3">
@@ -96,7 +97,7 @@ const AxisTerms = ({
       </div>
       <div className="px-6 pb-3">
         <Segmented<Way>
-          ariaLabel="Way to set the terms"
+          ariaLabel="Input method"
           options={[
             { value: "search", label: "Search" },
             { value: "paste", label: "Paste list" },
@@ -125,7 +126,7 @@ const AxisTerms = ({
         <>
           <div className="flex h-box-md items-center justify-between gap-2 border-b border-border-soft px-6 pb-3 box-content">
             <span className="text-fs-label text-ink-soft">
-              {fields.includes(dimension) ? `One ${fieldLabel(dimension)} term per line, as an ID or a label` : `One ${fieldLabel(dimension)} value per line`}
+              {termField ? `One ${fieldLabel(dimension)} term per line, as an ID or a label` : `One ${fieldLabel(dimension)} value per line`}
             </span>
             <Button
               size="sm"
@@ -135,11 +136,11 @@ const AxisTerms = ({
                 setPasted(null)
               }}
             >
-              Replace terms
+              {termField ? "Replace terms" : "Replace values"}
             </Button>
           </div>
           <div className="h-picker-list px-6 py-3">
-            <TextArea fill mono value={text} onChange={setPasted} spellCheck={false} aria-label="Terms to set" />
+            <TextArea fill mono value={text} onChange={setPasted} spellCheck={false} aria-label={termField ? "Terms, one per line" : "Values, one per line"} />
           </div>
         </>
       )}

@@ -1,17 +1,18 @@
-import { useMemo, useState } from "react"
+import { type ReactNode, useMemo, useState } from "react"
 
 import { loadFailureProps } from "~/lib/api/client"
 import { fetchTermChildren, queryFailed, useCrosstab, useDataset } from "~/lib/api/queries"
 import type { Cell, Clause, Element, TermElement, TermHit } from "~/lib/api/types"
 import { countScale, countScaleIsDark, logPosition, RATIO_STEPS, ratioScale, ratioScaleIsDark, token } from "~/lib/color"
-import { downloadPngMarkup, downloadSvgMarkup, downloadTsv } from "~/lib/export"
+import { downloadPngMarkup, downloadSvgMarkup, downloadTsv, FIGURE_SAVE_FAILED } from "~/lib/export"
+import { figureFileName } from "~/lib/figure-style"
 import { formatCount, formatRatio } from "~/lib/format"
 import { fieldLabel, unitLabel } from "~/lib/labels"
 import { MATRIX_PRESETS } from "~/lib/presets"
-import { ACTION_ICON, busyClass, Card, CardHeader, Clickable, cn, EmptyNotice, ErrorNotice,HelpHint, Icon, InlineLabel, LinkButton, Segmented, Select, Skeleton } from "~/ui"
+import { ACTION_ICON, busyClass, Card, CardHeader, Clickable, cn, EmptyNotice, ErrorNotice,HelpHint, Icon, InlineLabel, LinkButton, Segmented, Select, Skeleton, TableScroller, useFrozenEdge } from "~/ui"
 
 import { AxisControls } from "../axis/axis-controls"
-import { type AxisMemory, elementValidator, limitAlert, LOOKUP_FAILED, MAX_AXIS_TERMS, replaceTerms, resolvePasted, switchDimension, toggleTerm } from "../axis/axis-terms"
+import { type AxisMemory, elementNoun, elementValidator, limitAlert, LOOKUP_FAILED, MAX_AXIS_TERMS, replaceTerms, resolvePasted, switchDimension, type TermLimit, toggleTerm } from "../axis/axis-terms"
 import { AxisTermsDialog } from "../axis/axis-terms-dialog"
 import { findTermId } from "../axis/find-term"
 import { expectedElements } from "../expected-elements"
@@ -22,8 +23,9 @@ import type { Condition } from "../use-condition"
 import { useReplaceUnofferedDimensions } from "../use-offered-dimensions"
 import { ViewControls } from "../view-controls"
 import { crosstabAxes, crosstabDimensions, crosstabParams, HEATMAP_LIMIT } from "../view-requests"
-import { type MatrixCell, matrixSvg, matrixSvgSize } from "./matrix-svg"
+import { COUNT_SCALE_TOKENS, type MatrixCell, type MatrixExport, matrixSvg, matrixSvgSize, ROW_INDENT } from "./matrix-svg"
 import { type Guide, nestedUnder, openChildren, rowGuides, treePlaces } from "./row-tree"
+import { HEATMAP_HEADER, heatmapRows } from "./table"
 
 export type AxisSide = "row" | "col"
 
@@ -78,7 +80,7 @@ export const HeatmapTab = ({ state, condition, update, latest, replacing, setRep
   const unit = unitLabel(state.unit)
   /** The table is the one of the previous condition, while the table of the new condition is on its way. */
   const stale = crosstab.isPlaceholderData
-  const limit = { max: MAX_AXIS_TERMS, subject: "A heatmap axis" }
+  const limitOf = (side: AxisSide): TermLimit => ({ max: MAX_AXIS_TERMS, subject: "A heatmap axis", noun: elementNoun(dimensionOf(side), fields) })
 
   /**
    * Narrow the condition to a cell: the population of the table plus the cell's row and column clauses. The view stays,
@@ -139,7 +141,7 @@ export const HeatmapTab = ({ state, condition, update, latest, replacing, setRep
       })
       const children = result.children.map((c) => c.value).filter((c) => c !== value)
       if (children.length === 0) {
-        onAlert("No child terms with data")
+        onAlert("No child terms with data.")
         return
       }
       // A child that is a row already, such as one that the user added, moves under its parent with the rows under it.
@@ -154,7 +156,7 @@ export const HeatmapTab = ({ state, condition, update, latest, replacing, setRep
       if (!base.includes(value)) return
       const opened = openChildren(base, value, children, subtree)
       if (opened.length > MAX_AXIS_TERMS) {
-        onAlert(limitAlert(limit))
+        onAlert(limitAlert(limitOf("row")))
         return
       }
       update({ rowTerms: opened })
@@ -175,7 +177,7 @@ export const HeatmapTab = ({ state, condition, update, latest, replacing, setRep
     const started = side === "row" ? state.row : state.col
     setReplacing(true)
     try {
-      const result = await replaceTerms(entries, (list) => resolvePasted(list, fields.includes(dimension), (label) => findTermId(dimension, label, state.unit), elementValidator(dimension) ?? undefined), limit)
+      const result = await replaceTerms(entries, (list) => resolvePasted(list, fields.includes(dimension), (label) => findTermId(dimension, label, state.unit), elementValidator(dimension) ?? undefined), limitOf(side))
       // The terms belong to the dimension that the entries were resolved on; they are dropped when the axis moved to another one while they waited.
       const now = latest()
       if ((side === "row" ? now.row : now.col) !== started) return
@@ -201,7 +203,7 @@ export const HeatmapTab = ({ state, condition, update, latest, replacing, setRep
       remove(side, hit.termId)
       return
     }
-    const result = toggleTerm(values(side), hit.termId, limit)
+    const result = toggleTerm(values(side), hit.termId, limitOf(side))
     if (result.alert !== null) onAlert(result.alert)
     else setValues(side, result.terms)
   }
@@ -251,6 +253,9 @@ export const HeatmapTab = ({ state, condition, update, latest, replacing, setRep
   const softText = (cell: Cell | undefined): boolean =>
     cell?.classification !== "gap" && (!cell || cell.count === 0 || (state.color === "ratio" && coloredRatio(cell) === null))
 
+  /** The ground of a cell: white for a gap, whatever the scale says, on the page and in the saved figure. */
+  const cellBackground = (gap: boolean, background: string): string => (gap ? token("--color-surface") : background)
+
   const exportCells = (): MatrixCell[] =>
     rows.flatMap((r) =>
       cols.map((c) => {
@@ -260,44 +265,35 @@ export const HeatmapTab = ({ state, condition, update, latest, replacing, setRep
           row: r.value,
           col: c.value,
           text: cell ? (state.color === "ratio" ? ratioText(cell) : formatCount(cell.count)) : "",
-          background: style.background,
+          background: cellBackground(cell?.classification === "gap", style.background),
           dark: style.dark,
           gap: cell?.classification === "gap",
           soft: softText(cell),
         }
       }),
     )
-  const exportData = () => ({
-    rowLabels: rows.map((r) => ({ value: r.value, label: r.label, ...(rowIds ? { id: r.value } : {}), total: r.count })),
+  const exportData = (): MatrixExport => ({
+    rowLabels: rows.map((r, index) => ({ value: r.value, label: r.label, ...(rowIds ? { id: r.value } : {}), total: r.count, depth: places[index]?.depth ?? 0 })),
     colLabels: cols.map((c) => ({ value: c.value, label: c.label, ...(colIds ? { id: c.value } : {}), total: c.count })),
     cells: exportCells(),
     corner: { row: fieldLabel(axes.row), col: fieldLabel(axes.col) },
     total: data?.total ?? 0,
+    title: `${fieldLabel(axes.row)} by ${fieldLabel(axes.col)}`,
+    meta: `${unit}, ${state.color === "ratio" ? "Ratio to expected" : "Count"}`,
+    legend: state.color === "ratio" ? { kind: "ratio" } : { kind: "count", max: formatCount(max) },
   })
-  const exportTsv = () =>
-    downloadTsv(
-      `${axes.row}-x-${axes.col}.tsv`,
-      ["row", "row_label", "col", "col_label", unit.toLowerCase(), "expected", "ratio", "residual", "classification"],
-      (data?.cells ?? []).map((c) => [
-        c.row,
-        rows.find((r) => r.value === c.row)?.label ?? c.row,
-        c.col,
-        cols.find((x) => x.value === c.col)?.label ?? c.col,
-        c.count,
-        c.expected === null ? "" : c.expected.toFixed(2),
-        c.ratio === null ? "" : c.ratio.toFixed(3),
-        c.residual === null ? "" : c.residual.toFixed(3),
-        c.classification ?? "",
-      ]),
-    )
-  const exportSvg = () => downloadSvgMarkup(`${axes.row}-x-${axes.col}.svg`, matrixSvg(exportData()))
+  /** The TSV holds the count, the expected count, and the ratio whatever Cells is; only the images differ by it. */
+  const fileName = (extension: "tsv" | "svg" | "png") =>
+    figureFileName("heatmap", [axes.row, axes.col], state.unit, extension, extension !== "tsv" && state.color === "ratio" ? "ratio" : undefined)
+  const exportTsv = () => downloadTsv(fileName("tsv"), HEATMAP_HEADER, heatmapRows(rows, cols, data?.cells ?? [], data?.total ?? 0))
+  const exportSvg = () => void downloadSvgMarkup(fileName("svg"), matrixSvg(exportData())).catch(() => onAlert(FIGURE_SAVE_FAILED))
   const exportPng = () => {
-    const data = exportData()
-    const size = matrixSvgSize(data)
-    void downloadPngMarkup(`${axes.row}-x-${axes.col}.png`, matrixSvg(data), size.width, size.height)
+    const figure = exportData()
+    const size = matrixSvgSize(figure)
+    void downloadPngMarkup(fileName("png"), matrixSvg(figure), size.width, size.height).catch(() => onAlert(FIGURE_SAVE_FAILED))
   }
 
-  const gradient = `linear-gradient(90deg, ${token("--color-brand-soft")}, ${token("--color-brand-light")}, ${token("--color-brand")}, ${token("--color-brand-deeper")})`
+  const gradient = `linear-gradient(90deg, ${COUNT_SCALE_TOKENS.map((name) => token(name)).join(", ")})`
 
   return (
     <div>
@@ -343,7 +339,7 @@ export const HeatmapTab = ({ state, condition, update, latest, replacing, setRep
           className={cn("flex flex-wrap items-center gap-x-6 gap-y-2 text-fs-label text-ink-soft", busyClass(crosstab.isPlaceholderData))}
         >
           {/* The two axes are set apart by wide space, with Swap axes between them as plain text, so that the row reads as two settings and not as five. */}
-          <AxisControls name="Rows" selectLabel="Row dimension" {...axisProps("row")} onOpenTerms={() => setTermsSide("row")} />
+          <AxisControls name="Rows" selectLabel="Row dimension" {...axisProps("row")} noun={elementNoun(dimensionOf("row"), fields)} onOpenTerms={() => setTermsSide("row")} />
           <LinkButton
             tone="soft"
             size="md"
@@ -356,13 +352,13 @@ export const HeatmapTab = ({ state, condition, update, latest, replacing, setRep
           >
             Swap axes
           </LinkButton>
-          <AxisControls name="Columns" selectLabel="Column dimension" {...axisProps("col")} onOpenTerms={() => setTermsSide("col")} />
+          <AxisControls name="Columns" selectLabel="Column dimension" {...axisProps("col")} noun={elementNoun(dimensionOf("col"), fields)} onOpenTerms={() => setTermsSide("col")} />
         </div>
       </ViewControls>
       <AxisTermsDialog
         open={termsSide !== null}
         onClose={() => setTermsSide(null)}
-        title={dialogSide === "col" ? "Column terms" : "Row terms"}
+        title={`${dialogSide === "col" ? "Column" : "Row"} ${elementNoun(dimensionOf(dialogSide), fields)}s`}
         {...axisProps(dialogSide)}
         unit={state.unit}
         selectedNote="✓ in axis"
@@ -395,23 +391,23 @@ export const HeatmapTab = ({ state, condition, update, latest, replacing, setRep
                   </span>
                 )}
                 <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                  <span className="inline-block h-3.5 w-5.5 rounded-badge border-gap border-dashed border-critical-fg bg-surface" />
+                  <Swatch className="border-gap border-dashed border-critical-fg bg-surface" />
                   Gap
                 </span>
               </div>
               <HelpHint label="About the heatmap">
-                <span className="block">Expected: the count if the row and the column were unrelated (row total × column total ÷ total).</span>
+                <span className="block">Expected: the count of a cell if the row and the column are independent (row total × column total ÷ total).</span>
                 <span className="mt-1.5 block">
-                  Ratio to expected: {RATIO_STEPS.mid}× is twice the expected count, {RATIO_STEPS.low}× is half. Cells with fewer than {EXPECTED_MIN} expected are not colored.
+                  Ratio to expected: {RATIO_STEPS.mid}× is twice the expected count, {RATIO_STEPS.low}× is half. In this coloring, a cell with an expected count below {EXPECTED_MIN} has no color.
                 </span>
-                <span className="mt-1.5 block">Gap: 0 where {EXPECTED_MIN} or more are expected.</span>
-                <span className="mt-1.5 block">A BioSample can be in several rows and columns, so the totals are not sums of the cells.</span>
+                <span className="mt-1.5 block">Gap: a cell with a count of 0 and an expected count of {EXPECTED_MIN} or more.</span>
+                <span className="mt-1.5 block">One item can be in several rows and columns, so the totals are not sums of the cells.</span>
               </HelpHint>
             </div>
-            <FigureExport figure="heatmap" onTsv={exportTsv} onSvg={exportSvg} onPng={exportPng} />
+            <FigureExport figure="heatmap" disabled={data === undefined || failed || stale || nothing} onTsv={exportTsv} onSvg={exportSvg} onPng={exportPng} />
           </div>
         </CardHeader>
-        <div className="max-h-matrix-max overflow-auto">
+        <TableScroller boxClassName="max-h-matrix-max overflow-auto">
           {failed && (
             <div className="p-4">
               <ErrorNotice {...loadFailureProps(crosstab.error, "load the heatmap", () => void crosstab.refetch())} />
@@ -422,12 +418,12 @@ export const HeatmapTab = ({ state, condition, update, latest, replacing, setRep
           <table className={cn("min-w-full border-separate border-spacing-0.5 text-fs-label", (data === undefined || nothing) && "hidden")}>
             <thead>
               <tr>
-                <th className="sticky top-0 left-0 z-20 bg-surface px-2.5 py-1.5 text-left align-bottom text-fs-micro font-semibold whitespace-nowrap text-ink-soft">
+                <FrozenHeading className="top-0 z-20 px-3.5 py-1.5 text-left align-bottom text-fs-micro font-semibold whitespace-nowrap text-ink-soft">
                   <span className="inline-flex gap-6">
                     <span>{fieldLabel(axes.row)} ↓</span>
                     <span>{fieldLabel(axes.col)} →</span>
                   </span>
-                </th>
+                </FrozenHeading>
                 {cols.map((col) => (
                   <th
                     key={col.value}
@@ -441,7 +437,7 @@ export const HeatmapTab = ({ state, condition, update, latest, replacing, setRep
                     {colIds && <TermIdHover termId={col.value} label={col.label} className="block whitespace-nowrap" />}
                   </th>
                 ))}
-                <th className="sticky top-0 z-10 bg-surface px-2 py-1.5 text-right align-bottom text-fs-micro font-semibold text-ink-soft">Row total</th>
+                <th className="sticky top-0 z-10 bg-surface py-1.5 pr-3.5 pl-2.5 text-right align-bottom text-fs-micro font-semibold text-ink-soft">Row total</th>
               </tr>
             </thead>
             <tbody>
@@ -449,9 +445,7 @@ export const HeatmapTab = ({ state, condition, update, latest, replacing, setRep
                 const rowSelected = condition.isSelected(row.clauses)
                 return (
                   <tr key={row.value}>
-                    <th
-                      className={cn("sticky left-0 z-10 bg-surface px-2.5 py-1 text-left text-fs-label whitespace-nowrap", rowSelected ? "font-semibold" : "font-medium")}
-                    >
+                    <FrozenHeading className={cn("z-10 px-3.5 py-1 text-left text-fs-label whitespace-nowrap", rowSelected ? "font-semibold" : "font-medium")}>
                       {(guides[rowIndex] ?? []).map((guide) => (
                         <GuideLine key={`${guide.level}:${guide.kind}`} guide={guide} toLabel={!expandable(row, rowIndex)} />
                       ))}
@@ -474,7 +468,7 @@ export const HeatmapTab = ({ state, condition, update, latest, replacing, setRep
                           </span>
                         )}
                       </span>
-                    </th>
+                    </FrozenHeading>
                     {cols.map((col) => {
                       const cell = cellByKey.get(`${row.value}\t${col.value}`)
                       const style = cellStyle(cell)
@@ -490,7 +484,7 @@ export const HeatmapTab = ({ state, condition, update, latest, replacing, setRep
                         selected && "outline-2 outline-selection",
                       )
                       const cellStyleProps = {
-                        background: gap ? token("--color-surface") : style.background,
+                        background: cellBackground(gap, style.background),
                         color: gap ? undefined : style.dark ? token("--color-surface") : undefined,
                       }
                       return (
@@ -503,8 +497,8 @@ export const HeatmapTab = ({ state, condition, update, latest, replacing, setRep
                             <Clickable
                               aria-label={`${row.label} × ${col.label}: ${text}. Narrow the condition to this cell`}
                               aria-pressed={selected}
-                              onClick={() => narrowCell([...row.clauses, ...col.clauses])}
-                              disabled={stale}
+                              // Not disabled while the table of the new condition loads: a disabled button would lose the focus that pressed it.
+                              onClick={stale ? undefined : () => narrowCell([...row.clauses, ...col.clauses])}
                               aria-disabled={stale || undefined}
                               className={cn(className, !stale && "cursor-pointer hover:outline-2 hover:outline-selection")}
                               style={cellStyleProps}
@@ -515,24 +509,24 @@ export const HeatmapTab = ({ state, condition, update, latest, replacing, setRep
                         </td>
                       )
                     })}
-                    <td className="px-2.5 text-right font-mono whitespace-nowrap text-ink-soft">{formatCount(row.count)}</td>
+                    <td className="pr-3.5 pl-2.5 text-right font-mono whitespace-nowrap text-ink-soft">{formatCount(row.count)}</td>
                   </tr>
                 )
               })}
               {/* The column totals follow the last row as closely as the column labels precede the first, with no line and no
                   extra space: their grey numbers without cells set them apart from the rows. */}
               <tr>
-                <th className="sticky left-0 z-10 bg-surface px-2.5 py-2 text-left text-fs-micro font-semibold text-ink-soft">Column total</th>
+                <FrozenHeading className="z-10 h-8 px-3.5 text-left text-fs-micro font-semibold text-ink-soft">Column total</FrozenHeading>
                 {cols.map((col) => (
-                  <td key={col.value} className="p-1.5 text-center font-mono text-ink-soft">
+                  <td key={col.value} className="px-1.5 text-center font-mono text-ink-soft">
                     {formatCount(col.count)}
                   </td>
                 ))}
-                <td className="px-2.5 py-1.5 text-right font-mono font-medium text-ink-mid">{formatCount(data?.total ?? 0)}</td>
+                <td className="pr-3.5 pl-2.5 text-right font-mono font-medium text-ink-mid">{formatCount(data?.total ?? 0)}</td>
               </tr>
             </tbody>
           </table>
-        </div>
+        </TableScroller>
       </Card>
     </div>
   )
@@ -543,7 +537,7 @@ const SkeletonMatrix = ({ rows, cols }: { rows: number; cols: number }) => (
   <table aria-busy="true" className="min-w-full border-separate border-spacing-0.5 text-fs-label">
     <thead>
       <tr>
-        <th className="px-2.5 py-2 text-left align-bottom text-fs-micro">
+        <th className="px-3.5 py-2 text-left align-bottom text-fs-micro">
           <Skeleton className="w-28" />
         </th>
         {Array.from({ length: cols }, (_, index) => (
@@ -551,7 +545,7 @@ const SkeletonMatrix = ({ rows, cols }: { rows: number; cols: number }) => (
             <Skeleton className="w-14" />
           </th>
         ))}
-        <th className="px-2 py-1.5 text-fs-micro">
+        <th className="py-1.5 pr-3.5 pl-2.5 text-fs-micro">
           <Skeleton className="w-12" />
         </th>
       </tr>
@@ -559,7 +553,7 @@ const SkeletonMatrix = ({ rows, cols }: { rows: number; cols: number }) => (
     <tbody>
       {Array.from({ length: rows }, (_, row) => (
         <tr key={row}>
-          <th className="px-2.5 py-1 text-left">
+          <th className="px-3.5 py-1 text-left">
             <Skeleton className="w-24" />
           </th>
           {Array.from({ length: cols }, (_, col) => (
@@ -567,7 +561,7 @@ const SkeletonMatrix = ({ rows, cols }: { rows: number; cols: number }) => (
               <Skeleton kind="block" className="h-8 w-full min-w-heat-cell" />
             </td>
           ))}
-          <td className="px-2.5">
+          <td className="pr-3.5 pl-2.5">
             <Skeleton className="w-12" />
           </td>
         </tr>
@@ -576,10 +570,16 @@ const SkeletonMatrix = ({ rows, cols }: { rows: number; cols: number }) => (
   </table>
 )
 
-/** The indent of a row term for each opened term above it. */
-const INDENT = 18
+/** A heading cell that stays at the left edge when the matrix scrolls sideways, and draws its edge once it has. The caller sets its `z-` layer. */
+const FrozenHeading = ({ className, children }: { className: string; children: ReactNode }) => {
+  const edge = useFrozenEdge()
+  return <th className={cn("sticky left-0 bg-surface", edge, className)}>{children}</th>
+}
 
-const ROW_HEADING_PAD = 10
+/** The indent of a row term for each opened term above it. */
+const INDENT = ROW_INDENT
+
+const ROW_HEADING_PAD = 14
 /** The chevron of a row heading: 1.1em of the 12px heading. */
 const CHEVRON_SIZE = 13.2
 /** Where the 1px lines of a level start, from the edge of the row heading: centered under the chevron of that level. */

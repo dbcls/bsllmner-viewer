@@ -19,7 +19,7 @@ RESIDUAL_THRESHOLD = 2.0
 
 def population_total(cur: duckdb.DuckDBPyConnection, pop: Population, unit: Unit) -> int:
     row = cur.execute(
-        f"WITH {pop.cte()} SELECT {count_expr(unit)} FROM pop p {bp_join(unit)}", list(pop.params)
+        f"WITH {pop.cte(cur)} SELECT {count_expr(unit)} FROM pop p {bp_join(unit)}", list(pop.params)
     ).fetchone()
     return int(row[0]) if row else 0
 
@@ -32,7 +32,7 @@ def element_counts(
         return {}
     member = membership(dim, elements)
     rows = cur.execute(
-        f"WITH {pop.cte()}, m AS ({member.sql}) "
+        f"WITH {pop.cte(cur)}, m AS ({member.sql}) "
         f"SELECT m.element, {count_expr(unit, 'm')} FROM m {bp_join(unit, 'm')} GROUP BY m.element",
         [*pop.params, *member.params],
     ).fetchall()
@@ -48,7 +48,7 @@ def term_status_counts(
         return {}
     placeholders = ", ".join("?" for _ in elements)
     rows = cur.execute(
-        f"WITH {pop.cte()}, m AS ("
+        f"WITH {pop.cte(cur)}, m AS ("
         "SELECT p.biosample, p.experiment, c.ancestor AS element, a.status FROM pop p "
         "JOIN annotation a ON a.biosample = p.biosample AND a.field = ? AND a.term_id IS NOT NULL "
         f"JOIN term_closure c ON c.descendant = a.term_id AND c.ancestor IN ({placeholders})) "
@@ -74,7 +74,7 @@ def has_children(
     # A direct child has a count exactly when a BioSample of the population has a term strictly below the term: every
     # such term is under one of the direct children.
     rows = cur.execute(
-        f"WITH {pop.cte()}, below AS ("
+        f"WITH {pop.cte(cur)}, below AS ("
         "SELECT DISTINCT a.biosample, tc.ancestor FROM term_closure tc "
         "JOIN annotation a ON a.term_id = tc.descendant AND a.field = ? "
         f"WHERE tc.ancestor IN ({placeholders}) AND tc.depth > 0) "
@@ -168,7 +168,7 @@ def crosstab(
         rm: Membership = membership(row_dim, row_elements)
         cm: Membership = membership(col_dim, col_elements)
         rows = cur.execute(
-            f"WITH {pop.cte()}, rm AS ({rm.sql}), cm AS ({cm.sql}), "
+            f"WITH {pop.cte(cur)}, rm AS ({rm.sql}), cm AS ({cm.sql}), "
             "m AS (SELECT rm.biosample, rm.experiment, rm.element AS row_e, cm.element AS col_e "
             "FROM rm JOIN cm ON cm.biosample = rm.biosample AND cm.experiment = rm.experiment) "
             f"SELECT m.row_e, m.col_e, {count_expr(unit, 'm')} FROM m {bp_join(unit, 'm')} GROUP BY 1, 2",
@@ -217,7 +217,7 @@ def classify(observed: int, expected: float | None, ratio: float | None, residua
 def trend_total(cur: duckdb.DuckDBPyConnection, pop: Population, unit: Unit) -> dict[int, int]:
     """Count of the population per publication year."""
     rows = cur.execute(
-        f"WITH {pop.cte()} SELECT p.year, {count_expr(unit)} FROM pop p {bp_join(unit)} "
+        f"WITH {pop.cte(cur)} SELECT p.year, {count_expr(unit)} FROM pop p {bp_join(unit)} "
         "WHERE p.year IS NOT NULL GROUP BY 1",
         list(pop.params),
     ).fetchall()
@@ -233,7 +233,7 @@ def trend(
         return years, {}
     member = membership(dim, elements)
     rows = cur.execute(
-        f"WITH {pop.cte()}, m AS ({member.sql}) "
+        f"WITH {pop.cte(cur)}, m AS ({member.sql}) "
         "SELECT m.element, p.year, "
         f"{count_expr(unit, 'm')} FROM m JOIN pop p ON p.biosample = m.biosample AND p.experiment = m.experiment "
         f"{bp_join(unit, 'm')} WHERE p.year IS NOT NULL GROUP BY 1, 2",

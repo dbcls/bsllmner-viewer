@@ -1,17 +1,18 @@
-import { type KeyboardEvent, useRef, useState } from "react"
+import { type KeyboardEvent, useState } from "react"
 
 import { loadFailureProps } from "~/lib/api/client"
 import { queryFailed, useDataset, useTrend } from "~/lib/api/queries"
 import type { Clause, TermHit, TrendSeries } from "~/lib/api/types"
 import { token } from "~/lib/color"
-import { downloadPng, downloadSvg, downloadTsv } from "~/lib/export"
+import { downloadPngMarkup, downloadSvgMarkup, downloadTsv, FIGURE_SAVE_FAILED } from "~/lib/export"
+import { figureFileName } from "~/lib/figure-style"
 import { formatCount } from "~/lib/format"
 import { fieldLabel, organismLabel, unitLabel } from "~/lib/labels"
 import { TREND_LIMIT } from "~/lib/workspace-state"
 import { busyClass, Card, CardHeader, cn, EmptyNotice, ErrorNotice,InlineLabel, Select, Skeleton, Toggle } from "~/ui"
 
 import { AxisControls } from "../axis/axis-controls"
-import { elementValidator, LOOKUP_FAILED, replaceTerms, resolvePasted, toggleTerm } from "../axis/axis-terms"
+import { elementNoun, elementValidator, LOOKUP_FAILED, replaceTerms, resolvePasted, toggleTerm } from "../axis/axis-terms"
 import { AxisTermsDialog } from "../axis/axis-terms-dialog"
 import { findTermId } from "../axis/find-term"
 import { expectedElements } from "../expected-elements"
@@ -24,6 +25,8 @@ import { ViewControls } from "../view-controls"
 import { trendAxis, trendParams } from "../view-requests"
 import { trendFields } from "./field"
 import { gridLines, PLOT, showYearLabel, xForIndex, yForValue, yMax } from "./scale"
+import { TREND_LINE } from "./trend-style"
+import { type TrendFigure, trendSvg, trendSvgSize } from "./trend-svg"
 import { yearChoices } from "./years"
 
 /** x of the right-aligned count labels next to the grid lines, just left of the plot. */
@@ -62,7 +65,6 @@ const polylinePoints = (placed: Placed[]): string => placed.map(({ x, y }) => `$
 
 /** Counts per BioSample publication year: the condition, and one line per element of one dimension. */
 export const TrendTab = ({ state, condition, update, latest, replacing, setReplacing, onAlert }: TrendTabProps) => {
-  const svgRef = useRef<SVGSVGElement>(null)
   const [termsOpen, setTermsOpen] = useState(false)
   const dataset = useDataset()
   useReplaceUnofferedDimensions(state, update, dataset)
@@ -104,7 +106,8 @@ export const TrendTab = ({ state, condition, update, latest, replacing, setRepla
   const values = trendTerms ?? series.map((s) => s.value)
   // No terms left is the top terms.
   const setTerms = (next: string[] | null) => update({ trendTerms: next?.length ? next : null })
-  const limit = { max: TREND_LIMIT, subject: "A trend" }
+  const noun = elementNoun(split, fields)
+  const limit = { max: TREND_LIMIT, subject: "A trend", noun }
   const pick = (hit: TermHit) => {
     const result = toggleTerm(values, hit.termId, limit)
     if (result.alert !== null) onAlert(result.alert)
@@ -127,28 +130,49 @@ export const TrendTab = ({ state, condition, update, latest, replacing, setRepla
   }
   const changeDimension = (dimension: string) => update({ trendField: dimension, trendTerms: null })
 
+  const lineName = (extension: "tsv" | "svg" | "png") => figureFileName("trend", [split], state.unit, extension)
   const exportTsv = () =>
     downloadTsv(
-      "trend.tsv",
-      ["series", "label", "year", unit.toLowerCase()],
+      lineName("tsv"),
+      ["series", "label", "year", "count"],
       [
         ...all.map((point) => ["all", allLabel, point.year, point.count]),
         ...total.map((point) => ["condition", totalLabel, point.year, point.count]),
         ...series.flatMap((s) => s.points.map((point) => [s.value, seriesLabel(s.value, s.label), point.year, point.count])),
       ],
     )
-  const exportSvg = () => {
-    if (svgRef.current) downloadSvg("trend.svg", svgRef.current)
-  }
+  /** The figure as it is saved: the lines of the legend, without what the page marks as chosen. */
+  const figure = (): TrendFigure => ({
+    title: `${fieldLabel(split)} by publication year`,
+    unit,
+    years,
+    max,
+    labels: state.trendLabels,
+    lines: [
+      ...(state.trendAll ? [{ key: "all", label: allLabel, color: allColor, ...TREND_LINE.all, points: all }] : []),
+      ...(drawTotal ? [{ key: "condition", label: totalLabel, strong: true, color: totalColor, ...TREND_LINE.condition, points: total }] : []),
+      ...series.map((s, seriesIndex) => ({
+        key: s.value,
+        label: seriesLabel(s.value, s.label),
+        ...(state.termIds && fields.includes(split) ? { id: s.value } : {}),
+        color: colorOf(seriesIndex),
+        ...TREND_LINE.series,
+        points: s.points,
+      })),
+    ],
+  })
+  const exportSvg = () => void downloadSvgMarkup(lineName("svg"), trendSvg(figure())).catch(() => onAlert(FIGURE_SAVE_FAILED))
   const exportPng = () => {
-    if (svgRef.current) void downloadPng("trend.png", svgRef.current)
+    const saved = figure()
+    const { width, height } = trendSvgSize(saved)
+    void downloadPngMarkup(lineName("png"), trendSvg(saved), width, height).catch(() => onAlert(FIGURE_SAVE_FAILED))
   }
 
   const place = (points: TrendPoint[], radius: (point: TrendPoint) => number): Placed[] =>
     points.map((point, index) => ({ point, x: xForIndex(index, years.length), y: yForValue(point.count, max), r: radius(point) }))
-  const seriesPlaces = series.map((s) => place(s.points, (point) => (point.count > 0 && condition.isSelected(point.clauses) ? 6 : 4)))
-  const totalPlaces = place(total, (point) => (condition.isSelected(point.clauses) ? 6.5 : 4.5))
-  const allPlaces = place(all, (point) => (condition.isSelected(point.clauses) ? 5 : 3.5))
+  const seriesPlaces = series.map((s) => place(s.points, (point) => (point.count > 0 && condition.isSelected(point.clauses) ? 6 : TREND_LINE.series.radius)))
+  const totalPlaces = place(total, (point) => (condition.isSelected(point.clauses) ? 6.5 : TREND_LINE.condition.radius))
+  const allPlaces = place(all, (point) => (condition.isSelected(point.clauses) ? 5 : TREND_LINE.all.radius))
 
   return (
     <div>
@@ -175,6 +199,7 @@ export const TrendTab = ({ state, condition, update, latest, replacing, setRepla
             dimension={split}
             dimensions={dimensions}
             elements={failed ? (trendTerms ?? []).map((value) => ({ value, label: value })) : series}
+            noun={noun}
             pending={data === undefined && !failed ? expectedElements(split, dataset.data, TREND_LIMIT, trendTerms) : null}
             unknown={failed && trendTerms === null}
             onDimension={changeDimension}
@@ -193,7 +218,7 @@ export const TrendTab = ({ state, condition, update, latest, replacing, setRepla
       <AxisTermsDialog
         open={termsOpen}
         onClose={() => setTermsOpen(false)}
-        title="Line terms"
+        title={`Line ${noun}s`}
         unit={state.unit}
         dimension={split}
         dimensions={dimensions}
@@ -220,13 +245,13 @@ export const TrendTab = ({ state, condition, update, latest, replacing, setRepla
                 failed ? null : <Skeleton className="w-28" />
               ) : (
                 <>
-                  {state.trendAll && <LegendItem color={allColor} width={2} label={allLabel} />}
-                  {drawTotal && <LegendItem color={totalColor} width={3} label={totalLabel} strong />}
+                  {state.trendAll && <LegendItem color={allColor} width={TREND_LINE.all.width} label={allLabel} />}
+                  {drawTotal && <LegendItem color={totalColor} width={TREND_LINE.condition.width} label={totalLabel} strong />}
                   {series.map((s, seriesIndex) => (
                     <LegendItem
                       key={s.value}
                       color={colorOf(seriesIndex)}
-                      width={2}
+                      width={TREND_LINE.series.width}
                       label={seriesLabel(s.value, s.label)}
                       {...(state.termIds && fields.includes(split) ? { id: s.value } : {})}
                       {...(condition.isSelected(s.clauses) ? { note: "✓ in condition" } : {})}
@@ -235,12 +260,12 @@ export const TrendTab = ({ state, condition, update, latest, replacing, setRepla
                 </>
               )}
             </div>
-            <FigureExport figure="trend" onTsv={exportTsv} onSvg={exportSvg} onPng={exportPng} />
+            <FigureExport figure="trend" disabled={data === undefined || failed || stale || years.length === 0} onTsv={exportTsv} onSvg={exportSvg} onPng={exportPng} />
           </div>
         </CardHeader>
         <div className="px-4 pt-3 pb-4">
           {years.length > 0 ? (
-            <svg ref={svgRef} viewBox="0 0 960 320" className="w-full max-w-chart-max font-mono" role="img" aria-label={`${unit} per year`}>
+            <svg viewBox="0 0 960 320" className="w-full max-w-chart-max font-mono" role="group" aria-label={`${unit} per year`}>
               {gridLines(max).map((line) => (
                 <g key={line.value}>
                   <line x1={PLOT.left} x2={PLOT.right} y1={line.y} y2={line.y} stroke={token("--color-grid")} />
@@ -257,17 +282,32 @@ export const TrendTab = ({ state, condition, update, latest, replacing, setRepla
                   </text>
                 ) : null,
               )}
+              {/*
+               * The areas that take a press near a point, under every line and point, so that a press on a point that is
+               * drawn is always its own: an area reaches only the space between the points.
+               */}
+              <g aria-hidden="true">
+                {[
+                  ...series.flatMap((s, seriesIndex) =>
+                    (seriesPlaces[seriesIndex] ?? []).filter(({ point }) => point.count > 0).map((place) => ({ key: `${s.value}:${place.point.year}`, place, press: () => narrowPoint(place.point.clauses), disabled: stale })),
+                  ),
+                  ...(state.trendAll ? allPlaces.map((place) => ({ key: `all:${place.point.year}`, place, press: () => void condition.toggle(place.point.clauses), disabled: false })) : []),
+                  ...(drawTotal ? totalPlaces.map((place) => ({ key: `condition:${place.point.year}`, place, press: () => void condition.toggle(place.point.clauses), disabled: false })) : []),
+                ].map(({ key, place, press, disabled }) => (
+                  <circle key={key} cx={place.x} cy={place.y} r={POINT_TARGET_RADIUS} fill="transparent" className={disabled ? undefined : "cursor-pointer"} onClick={disabled ? undefined : press} />
+                ))}
+              </g>
               {series.map((s, seriesIndex) => {
                 const color = colorOf(seriesIndex)
                 const placed = seriesPlaces[seriesIndex] ?? []
                 const label = seriesLabel(s.value, s.label)
                 return (
                   <g key={s.value} data-series={s.value}>
-                    <polyline points={polylinePoints(placed)} fill="none" stroke={color} strokeWidth={2} />
+                    <polyline points={polylinePoints(placed)} fill="none" stroke={color} strokeWidth={TREND_LINE.series.width} />
                     <PointMarks
                       placed={placed}
                       color={color}
-                      width={2}
+                      width={TREND_LINE.series.width}
                       name={(point) => pointName(label, point)}
                       selected={(point) => point.count > 0 && condition.isSelected(point.clauses)}
                       pressable={(point) => point.count > 0}
@@ -280,11 +320,11 @@ export const TrendTab = ({ state, condition, update, latest, replacing, setRepla
               })}
               {state.trendAll && (
                 <g data-series="all">
-                  <polyline points={polylinePoints(allPlaces)} fill="none" stroke={allColor} strokeWidth={2} />
+                  <polyline points={polylinePoints(allPlaces)} fill="none" stroke={allColor} strokeWidth={TREND_LINE.all.width} />
                   <PointMarks
                     placed={allPlaces}
                     color={allColor}
-                    width={2}
+                    width={TREND_LINE.all.width}
                     name={(point) => pointName(allLabel, point)}
                     selected={(point) => condition.isSelected(point.clauses)}
                     pressable={() => true}
@@ -295,11 +335,11 @@ export const TrendTab = ({ state, condition, update, latest, replacing, setRepla
               )}
               {drawTotal && (
                 <g data-series="condition">
-                  <polyline points={polylinePoints(totalPlaces)} fill="none" stroke={totalColor} strokeWidth={3} />
+                  <polyline points={polylinePoints(totalPlaces)} fill="none" stroke={totalColor} strokeWidth={TREND_LINE.condition.width} />
                   <PointMarks
                     placed={totalPlaces}
                     color={totalColor}
-                    width={3}
+                    width={TREND_LINE.condition.width}
                     name={(point) => pointName(totalLabel, point)}
                     selected={(point) => condition.isSelected(point.clauses)}
                     pressable={() => true}
@@ -315,8 +355,8 @@ export const TrendTab = ({ state, condition, update, latest, replacing, setRepla
                */}
               {state.trendLabels && (
                 <g data-labels="" aria-hidden="true">
-                  {[...series.map((s, seriesIndex) => ({ key: s.value, color: colorOf(seriesIndex), placed: seriesPlaces[seriesIndex] ?? [] })), { key: "all", color: allColor, placed: allPlaces }, { key: "condition", color: totalColor, placed: totalPlaces }].map(
-                    ({ key, color, placed }) =>
+                  {[...series.map((s, seriesIndex) => ({ key: s.value, placed: seriesPlaces[seriesIndex] ?? [] })), { key: "all", placed: allPlaces }, { key: "condition", placed: totalPlaces }].map(
+                    ({ key, placed }) =>
                       placed.filter(({ point }) => point.count > 0).map(({ point, x, y, r }) => (
                         <text
                           key={`${key}:${point.year}`}
@@ -324,7 +364,7 @@ export const TrendTab = ({ state, condition, update, latest, replacing, setRepla
                           y={y - r - DATA_LABEL_GAP}
                           textAnchor={point.year === years[years.length - 1] && years.length > 1 ? "end" : "middle"}
                           className="text-fs-micro"
-                          fill={color}
+                          fill={token("--color-ink-mid")}
                           stroke={token("--color-surface")}
                           strokeWidth={3}
                           paintOrder="stroke"
@@ -367,23 +407,27 @@ type PointMarksProps = {
   hint: string
 }
 
+/**
+ * The radius of the area that takes a press near a point: 24 px across or more where the page is narrowest (1280 px,
+ * where the 960 units of the chart are drawn 942 px wide).
+ */
+const POINT_TARGET_RADIUS = 12.5
+
 /** The points of one line: a button each when pressing does something, and a plain mark otherwise. */
+
 const PointMarks = ({ placed, color, width, name, selected, pressable, onPress, disabled = false, hint }: PointMarksProps) =>
   placed.map(({ point, x, y, r }) => {
     if (!pressable(point)) {
       return <circle key={point.year} cx={x} cy={y} r={r} fill={token("--color-surface")} stroke={color} strokeWidth={width} role="img" aria-label={name(point)} />
     }
     const on = selected(point)
+    // The focus ring of the page, drawn around the edge of the point: the brand-deep ring in the middle of the yellow one.
+    // The rings are hidden by an attribute and shown by a class while the point has the focus.
+    const ring = r + width / 2 + 2
     return (
-      <circle
+      <g
         key={point.year}
-        cx={x}
-        cy={y}
-        r={r}
-        fill={on ? token("--color-selection") : token("--color-surface")}
-        stroke={color}
-        strokeWidth={width}
-        className={disabled ? undefined : "cursor-pointer"}
+        className={cn("group outline-none", !disabled && "cursor-pointer")}
         role="button"
         tabIndex={disabled ? -1 : 0}
         aria-pressed={on}
@@ -391,7 +435,11 @@ const PointMarks = ({ placed, color, width, name, selected, pressable, onPress, 
         aria-label={`${name(point)}. ${hint}`}
         onClick={disabled ? undefined : () => onPress(point)}
         onKeyDown={disabled ? undefined : onKey(() => onPress(point))}
-      />
+      >
+        <circle cx={x} cy={y} r={ring} fill="none" stroke={token("--color-focus")} strokeWidth={4} opacity={0} pointerEvents="none" className="group-focus-visible:opacity-100" />
+        <circle cx={x} cy={y} r={ring} fill="none" stroke={token("--color-brand-deep")} strokeWidth={2} opacity={0} pointerEvents="none" className="group-focus-visible:opacity-100" />
+        <circle cx={x} cy={y} r={r} fill={on ? token("--color-selection") : token("--color-surface")} stroke={color} strokeWidth={width} />
+      </g>
     )
   })
 

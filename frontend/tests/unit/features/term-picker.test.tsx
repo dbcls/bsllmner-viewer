@@ -52,6 +52,11 @@ const renderPicker = () => {
 }
 
 describe("TermPicker", () => {
+  it("opens with the focus in the search box", () => {
+    renderPicker()
+    expect(screen.getByRole("textbox", { name: "Search terms by label, synonym, or ID" })).toHaveFocus()
+  })
+
   it("shows the results of another field from the top", async () => {
     const user = userEvent.setup()
     const list = renderPicker()
@@ -69,7 +74,7 @@ describe("TermPicker", () => {
     await screen.findByText("all 0")
     list.scrollTop = 200
 
-    fireEvent.change(screen.getByRole("textbox", { name: "Search terms" }), { target: { value: "slow" } })
+    fireEvent.change(screen.getByRole("textbox", { name: "Search terms by label, synonym, or ID" }), { target: { value: "slow" } })
     await vi.waitFor(() => expect(state.releaseSlow).toBeDefined())
     expect(screen.getByText("all 0")).toBeInTheDocument()
     expect(list.scrollTop).toBe(200)
@@ -88,7 +93,7 @@ describe("TermPicker", () => {
     state.requests.length = 0
     vi.useFakeTimers()
     try {
-      const input = screen.getByRole("textbox", { name: "Search terms" })
+      const input = screen.getByRole("textbox", { name: "Search terms by label, synonym, or ID" })
       for (const value of ["h", "hy", "hyp", " hyp "]) {
         fireEvent.change(input, { target: { value } })
         await act(async () => {

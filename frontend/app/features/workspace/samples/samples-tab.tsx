@@ -1,4 +1,4 @@
-import { Fragment, type MouseEvent } from "react"
+import type { MouseEvent } from "react"
 import { Link, useNavigate } from "react-router"
 
 import { loadFailureProps } from "~/lib/api/client"
@@ -8,7 +8,7 @@ import { backLinkState } from "~/lib/back-link"
 import { ddbjSearchHref, ncbiHref } from "~/lib/external-links"
 import { fieldLabel, hasStatusValue, statusInfo, VALUE_STATUSES } from "~/lib/labels"
 import type { TablePerPage } from "~/lib/workspace-state"
-import { Card, CardFooter, CardHeader, cn, EmptyNotice, ErrorNotice,ExternalLink, FrozenTd, HelpHint, InlineLabel, Pager, StatusGlyph, StatusMeanings, StatusPill, TableScroller } from "~/ui"
+import { Card, CardFooter, CardHeader, Clamped, cn, EmptyNotice, ErrorNotice, ExternalLink, FrozenTd, HelpHint, InlineLabel, Pager, StatusGlyph, StatusMeanings, StatusPill, TableScroller } from "~/ui"
 
 import { AssayTags } from "../assay-tags"
 import { PerPageChooser } from "../per-page-chooser"
@@ -71,7 +71,7 @@ export const SamplesTab = ({ state, onPage, onPastEnd, onPerPage, search }: Samp
               <StatusPill key={status.code} mark={status.mark} tone={status.tone} label={status.label} size="sm" />
             ))}
           </div>
-          <HelpHint label="About the status marks">{STATUS_HELP}</HelpHint>
+          <HelpHint label="About annotation status">{STATUS_HELP}</HelpHint>
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-2">
           <PerPageChooser value={state.perPage} onChange={onPerPage} />
@@ -142,8 +142,8 @@ export const SamplesTab = ({ state, onPage, onPastEnd, onPerPage, search }: Samp
                 {fields.map((field) => {
                   const values = (row.annotations[field] ?? []).filter(hasValue)
                   return (
-                    <td key={field} className={cn(TABLE_CELL, ANNOTATION_WIDTH, "truncate whitespace-nowrap")} title={annotationTitle(field, values) || undefined}>
-                      <AnnotationCell values={values} />
+                    <td key={field} className={cn(TABLE_CELL, ANNOTATION_WIDTH)}>
+                      <AnnotationCell field={field} values={values} />
                     </td>
                   )
                 })}
@@ -157,7 +157,7 @@ export const SamplesTab = ({ state, onPage, onPastEnd, onPerPage, search }: Samp
       </TableScroller>
       <CardFooter>
         <div className="ml-auto">
-          <Pager page={state.page} perPage={state.perPage} total={total} onChange={table.onFootPage} failed={failed} />
+          <Pager page={state.page} perPage={state.perPage} total={total} onChange={table.onFootPage} failed={failed} label="Pages (bottom)" />
         </div>
       </CardFooter>
     </Card>
@@ -177,15 +177,23 @@ const STATUS_HELP = (
   </StatusMeanings>
 )
 
-const AnnotationCell = ({ values }: { values: AnnotationValue[] }) => {
+/** The values of a cell shown before the rest go behind a button, so that a cell takes at most three lines, as the assays do. */
+const CELL_VALUES_SHOWN = 2
+
+/**
+ * The values of one annotation field of the row's BioSample, one per line. A value longer than the column ends with an
+ * ellipsis, and its title gives the whole of it.
+ */
+const AnnotationCell = ({ field, values }: { field: string; values: AnnotationValue[] }) => {
   if (values.length === 0) return null
   return (
-    <>
-      {values.map((value, index) => {
+    <Clamped
+      shown={CELL_VALUES_SHOWN}
+      items={values.map((value, index) => {
         const info = statusInfo(value.status)
         const text = value.termId ? (value.label ?? value.termId) : value.value ? `“${value.value}”` : ""
         return (
-          <span key={index} className={index > 0 ? "ml-1.5" : ""}>
+          <span key={index} title={annotationTitle(field, value)}>
             <span className="mr-1">
               <StatusGlyph mark={info.mark} tone={info.tone} label={info.label} />
             </span>
@@ -193,26 +201,26 @@ const AnnotationCell = ({ values }: { values: AnnotationValue[] }) => {
           </span>
         )
       })}
-    </>
+    />
   )
 }
 
-const annotationTitle = (field: string, values: AnnotationValue[]): string =>
-  values
-    .map((value) => {
-      const target = value.termId ? `${value.label ?? ""} (${value.termId})` : "no term"
-      return `${fieldLabel(field)}: extracted “${value.value ?? ""}” → ${target}, ${statusInfo(value.status).label}`
-    })
-    .join("\n")
+const annotationTitle = (field: string, value: AnnotationValue): string => {
+  const target = value.termId ? `${value.label ?? ""} (${value.termId})` : "no term"
+  return `${fieldLabel(field)}: extracted “${value.value ?? ""}” → ${target}, ${statusInfo(value.status).label}`
+}
 
-/** The pages of the row's BioProjects in DDBJ Search. */
-const BioProjectLinks = ({ accessions }: { accessions: string[] }) =>
-  accessions.map((accession, index) => (
-    <Fragment key={accession}>
-      {index > 0 && ", "}
-      <ExternalLink href={ddbjSearchHref("bioproject", accession)}>{accession}</ExternalLink>
-    </Fragment>
-  ))
+/** The BioProjects of the row's BioSample, one per line like the assays, in DDBJ Search. */
+const BioProjectLinks = ({ accessions }: { accessions: string[] }) => (
+  <Clamped
+    shown={CELL_VALUES_SHOWN}
+    items={accessions.map((accession) => (
+      <ExternalLink key={accession} href={ddbjSearchHref("bioproject", accession)}>
+        {accession}
+      </ExternalLink>
+    ))}
+  />
+)
 
 /** The pages of the row's BioSample in DDBJ Search and NCBI. */
 const RowLinks = ({ row }: { row: EntryItem }) => (

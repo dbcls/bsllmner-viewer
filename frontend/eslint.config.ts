@@ -12,10 +12,13 @@ const HEX_LITERAL_RULE = {
   message: "Raw hex colors are not allowed. Reference a design token from app/styles/tailwind.css through a utility class (e.g. bg-brand) instead. Add a token to @theme if one does not exist yet.",
 }
 
-const ARBITRARY_CLASSNAME_RULE = {
-  selector: "JSXAttribute[name.name='className'] Literal[value=/\\[(#[0-9A-Fa-f]{3,8}|-?\\d+(\\.\\d+)?(px|rem|em|%))\\]/]",
-  message: "Tailwind arbitrary values are not allowed. Reference a design token through a utility class instead. Add a token to @theme if one does not exist yet.",
-}
+/** A class with an arbitrary value, such as `w-[150px]` or `hover:grid-cols-[1fr_2fr]`, in any string: a class attribute, a constant, or a template. */
+const ARBITRARY_CLASS = "/(^|\\s)[\\w:-]*-\\[[^\\]]+\\]/"
+const ARBITRARY_MESSAGE = "Tailwind arbitrary values are not allowed. Reference a design token through a utility class instead. Add a token to @theme if one does not exist yet."
+const ARBITRARY_CLASSNAME_RULES = [
+  { selector: `Literal[value=${ARBITRARY_CLASS}]`, message: ARBITRARY_MESSAGE },
+  { selector: `TemplateElement[value.raw=${ARBITRARY_CLASS}]`, message: ARBITRARY_MESSAGE },
+]
 
 const MIDDLE_DOT_MESSAGE =
   "The middle dot (U+00B7) is not used in text that the app shows. Separate items with a comma, parentheses, a line break, or space between elements."
@@ -140,7 +143,7 @@ export default tseslint.config(
   {
     files: ["app/{features,routes}/**/*.{ts,tsx}"],
     rules: {
-      "no-restricted-syntax": ["error", HEX_LITERAL_RULE, ARBITRARY_CLASSNAME_RULE, ...MIDDLE_DOT_RULES],
+      "no-restricted-syntax": ["error", HEX_LITERAL_RULE, ...ARBITRARY_CLASSNAME_RULES, ...MIDDLE_DOT_RULES],
       "react/forbid-elements": ["error", {
         forbid: [
           { element: "button", message: "Raw <button> is not allowed. Use <Button> from ~/ui instead." },

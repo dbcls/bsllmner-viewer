@@ -48,7 +48,7 @@ export const expectCounted = async (page: Page): Promise<void> => {
 
 export const conditionPanel = (page: Page): Locator => page.getByRole("complementary")
 
-export const termPicker = (page: Page): Locator => page.getByRole("dialog", { name: "Add an annotation term" })
+export const termPicker = (page: Page): Locator => page.getByRole("dialog", { name: "Add a term" })
 
 export const viewTabs = (page: Page): Locator => page.getByRole("navigation", { name: "Views" })
 
@@ -70,11 +70,11 @@ export const cellButton = (page: Page, row: string, col: string): Locator =>
 /** The controls of one axis of a chart view: its name, its dimension, and the button that opens its terms. */
 const axisControls = (page: Page, side: "Rows" | "Columns" | "Lines"): Locator => page.getByRole("group", { name: side })
 
-/** The button of an axis of a chart view that shows the number of its terms and opens them. */
-export const axisTermsButton = (page: Page, side: "Rows" | "Columns" | "Lines"): Locator => axisControls(page, side).getByRole("button", { name: /^\d+ terms?$/ })
+/** The button of an axis of a chart view that shows the number of its terms (of its values, on a dimension that is not an annotation field) and opens them. */
+export const axisTermsButton = (page: Page, side: "Rows" | "Columns" | "Lines"): Locator => axisControls(page, side).getByRole("button", { name: /^\d+ (terms?|values?)$/ })
 
 /** The dialog of the terms of a heatmap axis, with the ways to change them. */
-export const axisTerms = (page: Page, side: "Rows" | "Columns"): Locator => page.getByRole("dialog", { name: side === "Rows" ? "Row terms" : "Column terms" })
+export const axisTerms = (page: Page, side: "Rows" | "Columns"): Locator => page.getByRole("dialog", { name: side === "Rows" ? /^Row (terms|values)$/ : /^Column (terms|values)$/ })
 
 /** Checks the label that a Select shows for its chosen option. The labels of the other options are in the button but hidden. */
 export const expectChosen = async (combobox: Locator, label: string): Promise<void> => {

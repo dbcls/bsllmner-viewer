@@ -152,7 +152,7 @@ describe("HeatmapTab with the most terms that the api takes on an axis", () => {
     const { onUpdate, onAlert } = renderView(HeatmapTab, { tab: "heatmap", row: "disease", col: "library_strategy", rowTerms: FULL })
     const dialog = await openTerms(user, "Rows")
     await user.click(await within(dialog).findByRole("button", { name: /label T:9/ }))
-    expect(onAlert).toHaveBeenLastCalledWith("A heatmap axis shows up to 100 terms")
+    expect(onAlert).toHaveBeenLastCalledWith("A heatmap axis shows up to 100 terms.")
     expect(onUpdate).not.toHaveBeenCalled()
   })
 
@@ -170,9 +170,9 @@ describe("HeatmapTab with the most terms that the api takes on an axis", () => {
     const dialog = await openTerms(user, "Rows")
     await user.click(within(dialog).getByRole("radio", { name: "Paste list" }))
     const pasted = Array.from({ length: 101 }, (_, index) => `P:${index}`)
-    fireEvent.change(within(dialog).getByRole("textbox", { name: "Terms to set" }), { target: { value: pasted.join("\n") } })
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "Terms, one per line" }), { target: { value: pasted.join("\n") } })
     await user.click(within(dialog).getByRole("button", { name: "Replace terms" }))
-    await vi.waitFor(() => expect(onAlert).toHaveBeenCalledWith("The first 100 of 101 terms are shown"))
+    await vi.waitFor(() => expect(onAlert).toHaveBeenCalledWith("The first 100 of 101 terms are shown."))
     expect(onUpdate).toHaveBeenLastCalledWith({ rowTerms: pasted.slice(0, 100) })
   })
 })
@@ -214,7 +214,7 @@ describe("an axis with its last term taken off", () => {
 describe("a pasted list that is being resolved", () => {
   const paste = async (user: ReturnType<typeof userEvent.setup>, dialog: HTMLElement) => {
     await user.click(within(dialog).getByRole("radio", { name: "Paste list" }))
-    fireEvent.change(within(dialog).getByRole("textbox", { name: "Terms to set" }), { target: { value: "some label" } })
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "Terms, one per line" }), { target: { value: "some label" } })
     await user.click(within(dialog).getByRole("button", { name: "Replace terms" }))
   }
 
@@ -264,7 +264,7 @@ describe("a pasted list that is being resolved", () => {
     await user.keyboard("{Escape}")
     const reopened = await openTerms(user, "Rows")
     await user.click(within(reopened).getByRole("radio", { name: "Paste list" }))
-    fireEvent.change(within(reopened).getByRole("textbox", { name: "Terms to set" }), { target: { value: "another label" } })
+    fireEvent.change(within(reopened).getByRole("textbox", { name: "Terms, one per line" }), { target: { value: "another label" } })
     expect(within(reopened).getByRole("button", { name: "Replace terms" })).toBeDisabled()
     await open()
   })
@@ -279,7 +279,7 @@ describe("a pasted list that is being resolved", () => {
     fireEvent.click(screen.getByRole("button", { name: "Toggle view" }))
     const reopened = await openTerms(user, "Rows")
     await user.click(within(reopened).getByRole("radio", { name: "Paste list" }))
-    fireEvent.change(within(reopened).getByRole("textbox", { name: "Terms to set" }), { target: { value: "another label" } })
+    fireEvent.change(within(reopened).getByRole("textbox", { name: "Terms, one per line" }), { target: { value: "another label" } })
     expect(within(reopened).getByRole("button", { name: "Replace terms" })).toBeDisabled()
     await open()
   })
@@ -291,7 +291,7 @@ describe("a pasted list that is being resolved", () => {
     await paste(user, await openTerms(user, "Rows"))
     fireEvent.click(screen.getByRole("button", { name: "Switch tab" }))
     await open()
-    await vi.waitFor(() => expect(onAlert).toHaveBeenCalledWith("1 of 1 terms recognised"))
+    await vi.waitFor(() => expect(onAlert).toHaveBeenCalledWith("1 of 1 terms recognized."))
     expect(onUpdate).toHaveBeenLastCalledWith({ rowTerms: ["T:9"] })
   })
 
@@ -302,7 +302,7 @@ describe("a pasted list that is being resolved", () => {
     const dialog = await openTerms(user, "Rows")
     await paste(user, dialog)
     await open()
-    await vi.waitFor(() => expect(onAlert).toHaveBeenCalledWith("1 of 1 terms recognised"))
+    await vi.waitFor(() => expect(onAlert).toHaveBeenCalledWith("1 of 1 terms recognized."))
     expect(onUpdate).toHaveBeenLastCalledWith({ rowTerms: ["T:9"] })
   })
 })
@@ -316,7 +316,7 @@ describe("Paste list when the api does not answer for some lines", () => {
     )
     const dialog = await openTerms(user, "Rows")
     await user.click(within(dialog).getByRole("radio", { name: "Paste list" }))
-    fireEvent.change(within(dialog).getByRole("textbox", { name: "Terms to set" }), { target: { value: lines.join("\n") } })
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "Terms, one per line" }), { target: { value: lines.join("\n") } })
     await user.click(within(dialog).getByRole("button", { name: "Replace terms" }))
     return { onUpdate, onAlert, setReplacing }
   }
@@ -324,7 +324,7 @@ describe("Paste list when the api does not answer for some lines", () => {
   it("uses the other lines and reports the lines that the api rejects", async () => {
     net.termsStatus = (query) => (query === "too long" ? 422 : null)
     const { onUpdate, onAlert } = await paste(userEvent.setup(), ["A:1", "too long", "liver"])
-    await vi.waitFor(() => expect(onAlert).toHaveBeenCalledWith("2 of 3 terms recognised, 1 rejected"))
+    await vi.waitFor(() => expect(onAlert).toHaveBeenCalledWith("2 of 3 terms recognized, 1 not valid."))
     expect(onUpdate).toHaveBeenLastCalledWith({ rowTerms: ["A:1", "T:9"] })
   })
 

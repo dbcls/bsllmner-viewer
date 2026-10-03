@@ -6,11 +6,14 @@ type FigureExportProps = {
   onTsv: () => void
   onSvg: () => void
   onPng: () => void
+  /** The figure has nothing to save: it has not loaded, its request failed, or it still shows the previous condition. */
+  disabled?: boolean
 }
 
 /** The outputs of a figure, in one Export button in the figure's toolbar. Every figure offers the same formats. */
-export const FigureExport = ({ figure, onTsv, onSvg, onPng }: FigureExportProps) => (
+export const FigureExport = ({ figure, onTsv, onSvg, onPng, disabled = false }: FigureExportProps) => (
   <MenuButton
+    disabled={disabled}
     label="Export"
     icon={ACTION_ICON.download}
     aria-label={`Export the ${figure}`}

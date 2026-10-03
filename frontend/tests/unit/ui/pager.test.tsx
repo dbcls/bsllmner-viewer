@@ -45,3 +45,16 @@ describe("Pager", () => {
     expect(screen.getByRole("button", { name: "Next page" })).toBeDisabled()
   })
 })
+
+describe("Pager landmark name", () => {
+  it("is named Pages by default and takes another name when two pagers share a page", () => {
+    render(
+      <>
+        <Pager page={1} perPage={25} total={60} onChange={vi.fn()} />
+        <Pager page={1} perPage={25} total={60} onChange={vi.fn()} label="Pages (bottom)" />
+      </>,
+    )
+    expect(screen.getByRole("navigation", { name: "Pages" })).toBeInTheDocument()
+    expect(screen.getByRole("navigation", { name: "Pages (bottom)" })).toBeInTheDocument()
+  })
+})

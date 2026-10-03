@@ -1,3 +1,5 @@
+import type { ReactNode } from "react"
+
 import { queryFailed, useDataset } from "~/lib/api/queries"
 import { buildCommit } from "~/lib/build-info"
 import { formatCount } from "~/lib/format"
@@ -20,37 +22,24 @@ const ORGANIZATIONS = [
   { name: "Chiba University", url: "https://www.chiba-u.ac.jp/e/", logo: "/logos/chiba-u.svg", height: "h-5" },
 ]
 
+/** The dataset line while the description of the dataset is on its way. */
+const DatasetLineSkeleton = () => (
+  <span aria-busy="true" className="w-96">
+    <Skeleton />
+  </span>
+)
+
 /**
  * Two lines of text on the left, the dataset and where its annotations are published with their license, and the
  * logos of the organizations on the right across both lines, always visible. The items of a line are set apart by
- * space, not by a separator character.
+ * space, not by a separator character. The first line holds what is known of the dataset.
  */
-export const Footer = () => {
-  const dataset = useDataset()
+const FooterFrame = ({ dataset }: { dataset: ReactNode }) => {
   const commit = buildCommit()
-  const data = dataset.data
-  const assays = data?.targetAssays ?? []
-  const assayText = assayList(assays)
   return (
     <footer className="flex shrink-0 items-center justify-between gap-6 border-t border-border-soft bg-surface px-workspace-gutter py-2.5 text-fs-label text-ink-soft">
       <div className="min-w-0">
-        <p className="flex flex-wrap gap-x-4">
-          {data ? (
-            <>
-              <span>Dataset: BioSamples with {assayText} experiments</span>
-              <span>{formatCount(data.totals.biosample)} BioSamples</span>
-              <span>
-                Annotations by <span className="font-mono">{data.datasetVersion.model}</span>
-              </span>
-            </>
-          ) : queryFailed(dataset) ? (
-            <span>Dataset information is unavailable</span>
-          ) : (
-            <span aria-busy="true" className="w-96">
-              <Skeleton />
-            </span>
-          )}
-        </p>
+        <p className="flex flex-wrap gap-x-4">{dataset}</p>
         <p className="flex flex-wrap gap-x-4">
           <span>
             RO-Crate: <ExternalLink href={CRATE_URL}>BioSample Plus</ExternalLink> (CC BY 4.0)
@@ -79,3 +68,30 @@ export const Footer = () => {
     </footer>
   )
 }
+
+export const Footer = () => {
+  const dataset = useDataset()
+  const data = dataset.data
+  return (
+    <FooterFrame
+      dataset={
+        data ? (
+          <>
+            <span>Dataset: BioSamples with {assayList(data.targetAssays)} experiments</span>
+            <span>{formatCount(data.totals.biosample)} BioSamples</span>
+            <span>
+              Annotations by <span className="font-mono">{data.datasetVersion.model}</span>
+            </span>
+          </>
+        ) : queryFailed(dataset) ? (
+          <span>Dataset information is unavailable</span>
+        ) : (
+          <DatasetLineSkeleton />
+        )
+      }
+    />
+  )
+}
+
+/** The footer drawn before the JavaScript runs, when the description of the dataset cannot be asked for yet. */
+export const FooterFallback = () => <FooterFrame dataset={<DatasetLineSkeleton />} />

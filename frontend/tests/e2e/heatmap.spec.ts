@@ -104,7 +104,7 @@ test.describe("heatmap", () => {
     await axisTermsButton(page, "Rows").click()
     const dialog = axisTerms(page, "Rows")
     await dialog.getByRole("radio", { name: "Paste list" }).click()
-    await expect(dialog.getByRole("textbox", { name: "Terms to set" })).toHaveValue(shown.join("\n"))
+    await expect(dialog.getByRole("textbox", { name: "Terms, one per line" })).toHaveValue(shown.join("\n"))
     await dialog.getByRole("button", { name: "Replace terms" }).click()
     await expectParam(page, "row_terms", shown.join(","))
     await expect(dialog.getByRole("button", { name: "Reset to top 10" })).toBeVisible()

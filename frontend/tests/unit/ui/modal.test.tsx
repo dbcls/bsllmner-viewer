@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react"
+import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 
 import { Modal } from "~/ui/modal"
@@ -70,5 +71,152 @@ describe("Modal", () => {
     )
     fireEvent.keyDown(window, { key: "Enter" })
     expect(onClose).not.toHaveBeenCalled()
+  })
+})
+
+describe("Modal focus and background", () => {
+  const renderModal = (open = true, extra?: React.ReactNode) =>
+    render(
+      <>
+        <button>Opener</button>
+        <Modal open={open} onClose={vi.fn()} title="Choose a term">
+          {extra ?? (
+            <>
+              <input aria-label="Search" />
+              <button>Apply</button>
+            </>
+          )}
+        </Modal>
+      </>,
+    )
+
+  it("moves the focus to the first control of the content, skipping Close", () => {
+    renderModal()
+    expect(screen.getByRole("textbox", { name: "Search" })).toHaveFocus()
+  })
+
+  it("keeps the focus on content that took it while mounting", () => {
+    renderModal(true, (
+      <>
+        <button>Field</button>
+        <input aria-label="Search" autoFocus />
+      </>
+    ))
+    expect(screen.getByRole("textbox", { name: "Search" })).toHaveFocus()
+  })
+
+  it("puts the focus back on the opener when it closes, even if the content took the focus while mounting", () => {
+    const Harness = ({ open }: { open: boolean }) => (
+      <>
+        <button>Opener</button>
+        <Modal open={open} onClose={vi.fn()} title="Choose a term">
+          <input aria-label="Search" autoFocus />
+        </Modal>
+      </>
+    )
+    const { rerender } = render(<Harness open={false} />)
+    screen.getByRole("button", { name: "Opener" }).focus()
+    rerender(<Harness open />)
+    expect(screen.getByRole("textbox", { name: "Search" })).toHaveFocus()
+    rerender(<Harness open={false} />)
+    expect(screen.getByRole("button", { name: "Opener" })).toHaveFocus()
+  })
+
+  it("moves the focus to the dialog itself when the content has no control", () => {
+    renderModal(true, <p>text</p>)
+    const dialog = screen.getByRole("dialog")
+    expect(dialog).toHaveAttribute("tabindex", "-1")
+    expect(dialog).toHaveFocus()
+  })
+
+  it("gives the focus back to the element that had it before the dialog opened", () => {
+    const view = render(
+      <>
+        <button>Opener</button>
+        <Modal open={false} onClose={vi.fn()} title="Choose a term">
+          <input aria-label="Search" />
+        </Modal>
+      </>,
+    )
+    screen.getByRole("button", { name: "Opener" }).focus()
+    view.rerender(
+      <>
+        <button>Opener</button>
+        <Modal open onClose={vi.fn()} title="Choose a term">
+          <input aria-label="Search" />
+        </Modal>
+      </>,
+    )
+    expect(screen.getByRole("textbox", { name: "Search" })).toHaveFocus()
+    view.rerender(
+      <>
+        <button>Opener</button>
+        <Modal open={false} onClose={vi.fn()} title="Choose a term">
+          <input aria-label="Search" />
+        </Modal>
+      </>,
+    )
+    expect(screen.getByRole("button", { name: "Opener" })).toHaveFocus()
+  })
+
+  it("keeps Tab and Shift+Tab inside the dialog", async () => {
+    const user = userEvent.setup()
+    renderModal()
+    const close = screen.getByRole("button", { name: "Close" })
+    const apply = screen.getByRole("button", { name: "Apply" })
+    await user.tab()
+    expect(apply).toHaveFocus()
+    await user.tab()
+    expect(close).toHaveFocus()
+    await user.tab({ shift: true })
+    expect(apply).toHaveFocus()
+  })
+
+  it("makes the rest of the page inert while open, except layers that listbox, menu, and alert draw, and undoes it on close", () => {
+    const outside = document.createElement("div")
+    const listbox = document.createElement("div")
+    listbox.setAttribute("role", "listbox")
+    document.body.append(outside, listbox)
+    const view = render(
+      <>
+        <button>Behind</button>
+        <Modal open onClose={vi.fn()} title="Choose a term">
+          <input aria-label="Search" />
+        </Modal>
+      </>,
+    )
+    const late = document.createElement("div")
+    document.body.append(late)
+    expect(outside).toHaveAttribute("inert")
+    expect(screen.getByRole("button", { name: "Behind", hidden: true })).toHaveAttribute("inert")
+    expect(listbox).not.toHaveAttribute("inert")
+    expect(late).not.toHaveAttribute("inert")
+    expect(screen.getByRole("dialog")).not.toHaveAttribute("inert")
+    expect(view.container).not.toHaveAttribute("inert")
+    view.rerender(<button>Behind</button>)
+    expect(outside).not.toHaveAttribute("inert")
+    expect(screen.getByRole("button", { name: "Behind" })).not.toHaveAttribute("inert")
+    outside.remove()
+    listbox.remove()
+    late.remove()
+  })
+
+  it("starts the focus on the control marked data-autofocus, not on the first control", () => {
+    render(
+      <Modal open onClose={vi.fn()} title="Choose a term">
+        <button type="button">Field</button>
+        <input aria-label="Search" data-autofocus />
+      </Modal>,
+    )
+    expect(screen.getByRole("textbox", { name: "Search" })).toHaveFocus()
+  })
+
+  it("starts the focus on the first control of the content, not on Close, when nothing is marked", () => {
+    render(
+      <Modal open onClose={vi.fn()} title="Choose a term">
+        <button type="button">Field</button>
+      </Modal>,
+    )
+    expect(screen.getByRole("button", { name: "Field" })).toHaveFocus()
   })
 })

@@ -17,7 +17,7 @@ test.describe("outputs of the condition", () => {
     await expect(menu).toBeVisible()
     const expected = [
       { name: /^TSV/, path: "/api/export/entries/biosample", format: "tsv" },
-      { name: /^JSON lines/, path: "/api/export/entries/biosample", format: "ndjson" },
+      { name: /^NDJSON/, path: "/api/export/entries/biosample", format: "ndjson" },
       { name: /BioSample/, path: "/api/export/accessions/biosample", format: null },
       { name: /SRA Experiment/, path: "/api/export/accessions/sra-experiment", format: null },
       { name: /SRA Run/, path: "/api/export/accessions/sra-run", format: null },
@@ -53,7 +53,7 @@ test.describe("outputs of the condition", () => {
       return (await readFile(path, "utf8")).split("\n").filter((line) => line !== "" && !line.startsWith("#"))
     }
     expect((await read(/^TSV/)).length).toBe(total + 1)
-    expect((await read(/^JSON lines/)).length).toBe(total)
+    expect((await read(/^NDJSON/)).length).toBe(total)
     expect(await read(/BioProject/)).toEqual([project.identifier])
     expect((await read(/BioSample/)).length).toBe(total)
   })
@@ -72,7 +72,7 @@ test.describe("outputs of the condition", () => {
     await page.getByRole("button", { name: "API", exact: true }).click()
     const dialog = page.getByRole("dialog", { name: "Same result via the API" })
     await expect(dialog).toBeVisible()
-    await expect(dialog).toContainText("one request for the current condition, listed in the order of the cards")
+    await expect(dialog).toContainText("one request for the current condition, counted in the same unit, in the order of the cards")
     const curl = (await dialog.locator("pre").first().innerText()).replace(/\\\s+/g, " ")
     const shown = [...curl.matchAll(/curl -s "([^"]+)"/g)].map((match) => new URL(match[1] ?? ""))
     expect(shown.length).toBe(cards.length)

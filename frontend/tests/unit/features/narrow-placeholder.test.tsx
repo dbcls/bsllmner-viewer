@@ -110,4 +110,16 @@ describe.each(VIEWS)("$name", ({ View, state, target, clauses }) => {
     fireEvent.click(await target())
     expect(toggleNarrow).toHaveBeenCalledExactlyOnceWith("POP-NEW", expect.arrayContaining(clauses), "NEW")
   })
+
+  it("keeps the focus while the table of the new condition loads, so that a keyboard user stays at the element", async () => {
+    net.gate = new Promise<void>(() => undefined)
+    mount()
+    const element = await target()
+    element.focus()
+    fireEvent.click(screen.getByRole("button", { name: "Change condition" }))
+    await vi.waitFor(async () => expect(await target()).toHaveAttribute("aria-disabled", "true"))
+    expect(await target()).toBe(element)
+    expect(element).not.toBeDisabled()
+    expect(element).toHaveFocus()
+  })
 })

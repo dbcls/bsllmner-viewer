@@ -17,10 +17,19 @@ from bsllmner_viewer.api.deps import QParam, StoreDep, parse_condition
 from bsllmner_viewer.api.problems import DSL_SLUGS, error_responses
 from bsllmner_viewer.api.queries import entries as rq
 from bsllmner_viewer.api.queries.core import population
-from bsllmner_viewer.api.schemas import AccessionType, AnnotationValue, EntryItem, EntryType
+from bsllmner_viewer.api.schemas import AccessionType, AnnotationValue, DatasetVersionRef, EntryItem, EntryType
 from bsllmner_viewer.api.store import ExportSession
 
 router = APIRouter(tags=["Export"])
+
+VERSION_HEADER = "X-Dataset-Version"
+
+_VERSION_HEADER_DOC = {
+    VERSION_HEADER: {
+        "description": "Dataset version of the export: the name as a JSON string, the creation time, and the digest",
+        "schema": {"type": "string"},
+    }
+}
 
 TSV_COLUMNS: tuple[tuple[str, Callable[[EntryItem], str]], ...] = (
     ("identifier", lambda item: item.identifier),
@@ -70,11 +79,17 @@ class _Stream:
         self._session.close()
 
 
+def dataset_version(version: DatasetVersionRef) -> str:
+    """The dataset version as an export names it. The name is a JSON string, so that the text is one line of ASCII."""
+    return f"{json.dumps(version.name)} {version.created_at} {version.digest}"
+
+
 def _response(
-    session: ExportSession, chunks: Iterator[bytes], media_type: str, headers: dict[str, str]
+    session: ExportSession, chunks: Iterator[bytes], media_type: str, filename: str, version: DatasetVersionRef
 ) -> StreamingResponse:
     """The response of an export. The session ends as soon as the response ends, including a disconnect of the client,
     which cancels the body."""
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"', VERSION_HEADER: dataset_version(version)}
     stream = _Stream(session, chunks)
 
     async def body() -> AsyncIterator[bytes]:
@@ -96,6 +111,7 @@ def _response(
         200: {
             "description": "The header line and the accessions",
             "content": {"text/plain": {"schema": {"type": "string"}}},
+            "headers": _VERSION_HEADER_DOC,
         },
     },
     summary="Accession list of the matching entries, with a header line and then one accession per line",
@@ -119,7 +135,7 @@ def export_accessions(
     try:
         # The first batch is read before the response starts, so that a store that cannot be read gives a 500.
         with session.timed():
-            session.cursor.execute(f"WITH {pop.cte()} {_ACCESSION_SQL[type]}", list(pop.params))
+            session.cursor.execute(f"WITH {pop.cte(session.cursor)} {_ACCESSION_SQL[type]}", list(pop.params))
             first = session.cursor.fetchmany(batch_size)
     except BaseException:
         session.close()
@@ -128,7 +144,7 @@ def export_accessions(
     def lines() -> Iterator[bytes]:
         header = (
             f"# bsllmner-viewer {type} accessions; q={json.dumps(q_of(ast) or '')}; "
-            f"dataset={json.dumps(version.name)} {version.created_at} {version.digest}\n"
+            f"dataset={dataset_version(version)}\n"
         )
         yield header.encode()
         batch = first
@@ -136,7 +152,7 @@ def export_accessions(
             yield "".join(f"{row[0]}\n" for row in batch).encode()
             batch = session.cursor.fetchmany(batch_size)
 
-    return _response(session, lines(), "text/plain; charset=utf-8", _disposition(f"{type}-accessions.txt"))
+    return _response(session, lines(), "text/plain; charset=utf-8", f"{type}-accessions.txt", version)
 
 
 @router.get(
@@ -150,6 +166,7 @@ def export_accessions(
                 "text/tab-separated-values": {"schema": {"type": "string"}},
                 "application/x-ndjson": {"schema": {"type": "string"}},
             },
+            "headers": _VERSION_HEADER_DOC,
         },
     },
     summary="Matching entries as TSV or newline-delimited JSON",
@@ -168,17 +185,18 @@ def export_entries(
     ast = parse_condition(store, q)
     pop = population(ast, store.field_set)
     fields = tuple(f.name for f in store.fields)
+    version = version_ref(store)
     batch_size = store.limits.export_batch
     session = store.open_export()
 
-    def read_page(page: int) -> list[EntryItem]:
+    def read_page(after: str | None) -> list[EntryItem]:
         with session.timed():
-            keys = rq.page_keys(session.cursor, pop, page, batch_size)
+            keys = rq.keys_after(session.cursor, pop, after, batch_size)
             return rq.entry_rows(session.cursor, pop, keys, fields) if keys else []
 
     try:
         # The first page is read before the response starts, so that a store that cannot be read gives a 500.
-        first = read_page(1)
+        first = read_page(None)
     except BaseException:
         session.close()
         raise
@@ -187,7 +205,6 @@ def export_entries(
         if format == "tsv":
             head = [*(name for name, _ in TSV_COLUMNS), *fields]
             yield ("\t".join(head) + "\n").encode()
-        page = 1
         items = first
         while items:
             for item in items:
@@ -198,12 +215,11 @@ def export_entries(
                     for f in fields:
                         cells.append(";".join(_annotation_cell(a) for a in item.annotations.get(f, [])))
                     yield ("\t".join(cells) + "\n").encode()
-            page += 1
-            items = read_page(page)
+            items = read_page(items[-1].identifier)
 
     name = f"{type}-entries.{'tsv' if format == 'tsv' else 'ndjson'}"
     media = "text/tab-separated-values; charset=utf-8" if format == "tsv" else "application/x-ndjson"
-    return _response(session, rows(), media, _disposition(name))
+    return _response(session, rows(), media, name, version)
 
 
 def _plain_cell(value: str) -> str:
@@ -222,7 +238,3 @@ def _annotation_cell(annotation: AnnotationValue) -> str:
     """`value|termId|label|status`: four parts in this order, empty when missing."""
     parts = (annotation.value, annotation.term_id, annotation.label, annotation.status)
     return "|".join(_escape_part(part) for part in parts)
-
-
-def _disposition(filename: str) -> dict[str, str]:
-    return {"Content-Disposition": f'attachment; filename="{filename}"'}

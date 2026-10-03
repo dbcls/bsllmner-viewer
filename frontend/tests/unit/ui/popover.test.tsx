@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
+import { Modal, MODAL_OPEN_EVENT } from "~/ui/modal"
 import { HOVER_CLOSE_MS, HOVER_OPEN_MS, HoverPopover, Popover } from "~/ui/popover"
 
 const renderPopover = (links = ["OLS", "Show BioSamples with this term"]) =>
@@ -211,5 +212,58 @@ describe("HoverPopover", () => {
     expect(screen.getByRole("button", { name: "Bar" })).toHaveFocus()
     fireEvent.keyDown(document, { key: "Escape" })
     expect(screen.queryByRole("dialog")).toBeNull()
+  })
+})
+
+describe("Popover over a modal dialog and focus timing", () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it("moves the focus into the panel only after the panel is drawn at its position", async () => {
+    const user = userEvent.setup()
+    renderPopover()
+    const seen: string[] = []
+    const onFocusIn = (event: FocusEvent) => {
+      const panel = (event.target as HTMLElement).closest<HTMLElement>("[role='dialog']")
+      if (panel) seen.push(panel.style.visibility)
+    }
+    document.addEventListener("focusin", onFocusIn)
+    trigger().focus()
+    await user.keyboard("{Enter}")
+    document.removeEventListener("focusin", onFocusIn)
+    expect(link("OLS")).toHaveFocus()
+    expect(seen).toEqual([""])
+  })
+
+  it("does not open a HoverPopover behind a modal dialog, and closes one that is open when the dialog opens", () => {
+    vi.useFakeTimers()
+    render(
+      <>
+        <HoverPopover trigger="CHEBI:1" label="CHEBI:1">
+          <p>details</p>
+        </HoverPopover>
+        <Modal open={false} onClose={vi.fn()} title="Add">
+          <button>Inside</button>
+        </Modal>
+      </>,
+    )
+    const open = () => {
+      fireEvent.mouseEnter(screen.getByText("CHEBI:1"))
+      act(() => void vi.advanceTimersByTime(HOVER_OPEN_MS))
+    }
+    open()
+    expect(screen.getByText("details")).toBeInTheDocument()
+    const dialog = document.createElement("div")
+    dialog.setAttribute("aria-modal", "true")
+    document.body.append(dialog)
+    act(() => void document.dispatchEvent(new Event(MODAL_OPEN_EVENT)))
+    expect(screen.queryByText("details")).toBeNull()
+    fireEvent.mouseLeave(screen.getByText("CHEBI:1"))
+    open()
+    expect(screen.queryByText("details")).toBeNull()
+    dialog.remove()
+    open()
+    expect(screen.getByText("details")).toBeInTheDocument()
   })
 })

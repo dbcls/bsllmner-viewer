@@ -1,6 +1,7 @@
 import type { ReactNode } from "react"
 
 import { cn } from "./cn"
+import { FOCUS_RING_WITHIN } from "./focus"
 
 type ToggleProps = {
   label: ReactNode
@@ -19,7 +20,7 @@ export const Toggle = ({ label, checked, onChange, disabled = false }: TogglePro
       className={cn(
         "relative inline-block h-4 w-7 rounded-pill transition-colors",
         checked && !disabled ? "bg-brand" : "bg-border-soft",
-        "has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand-light has-[:focus-visible]:ring-offset-1",
+        FOCUS_RING_WITHIN,
       )}
     >
       <span

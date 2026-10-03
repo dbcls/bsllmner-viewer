@@ -129,7 +129,7 @@ describe.each(views)("$name", ({ target, empty, render }) => {
 })
 
 describe("Distribution", () => {
-  const renderDistribution = () => renderWithQuery(<DistributionTab state={{ ...DEFAULTS, tab: "distribution" }} condition={condition} onUnit={noop} onTermIds={noop} />)
+  const renderDistribution = () => renderWithQuery(<DistributionTab state={{ ...DEFAULTS, tab: "distribution" }} condition={condition} onUnit={noop} onTermIds={noop} onAlert={noop} />)
 
   it("shows a notice with Try again in the card when the request fails", async () => {
     net.mode = 500
@@ -202,14 +202,22 @@ describe("Heatmap that could not be loaded", () => {
 })
 
 describe("Heatmap and Trend whose terms are not known", () => {
-  it("show a dash, not 0 terms, for an axis that names no terms when the request failed", async () => {
+  it("show a dash, not 0 terms or values, for an axis that names none when the request failed", async () => {
     net.mode = 500
     renderWithQuery(
       <HeatmapTab state={{ ...DEFAULTS, tab: "heatmap", row: "disease", col: "library_strategy" }} condition={condition} update={noop} latest={() => DEFAULTS} replacing={false} setReplacing={noop} onAlert={noop} />,
     )
     await screen.findByText("Could not load the heatmap.")
-    for (const name of ["Rows", "Columns"]) {
-      expect(within(screen.getByRole("group", { name })).getByRole("button", { name: /terms$/ })).toHaveTextContent("– terms")
-    }
+    expect(within(screen.getByRole("group", { name: "Rows" })).getByRole("button", { name: /terms$/ })).toHaveTextContent("– terms")
+    expect(within(screen.getByRole("group", { name: "Columns" })).getByRole("button", { name: /values$/ })).toHaveTextContent("– values")
+  })
+
+  it("names the dialog of an axis that is not an annotation field after its values", async () => {
+    const user = userEvent.setup()
+    renderWithQuery(
+      <HeatmapTab state={{ ...DEFAULTS, tab: "heatmap", row: "disease", col: "library_strategy" }} condition={condition} update={noop} latest={() => DEFAULTS} replacing={false} setReplacing={noop} onAlert={noop} />,
+    )
+    await user.click(await within(screen.getByRole("group", { name: "Columns" })).findByRole("button", { name: "1 value" }))
+    expect(screen.getByRole("dialog", { name: "Column values" })).toBeInTheDocument()
   })
 })

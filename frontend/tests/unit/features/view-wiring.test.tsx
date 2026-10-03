@@ -83,7 +83,7 @@ describe.each(views)("$name wiring to the axis terms dialog", ({ View, axis, sta
     renderView(View, { ...state, unit: "bioproject" })
     const dialog = await openDialog(user)
     await user.click(within(dialog).getByRole("radio", { name: "Paste list" }))
-    fireEvent.change(within(dialog).getByRole("textbox", { name: "Terms to set" }), { target: { value: "some label" } })
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "Terms, one per line" }), { target: { value: "some label" } })
     await user.click(within(dialog).getByRole("button", { name: "Replace terms" }))
     await vi.waitFor(() => expect(termCalls().some((call) => call.query["query"] === "some label")).toBe(true))
     const lookups = termCalls().filter((call) => call.query["query"] === "some label")

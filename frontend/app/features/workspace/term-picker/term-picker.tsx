@@ -58,7 +58,8 @@ export const PickerSearch = ({ fieldOptions, field, unit, onField, fields, q, is
           onChange={setQuery}
           icon={ACTION_ICON.search}
           placeholder="Search label, synonym, or ID…"
-          aria-label="Search terms"
+          aria-label="Search terms by label, synonym, or ID"
+          data-autofocus
           block
         />
       </div>
@@ -118,7 +119,7 @@ export const TermPicker = ({ open, onClose, fields, q, isSelected, onPick }: Ter
     if (open) setField(ALL_FIELDS)
   }, [open])
   return (
-    <Modal open={open} onClose={onClose} title="Add an annotation term">
+    <Modal open={open} onClose={onClose} title="Add a term">
       <PickerSearch
         fieldOptions={termFieldOptions(fields)}
         field={field}

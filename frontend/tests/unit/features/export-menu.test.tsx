@@ -15,7 +15,7 @@ describe("ExportMenu", () => {
     const items = screen.getAllByRole("menuitem")
     expect(items.map((item) => item.textContent)).toEqual([
       "TSV1,234 rows",
-      "JSON lines",
+      "NDJSON",
       "BioSampleSAMN…",
       "SRA ExperimentSRX…",
       "SRA RunSRR…",

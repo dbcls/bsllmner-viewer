@@ -1,4 +1,4 @@
-import { QueryClient } from "@tanstack/react-query"
+import { QueryCache, QueryClient } from "@tanstack/react-query"
 
 import { ApiError } from "./api/client"
 
@@ -26,13 +26,45 @@ export const shouldRetry = (failureCount: number, error: unknown): boolean => {
 export const retryDelay = (failureCount: number, error: unknown): number =>
   error instanceof ApiError && error.retryAfter !== null ? Math.min(error.retryAfter, MAX_WAIT_SECONDS) * 1000 : 1000 * 2 ** failureCount
 
-export const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 60_000,
-      refetchOnWindowFocus: false,
-      retry: shouldRetry,
-      retryDelay,
+/** How long a response that no view uses stays in the cache. */
+const UNUSED_MS = 30 * 60_000
+
+/** The digest of the dataset version that a response names, or null for a response that names none. */
+const digestOf = (data: unknown): string | null => {
+  if (typeof data !== "object" || data === null || !("datasetVersion" in data)) return null
+  const version: unknown = data.datasetVersion
+  if (typeof version !== "object" || version === null || !("digest" in version)) return null
+  return typeof version.digest === "string" ? version.digest : null
+}
+
+/**
+ * A client for the responses of the api. A store does not change while the api serves it, so a response stays valid for
+ * as long as the page is open and the api serves the same store. When a response names another dataset version than the
+ * response before it, the api serves another store, and every other response is fetched again when a view uses it, so
+ * that the page does not show the results of two stores together.
+ */
+export const createQueryClient = (): QueryClient => {
+  let digest: string | null = null
+  const client: QueryClient = new QueryClient({
+    queryCache: new QueryCache({
+      onSuccess: (data, query) => {
+        const next = digestOf(data)
+        if (next === null) return
+        if (digest !== null && next !== digest) void client.invalidateQueries({ predicate: (other) => other !== query })
+        digest = next
+      },
+    }),
+    defaultOptions: {
+      queries: {
+        staleTime: Infinity,
+        gcTime: UNUSED_MS,
+        refetchOnWindowFocus: false,
+        retry: shouldRetry,
+        retryDelay,
+      },
     },
-  },
-})
+  })
+  return client
+}
+
+export const queryClient = createQueryClient()

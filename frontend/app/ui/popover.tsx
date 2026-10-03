@@ -2,6 +2,7 @@ import { type KeyboardEvent, type ReactNode, type RefObject, useEffect, useId, u
 import { createPortal } from "react-dom"
 
 import { cn } from "./cn"
+import { coveredByModal, MODAL_OPEN_EVENT } from "./modal"
 import { useAnchoredPosition, useOutsidePointer } from "./panel-position"
 
 /** How long the pointer rests on a hover trigger before its panel opens, so that passing over many triggers opens none. */
@@ -20,7 +21,7 @@ const FOCUSABLE = "a[href], button:not([disabled])"
  * Resting on the trigger opens the panel after `HOVER_OPEN_MS`; leaving the trigger and the panel closes it after
  * `HOVER_CLOSE_MS`, unless the pointer comes back first.
  */
-const usePanelState = () => {
+const usePanelState = (anchor: RefObject<HTMLElement | null>) => {
   const [pinned, setPinned] = useState(false)
   const [hovered, setHovered] = useState(false)
   const timer = useRef<number | undefined>(undefined)
@@ -35,7 +36,10 @@ const usePanelState = () => {
     },
     enterTrigger: () => {
       clear()
-      timer.current = window.setTimeout(() => setHovered(true), HOVER_OPEN_MS)
+      // A modal dialog covers the page, so a trigger behind it does not open.
+      timer.current = window.setTimeout(() => {
+        if (!coveredByModal(anchor.current)) setHovered(true)
+      }, HOVER_OPEN_MS)
     },
     enterPanel: clear,
     leave: () => {
@@ -61,6 +65,8 @@ type PanelProps = {
   /** Called after Escape or a click outside closes the panel. */
   onClose: () => void
   onKeyDown?: (event: KeyboardEvent<HTMLDivElement>) => void
+  /** Moves the focus into the panel once it is pinned and drawn at its position. */
+  focusOnPin?: boolean
   panelRef: RefObject<HTMLDivElement | null>
   children: ReactNode
 }
@@ -70,11 +76,36 @@ type PanelProps = {
  * is more room above. Its content is drawn only while it is open, so that what the content asks the api for is asked
  * for only when the panel opens. Escape and a click outside the anchor and the panel close it.
  */
-const Panel = ({ state, anchor, label, id, onClose, onKeyDown, panelRef, children }: PanelProps) => {
-  const { open } = state
+const Panel = ({ state, anchor, label, id, onClose, onKeyDown, focusOnPin = false, panelRef, children }: PanelProps) => {
+  const { open, pinned } = state
   const { position } = useAnchoredPosition(open, anchor, panelRef, PANEL_PLACE, true)
 
   useOutsidePointer(open, [anchor, panelRef], state.close)
+
+  // A modal dialog that opens covers the page behind it, so a panel of the page closes.
+  useEffect(() => {
+    if (!open) return
+    const onModalOpen = () => {
+      if (coveredByModal(anchor.current)) state.close()
+    }
+    document.addEventListener(MODAL_OPEN_EVENT, onModalOpen)
+    return () => document.removeEventListener(MODAL_OPEN_EVENT, onModalOpen)
+  }, [open, state, anchor])
+
+  // The focus moves once the position is set: an element that is still hidden does not take the focus.
+  const focused = useRef(false)
+  const placed = position !== null
+  useEffect(() => {
+    if (!focusOnPin) return
+    if (!pinned) {
+      focused.current = false
+      return
+    }
+    if (!placed || focused.current) return
+    focused.current = true
+    const panel = panelRef.current
+    ;(panel?.querySelector<HTMLElement>(FOCUSABLE) ?? panel)?.focus()
+  }, [focusOnPin, pinned, placed, panelRef])
 
   useEffect(() => {
     if (!open) return
@@ -129,8 +160,8 @@ type PopoverProps = {
  * the focus goes back to the button.
  */
 export const Popover = ({ trigger, hoverTrigger, triggerClassName, label, children }: PopoverProps) => {
-  const state = usePanelState()
   const buttonRef = useRef<HTMLButtonElement>(null)
+  const state = usePanelState(buttonRef)
   const panelRef = useRef<HTMLDivElement>(null)
   const panelId = useId()
 
@@ -159,13 +190,6 @@ export const Popover = ({ trigger, hoverTrigger, triggerClassName, label, childr
     }
   }
 
-  // A click moves the focus into the panel; resting the pointer on the button does not.
-  useEffect(() => {
-    if (!state.pinned) return
-    const target = panelRef.current?.querySelector<HTMLElement>(FOCUSABLE) ?? panelRef.current
-    target?.focus()
-  }, [state.pinned])
-
   return (
     <>
       <button
@@ -187,7 +211,7 @@ export const Popover = ({ trigger, hoverTrigger, triggerClassName, label, childr
           </>
         )}
       </button>
-      <Panel state={state} anchor={buttonRef} label={label} id={panelId} onClose={() => buttonRef.current?.focus()} onKeyDown={onPanelKeyDown} panelRef={panelRef}>
+      <Panel state={state} anchor={buttonRef} label={label} id={panelId} onClose={() => buttonRef.current?.focus()} onKeyDown={onPanelKeyDown} focusOnPin panelRef={panelRef}>
         {children}
       </Panel>
     </>
@@ -210,8 +234,8 @@ type HoverPopoverProps = {
  * stop to the keyboard order. The panel does not take the focus. Escape or a click outside closes it.
  */
 export const HoverPopover = ({ trigger, triggerClassName, label, children }: HoverPopoverProps) => {
-  const state = usePanelState()
   const anchorRef = useRef<HTMLSpanElement>(null)
+  const state = usePanelState(anchorRef)
   const panelRef = useRef<HTMLDivElement>(null)
   const panelId = useId()
   return (
