@@ -90,14 +90,15 @@ class TestCamelCase:
         assert "requestId" in body
 
     def test_snake_case_query_parameters_are_not_accepted(self, client: TestClient) -> None:
-        # An unknown parameter is ignored, so the default of the camelCase parameter applies.
         q = 'disease:"MONDO:0007254" AND library_strategy:RNA-Seq'
-        body = _first(
-            client, "/api/distribution", field="disease", q=q, self_exclusion="true", facet_self_exclude="true"
+        response = client.get(
+            "/api/distribution",
+            params={"field": "disease", "q": q, "self_exclusion": "true", "facet_self_exclude": "true"},
         )
-        assert body["facetSelfExclude"] is False
-        paged = _first(client, "/api/entries/biosample", per_page="3")
-        assert paged["pagination"]["perPage"] == 25
+        assert response.status_code == 422
+        assert "facet_self_exclude" in response.json()["detail"]
+        assert "facetSelfExclude" in response.json()["detail"]
+        assert client.get("/api/entries/biosample", params={"per_page": "3"}).status_code == 422
 
     def test_dsl_names_stay_snake_case_inside_conditions(self, client: TestClient) -> None:
         body = _first(client, "/api/dsl/parse", q="organism_id:9606 AND date_published:[2015-01-01 TO 2016-01-01]")
@@ -303,19 +304,29 @@ class TestProblems:
             {"clauses": []},
             {"clauses": [{"value": "x"}]},
             {"clauses": [{"field": "disease", "value": "x"}], "mode": "other"},
-            {"clauses": [{"field": "disease", "from": "2020-01-01"}]},
             {"q": 5, "clauses": [{"field": "disease", "value": "x"}]},
+            {"clauses": [{"field": "disease", "value": "x"}], "extra": 1},
+            [],
         ],
     )
-    def test_invalid_select_body_is_invalid_ast(self, client: TestClient, body: dict[str, Any]) -> None:
+    def test_select_body_that_breaks_the_schema_is_unprocessable(self, client: TestClient, body: Any) -> None:
         response = client.post("/api/dsl/select", json=body)
-        assert response.status_code == 400
-        assert response.json()["type"] == PROBLEM_PREFIX + "invalid-ast"
+        assert response.status_code == 422
+        assert response.json()["type"] == "about:blank"
 
-    def test_malformed_json_body_is_invalid_ast(self, client: TestClient) -> None:
-        response = client.post("/api/dsl/select", content=b"{not json", headers={"content-type": "application/json"})
-        assert response.status_code == 400
-        assert response.json()["type"] == PROBLEM_PREFIX + "invalid-ast"
+    def test_select_clause_that_is_not_a_value_or_a_range_is_invalid_ast(self, client: TestClient) -> None:
+        for clause in ({"field": "disease", "from": "2020-01-01"}, {"field": "disease"}):
+            response = client.post("/api/dsl/select", json={"clauses": [clause]})
+            assert response.status_code == 400
+            assert response.json()["type"] == PROBLEM_PREFIX + "invalid-ast"
+
+    @pytest.mark.parametrize("path", ["/api/dsl/select", "/api/dsl/keyword"])
+    def test_malformed_json_body_is_unprocessable_with_the_position(self, client: TestClient, path: str) -> None:
+        response = client.post(path, content=b"{not json", headers={"content-type": "application/json"})
+        assert response.status_code == 422
+        body = response.json()
+        assert body["type"] == "about:blank"
+        assert body["detail"] == "body: invalid JSON at character 1"
 
     def test_invalid_query_parameter_is_unprocessable(self, client: TestClient) -> None:
         for path, params in (
@@ -340,7 +351,8 @@ class TestProblems:
 
     def test_api_specific_errors_use_the_problem_namespace(self, client: TestClient) -> None:
         cases = [
-            (client.get("/api/distribution", params={"field": "title"}), "invalid-dimension"),
+            (client.get("/api/distribution", params={"field": "title"}), "unknown-field"),
+            (client.get("/api/distribution", params={"field": "bioproject"}), "invalid-dimension"),
             (client.get("/api/trend", params={"field": "date_published"}), "invalid-dimension"),
             (
                 client.get("/api/terms/children", params={"field": "library_strategy", "termId": "x"}),
@@ -353,7 +365,7 @@ class TestProblems:
             (
                 client.get(
                     "/api/distribution",
-                    params={"field": "disease", "elements": ",".join("a" * 1 + str(i) for i in range(501))},
+                    params={"field": "disease", "elements": ",".join("a" * 1 + str(i) for i in range(101))},
                 ),
                 "too-many-elements",
             ),
@@ -577,7 +589,7 @@ class TestOpenApi:
         for path, item in spec["paths"].items():
             for method, operation in item.items():
                 errors = {code: r for code, r in operation["responses"].items() if code[0] in "45"}
-                assert {"400", "422", "500"} <= set(errors), (method, path)
+                assert {"422", "500"} <= set(errors), (method, path)
                 for code, response in errors.items():
                     assert list(response["content"]) == ["application/problem+json"], (method, path, code)
                     ref = response["content"]["application/problem+json"]["schema"]["$ref"]

@@ -22,3 +22,9 @@ export const renderWithQuery = (ui: ReactElement) => render(ui, { wrapper })
 
 /** The shape that openapi-fetch gives for a successful request. */
 export const ok = <T,>(data: T) => ({ data, response: new Response("{}") })
+
+/** The shape that openapi-fetch gives for a failed request with a problem body. */
+export const failure = (status: number, detail?: string) => ({
+  error: { type: "about:blank", title: `status ${status}`, status, ...(detail ? { detail } : {}) },
+  response: new Response("{}", { status }),
+})

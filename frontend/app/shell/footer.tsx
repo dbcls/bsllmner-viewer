@@ -1,8 +1,8 @@
-import { useDataset } from "~/lib/api/queries"
+import { queryFailed, useDataset } from "~/lib/api/queries"
 import { buildCommit } from "~/lib/build-info"
 import { formatCount } from "~/lib/format"
 import { assayList } from "~/lib/labels"
-import { cn, ExternalLink } from "~/ui"
+import { cn, ExternalLink, Skeleton } from "~/ui"
 
 const CRATE_URL = "https://biosampleplus.s3.ap-northeast-1.amazonaws.com/index.html"
 const SUPERCOMPUTER_URL = "https://sc.ddbj.nig.ac.jp/en/"
@@ -43,8 +43,12 @@ export const Footer = () => {
                 Annotations by <span className="font-mono">{data.datasetVersion.model}</span>
               </span>
             </>
+          ) : queryFailed(dataset) ? (
+            <span>Dataset information is unavailable</span>
           ) : (
-            <span>Dataset information is loading</span>
+            <span aria-busy="true" className="w-96">
+              <Skeleton />
+            </span>
           )}
         </p>
         <p className="flex flex-wrap gap-x-4">

@@ -1,17 +1,22 @@
-import { useDataset, useProjects } from "~/lib/api/queries"
+import { loadFailureProps } from "~/lib/api/client"
+import { queryFailed, useDataset, useProjects } from "~/lib/api/queries"
 import type { Project, ProjectSort } from "~/lib/api/types"
 import { ddbjSearchHref, ncbiHref } from "~/lib/external-links"
 import { formatCount } from "~/lib/format"
 import type { TablePerPage } from "~/lib/workspace-state"
-import { ACTION_ICON, Button, Card, CardFooter, CardHeader, cn, ExternalLink, Pager, SortChooser, type SortDirection, type SortKey, TableScroller } from "~/ui"
+import { ACTION_ICON, Button, Card, CardFooter, CardHeader, cn, EmptyNotice, ErrorNotice,ExternalLink, Pager, SortChooser, type SortDirection, type SortKey, TableScroller } from "~/ui"
 
 import { AssayTags } from "../assay-tags"
 import { PerPageChooser } from "../per-page-chooser"
 import { SkeletonTableRows } from "../skeleton-rows"
 import type { WorkspaceState } from "../state"
-import { TABLE_CELL, Th } from "../table"
+import { TABLE_CELL, TableMessageRow, Th } from "../table"
 import type { Condition } from "../use-condition"
+import { usePastEnd } from "../use-past-end"
 import { useTableTop } from "../use-table-top"
+
+/** The columns of the table: BioProject, Title, BioSamples, SRA Experiments, Assay, Links, and Condition. */
+const COLUMNS = 7
 
 type ProjectSortKey = "biosampleCount" | "experimentCount"
 
@@ -27,6 +32,8 @@ type ProjectsTabProps = {
   state: WorkspaceState
   condition: Condition
   onPage: (page: number) => void
+  /** Moves to the last page, in the place of the current page of the URL, when the page is past it. */
+  onPastEnd: (page: number, from: { q: string | null; page: number }) => void
   onSort: (sort: ProjectSort) => void
   onPerPage: (perPage: TablePerPage) => void
 }
@@ -35,12 +42,14 @@ type ProjectsTabProps = {
  * The BioProjects of the entries that match the condition without its BioProject clauses, so that the BioProjects added to
  * the condition stay among the others.
  */
-export const ProjectsTab = ({ state, condition, onPage, onSort, onPerPage }: ProjectsTabProps) => {
+export const ProjectsTab = ({ state, condition, onPage, onPastEnd, onSort, onPerPage }: ProjectsTabProps) => {
   const table = useTableTop(onPage)
   const projects = useProjects({ q: state.q, selfExclusion: true, sort: state.sort, page: state.page, perPage: state.perPage })
   const targetAssays = useDataset().data?.targetAssays ?? []
   const [sortKey = "biosampleCount", sortDirection = "desc"] = state.sort.split(":") as [ProjectSortKey, SortDirection]
   const total = projects.data?.pagination.total
+  const failed = queryFailed(projects)
+  usePastEnd(projects, state.page, state.perPage, state.q, onPastEnd)
 
   return (
     <Card ref={table.ref} padding="none" flush busy={projects.isPlaceholderData}>
@@ -48,7 +57,7 @@ export const ProjectsTab = ({ state, condition, onPage, onSort, onPerPage }: Pro
         <div className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-2">
           <SortChooser keys={SORT_KEYS} value={sortKey} direction={sortDirection} onChange={(key, direction) => onSort(projectSort(key, direction))} />
           <PerPageChooser value={state.perPage} onChange={onPerPage} />
-          <Pager page={state.page} perPage={state.perPage} total={total} onChange={onPage} />
+          <Pager page={state.page} perPage={state.perPage} total={total} onChange={onPage} failed={failed} />
         </div>
       </CardHeader>
       <TableScroller>
@@ -65,7 +74,19 @@ export const ProjectsTab = ({ state, condition, onPage, onSort, onPerPage }: Pro
             </tr>
           </thead>
           <tbody>
-            {projects.data === undefined && <SkeletonTableRows rows={state.perPage} columns={["w-24", "w-64", "w-12", "w-12", "w-16", "w-20", "w-16"]} />}
+            {failed && (
+              <TableMessageRow columns={COLUMNS}>
+                <div className="p-4">
+                  <ErrorNotice {...loadFailureProps(projects.error, "load the BioProjects", () => void projects.refetch())} />
+                </div>
+              </TableMessageRow>
+            )}
+            {projects.data?.pagination.total === 0 && (
+              <TableMessageRow columns={COLUMNS}>
+                <EmptyNotice>No BioProjects match this condition.</EmptyNotice>
+              </TableMessageRow>
+            )}
+            {projects.data === undefined && !failed && <SkeletonTableRows rows={state.perPage} columns={["w-24", "w-64", "w-12", "w-12", "w-16", "w-20", "w-16"]} />}
             {(projects.data?.items ?? []).map((project) => (
               <ProjectRow key={project.identifier} project={project} condition={condition} targetAssays={targetAssays} />
             ))}
@@ -74,7 +95,7 @@ export const ProjectsTab = ({ state, condition, onPage, onSort, onPerPage }: Pro
       </TableScroller>
       <CardFooter>
         <div className="ml-auto">
-          <Pager page={state.page} perPage={state.perPage} total={total} onChange={table.onFootPage} />
+          <Pager page={state.page} perPage={state.perPage} total={total} onChange={table.onFootPage} failed={failed} />
         </div>
       </CardFooter>
     </Card>

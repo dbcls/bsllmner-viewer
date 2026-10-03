@@ -15,13 +15,15 @@ type AxisControlsProps = {
   elements: readonly AxisElement[]
   /** The number of elements on their way, while the view loads for the first time; null once they are known. */
   pending: number | null
+  /** The elements are not known, as the request that lists them failed and the URL names none. */
+  unknown?: boolean
   onDimension: (dimension: string) => void
   /** Opens the dialog of the axis's terms. Without it, as on an axis without a dimension, there is no button. */
   onOpenTerms?: () => void
 }
 
 /** One axis of a chart view on one line: its name, its dimension, and a button with the number of elements shown, which opens them in a dialog. */
-export const AxisControls = ({ name, selectLabel, dimension, dimensions, placeholder, elements, pending, onDimension, onOpenTerms }: AxisControlsProps) => {
+export const AxisControls = ({ name, selectLabel, dimension, dimensions, placeholder, elements, pending, unknown = false, onDimension, onOpenTerms }: AxisControlsProps) => {
   const count = pending ?? elements.length
   return (
     <span role="group" aria-label={name} className="inline-flex items-center gap-1.5">
@@ -36,7 +38,9 @@ export const AxisControls = ({ name, selectLabel, dimension, dimensions, placeho
       />
       {onOpenTerms && (
         <Button kind="secondary" size="sm" icon={ACTION_ICON.openDialog} aria-haspopup="dialog" onClick={onOpenTerms}>
-          {pending === null ? (
+          {unknown ? (
+            "–"
+          ) : pending === null ? (
             count
           ) : (
             <span className="inline-flex w-4 align-middle">

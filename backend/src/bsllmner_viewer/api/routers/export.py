@@ -3,23 +3,24 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator
 from typing import Annotated, Literal
 
 import orjson
 from fastapi import APIRouter, Query
 from fastapi.responses import StreamingResponse
+from starlette.background import BackgroundTask
+from starlette.concurrency import iterate_in_threadpool
 
 from bsllmner_viewer.api.common import q_of, version_ref
 from bsllmner_viewer.api.deps import QParam, StoreDep, parse_condition
-from bsllmner_viewer.api.problems import NOT_FOUND_RESPONSE
+from bsllmner_viewer.api.problems import DSL_SLUGS, error_responses
 from bsllmner_viewer.api.queries import entries as rq
 from bsllmner_viewer.api.queries.core import population
 from bsllmner_viewer.api.schemas import AccessionType, AnnotationValue, EntryItem, EntryType
+from bsllmner_viewer.api.store import ExportSession
 
 router = APIRouter(tags=["Export"])
-
-_BATCH = 1000
 
 TSV_COLUMNS: tuple[tuple[str, Callable[[EntryItem], str]], ...] = (
     ("identifier", lambda item: item.identifier),
@@ -44,10 +45,53 @@ _ACCESSION_SQL: dict[AccessionType, str] = {
 }
 
 
+class _Stream:
+    """The body of an export: the chunks of `chunks`, and the end of the export session when the body ends.
+
+    The session ends when the chunks end or fail. `_response` also ends it when the client disconnects. The end in
+    `__del__` is a last resort for a body that nobody reads.
+    """
+
+    def __init__(self, session: ExportSession, chunks: Iterator[bytes]) -> None:
+        self._session = session
+        self._chunks = chunks
+
+    def __iter__(self) -> _Stream:
+        return self
+
+    def __next__(self) -> bytes:
+        try:
+            return next(self._chunks)
+        except BaseException:
+            self._session.close()
+            raise
+
+    def __del__(self) -> None:
+        self._session.close()
+
+
+def _response(
+    session: ExportSession, chunks: Iterator[bytes], media_type: str, headers: dict[str, str]
+) -> StreamingResponse:
+    """The response of an export. The session ends as soon as the response ends, including a disconnect of the client,
+    which cancels the body."""
+    stream = _Stream(session, chunks)
+
+    async def body() -> AsyncIterator[bytes]:
+        try:
+            async for chunk in iterate_in_threadpool(stream):
+                yield chunk
+        finally:
+            session.close()
+
+    # The background task covers a client that disconnects before the body starts, when its `finally` cannot run.
+    return StreamingResponse(body(), media_type=media_type, headers=headers, background=BackgroundTask(session.close))
+
+
 @router.get(
     "/export/accessions/{type}",
     operation_id="exportAccessions",
-    responses=NOT_FOUND_RESPONSE,
+    responses=error_responses(bad_request=DSL_SLUGS, not_found=True, busy=True),
     summary="Accession list of the matching entries, with a header line and then one accession per line",
     response_class=StreamingResponse,
 )
@@ -55,6 +99,16 @@ def export_accessions(store: StoreDep, type: AccessionType, q: QParam = None) ->
     ast = parse_condition(store, q)
     pop = population(ast, store.field_set)
     version = version_ref(store)
+    batch_size = store.limits.export_batch
+    session = store.open_export()
+    try:
+        # The first batch is read before the response starts, so that a store that cannot be read gives a 500.
+        with session.timed():
+            session.cursor.execute(f"WITH {pop.cte()} {_ACCESSION_SQL[type]}", list(pop.params))
+            first = session.cursor.fetchmany(batch_size)
+    except BaseException:
+        session.close()
+        raise
 
     def lines() -> Iterator[bytes]:
         header = (
@@ -62,20 +116,18 @@ def export_accessions(store: StoreDep, type: AccessionType, q: QParam = None) ->
             f"dataset={json.dumps(version.name)} {version.created_at} {version.digest}\n"
         )
         yield header.encode()
-        with store.cursor() as cur:
-            cur.execute(f"WITH {pop.cte()} {_ACCESSION_SQL[type]}", list(pop.params))
-            while batch := cur.fetchmany(_BATCH):
-                yield "".join(f"{row[0]}\n" for row in batch).encode()
+        batch = first
+        while batch:
+            yield "".join(f"{row[0]}\n" for row in batch).encode()
+            batch = session.cursor.fetchmany(batch_size)
 
-    return StreamingResponse(
-        lines(), media_type="text/plain; charset=utf-8", headers=_disposition(f"{type}-accessions.txt")
-    )
+    return _response(session, lines(), "text/plain; charset=utf-8", _disposition(f"{type}-accessions.txt"))
 
 
 @router.get(
     "/export/entries/{type}",
     operation_id="exportEntries",
-    responses=NOT_FOUND_RESPONSE,
+    responses=error_responses(bad_request=DSL_SLUGS, not_found=True, busy=True),
     summary="Matching entries as TSV or newline-delimited JSON",
     response_class=StreamingResponse,
 )
@@ -88,30 +140,42 @@ def export_entries(
     ast = parse_condition(store, q)
     pop = population(ast, store.field_set)
     fields = tuple(f.name for f in store.fields)
+    batch_size = store.limits.export_batch
+    session = store.open_export()
+
+    def read_page(page: int) -> list[EntryItem]:
+        with session.timed():
+            keys = rq.page_keys(session.cursor, pop, page, batch_size)
+            return rq.entry_rows(session.cursor, pop, keys, fields) if keys else []
+
+    try:
+        # The first page is read before the response starts, so that a store that cannot be read gives a 500.
+        first = read_page(1)
+    except BaseException:
+        session.close()
+        raise
 
     def rows() -> Iterator[bytes]:
         if format == "tsv":
             head = [*(name for name, _ in TSV_COLUMNS), *fields]
             yield ("\t".join(head) + "\n").encode()
-        with store.cursor() as cur:
-            page = 1
-            while True:
-                keys = rq.page_keys(cur, pop, page, _BATCH)
-                if not keys:
-                    break
-                for item in rq.entry_rows(cur, pop, keys, fields):
-                    if format == "ndjson":
-                        yield orjson.dumps(item.model_dump(mode="json", by_alias=True)) + b"\n"
-                    else:
-                        cells = [_plain_cell(get(item)) for _, get in TSV_COLUMNS]
-                        for f in fields:
-                            cells.append(";".join(_annotation_cell(a) for a in item.annotations.get(f, [])))
-                        yield ("\t".join(cells) + "\n").encode()
-                page += 1
+        page = 1
+        items = first
+        while items:
+            for item in items:
+                if format == "ndjson":
+                    yield orjson.dumps(item.model_dump(mode="json", by_alias=True)) + b"\n"
+                else:
+                    cells = [_plain_cell(get(item)) for _, get in TSV_COLUMNS]
+                    for f in fields:
+                        cells.append(";".join(_annotation_cell(a) for a in item.annotations.get(f, [])))
+                    yield ("\t".join(cells) + "\n").encode()
+            page += 1
+            items = read_page(page)
 
     name = f"{type}-entries.{'tsv' if format == 'tsv' else 'ndjson'}"
     media = "text/tab-separated-values; charset=utf-8" if format == "tsv" else "application/x-ndjson"
-    return StreamingResponse(rows(), media_type=media, headers=_disposition(name))
+    return _response(session, rows(), media, _disposition(name))
 
 
 def _plain_cell(value: str) -> str:

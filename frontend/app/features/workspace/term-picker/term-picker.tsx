@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react"
 
-import { useTerms } from "~/lib/api/queries"
+import { loadFailureProps } from "~/lib/api/client"
+import { queryFailed, useTerms } from "~/lib/api/queries"
 import type { TermHit } from "~/lib/api/types"
 import { fieldLabel } from "~/lib/labels"
 import { ALL_FIELDS, SKELETON_TERMS, TERM_SEARCH_DEBOUNCE_MS, termFieldOptions, termHitRowProps, useResultListRef } from "~/lib/terms"
 import { useDebounced } from "~/lib/use-debounced"
-import { ACTION_ICON, busyClass, cn, Modal, Select, TermRow, TermRowSkeleton, TextInput } from "~/ui"
+import { ACTION_ICON, busyClass, cn, ErrorNotice,Modal, Select, TermRow, TermRowSkeleton, TextInput } from "~/ui"
 
 type PickerSearchProps = {
   /** The choices of the field Select, which may include `ALL_FIELDS`. */
@@ -37,6 +38,7 @@ export const PickerSearch = ({ fieldOptions, field, onField, fields, q, isSelect
   const debounced = query.trim() === "" ? "" : delayed
   const terms = useTerms({ ...(everyField ? {} : { field }), query: debounced, q, unit: "biosample", selfExclusion: true, limit: 30 }, searchable)
   const list = useResultListRef(terms.data?.query, terms.data?.field)
+  const failed = searchable && queryFailed(terms)
   return (
     <>
       <div className="flex items-center gap-2 border-b border-border-soft px-6 pb-3">
@@ -60,7 +62,7 @@ export const PickerSearch = ({ fieldOptions, field, onField, fields, q, isSelect
       </div>
       <div
         ref={list}
-        aria-busy={(searchable && !terms.data) || terms.isPlaceholderData || undefined}
+        aria-busy={(searchable && !terms.data && !failed) || terms.isPlaceholderData || undefined}
         className={cn(fullHeight ? "h-picker-list" : "max-h-picker-list", "overflow-auto", busyClass(terms.isPlaceholderData))}
       >
         {!searchable && (
@@ -68,7 +70,12 @@ export const PickerSearch = ({ fieldOptions, field, onField, fields, q, isSelect
             {fieldLabel(field)} has no terms to pick; its elements are chosen automatically.
           </div>
         )}
-        {searchable && !terms.data && Array.from({ length: SKELETON_TERMS }, (_, index) => <TermRowSkeleton key={index} padding="lg" />)}
+        {failed && (
+          <div className="px-6 py-4">
+            <ErrorNotice {...loadFailureProps(terms.error, "search terms", () => void terms.refetch())} />
+          </div>
+        )}
+        {searchable && !terms.data && !failed && Array.from({ length: SKELETON_TERMS }, (_, index) => <TermRowSkeleton key={index} padding="lg" />)}
         {searchable &&
           (terms.data?.terms ?? []).map((hit) => {
             const selected = isSelected(hit)

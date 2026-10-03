@@ -8,11 +8,20 @@ from pydantic import BaseModel, ConfigDict, Field, SerializerFunctionWrapHandler
 from pydantic.alias_generators import to_camel
 
 from bsllmner_viewer.dsl.fields import FieldKind, GroupName, Operator, Status
+from bsllmner_viewer.dsl.parser import MAX_LENGTH
+from bsllmner_viewer.dsl.validator import MAX_NODES
 from bsllmner_viewer.store.metadata import EvidenceStrategy, MetadataKind
 
 ClauseJson = TypedDict(
     "ClauseJson", {"field": str, "value": NotRequired[str], "from": NotRequired[str], "to": NotRequired[str]}
 )
+
+# The longest accepted value of a text that a client sends: a condition, a keyword, a search text, or a clause value.
+# The names of fields, elements, and terms, and the accessions, are far shorter.
+TEXT_MAX_LENGTH = MAX_LENGTH
+CLAUSES_MAX_ITEMS = MAX_NODES
+NAME_MAX_LENGTH = 256
+ACCESSION_MAX_LENGTH = 64
 
 type Unit = Literal["biosample", "sra-experiment", "bioproject"]
 type EntryType = Literal["biosample"]
@@ -43,10 +52,10 @@ class DatasetVersionRef(ApiModel):
 class Clause(ApiModel):
     """One DSL clause, as `field` with `value` or with a date range `from`/`to`."""
 
-    field: str
-    value: str | None = None
-    from_: str | None = Field(default=None, alias="from")
-    to: str | None = None
+    field: str = Field(max_length=NAME_MAX_LENGTH)
+    value: str | None = Field(default=None, max_length=TEXT_MAX_LENGTH)
+    from_: str | None = Field(default=None, alias="from", max_length=TEXT_MAX_LENGTH)
+    to: str | None = Field(default=None, max_length=TEXT_MAX_LENGTH)
 
     @model_serializer(mode="wrap")
     def _omit_unused(self, handler: SerializerFunctionWrapHandler) -> ClauseJson:
@@ -162,8 +171,8 @@ class ParseResponse(ApiModel):
 
 
 class SelectRequest(ApiModel):
-    q: str | None = None
-    clauses: list[Clause] = Field(min_length=1)
+    q: str | None = Field(default=None, max_length=TEXT_MAX_LENGTH)
+    clauses: list[Clause] = Field(min_length=1, max_length=CLAUSES_MAX_ITEMS)
     mode: Literal["toggle", "narrow"] = Field(
         default="toggle",
         description=(
@@ -174,8 +183,9 @@ class SelectRequest(ApiModel):
 
 
 class KeywordRequest(ApiModel):
-    q: str | None = None
+    q: str | None = Field(default=None, max_length=TEXT_MAX_LENGTH)
     keyword: str = Field(
+        max_length=TEXT_MAX_LENGTH,
         description=(
             "Text as typed into a keyword box: words, and phrases in double quotes. An empty keyword removes the "
             "keywords of the condition."

@@ -8,14 +8,14 @@ import { DEFAULTS, type Patch, type WorkspaceState } from "~/lib/workspace-state
 
 import { renderWithQuery } from "../query"
 
-const net = vi.hoisted(() => ({ children: new Map<string, () => void>(), childrenOf: {} as Record<string, string[]>, childRequests: [] as string[] }))
+const net = vi.hoisted(() => ({ children: new Map<string, () => void>(), childrenOf: {} as Record<string, string[]>, childRequests: [] as string[], failChildren: false }))
 
 const VERSION = { name: "test", createdAt: "2026-10-03T00:00:00Z", model: "m", digest: "0000000000000000" }
 const label = (value: string) => `label ${value}`
 
 vi.mock("~/lib/api/client", async (importOriginal) => {
   const original = await importOriginal<typeof Client>()
-  const { ok } = await import("../query")
+  const { ok, failure } = await import("../query")
   const GET = async (path: string, init?: { params?: { query?: Record<string, unknown> } }) => {
     const query = init?.params?.query ?? {}
     if (path === "/api/dataset") {
@@ -30,6 +30,7 @@ vi.mock("~/lib/api/client", async (importOriginal) => {
     if (path === "/api/terms/children") {
       const termId = String(query["termId"])
       net.childRequests.push(termId)
+      if (net.failChildren) return failure(500)
       await new Promise<void>((resolve) => net.children.set(termId, resolve))
       return ok({ field: "disease", termId, children: (net.childrenOf[termId] ?? []).map(element) })
     }
@@ -73,6 +74,7 @@ beforeEach(() => {
   net.children.clear()
   net.childRequests.length = 0
   net.childrenOf = {}
+  net.failChildren = false
 })
 
 describe("opening the children of a row", () => {
@@ -111,12 +113,21 @@ describe("opening the children of a row", () => {
 
   it("does not open past the most terms that the api takes, and says so", async () => {
     net.childrenOf = { F0: ["C:new"] }
-    const rows = Array.from({ length: 500 }, (_, index) => `F${index}`)
+    const rows = Array.from({ length: 100 }, (_, index) => `F${index}`)
     const { onUpdate, onAlert } = render(rows)
     fireEvent.click(await chevron("F0"))
     await vi.waitFor(() => expect(net.children.size).toBe(1))
     await answer("F0")
-    expect(onAlert).toHaveBeenCalledWith("A heatmap axis shows up to 500 terms")
+    expect(onAlert).toHaveBeenCalledWith("A heatmap axis shows up to 100 terms")
     expect(onUpdate).not.toHaveBeenCalled()
+  })
+
+  it("says so and leaves the rows as they are when the children cannot be loaded", async () => {
+    net.failChildren = true
+    const { onUpdate, onAlert } = render(["A", "B"])
+    fireEvent.click(await chevron("A"))
+    await vi.waitFor(() => expect(onAlert).toHaveBeenCalledWith("Could not load the child terms."))
+    expect(onUpdate).not.toHaveBeenCalled()
+    expect(screen.getByRole("button", { name: /label A$/ })).toHaveAttribute("aria-expanded", "false")
   })
 })

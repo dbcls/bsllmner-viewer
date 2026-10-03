@@ -8,6 +8,7 @@ from fastapi import APIRouter, Query
 
 from bsllmner_viewer.api.common import aggregation_population, q_of, version_ref
 from bsllmner_viewer.api.deps import FacetSelfExcludeParam, PageParam, PerPageParam, QParam, StoreDep, parse_condition
+from bsllmner_viewer.api.problems import DSL_SLUGS, error_responses
 from bsllmner_viewer.api.queries import projects as pq
 from bsllmner_viewer.api.queries.core import population
 from bsllmner_viewer.api.schemas import Clause, Pagination, Project, ProjectSort, ProjectsResponse
@@ -18,6 +19,7 @@ router = APIRouter(tags=["Projects"])
 @router.get(
     "/projects",
     operation_id="listProjects",
+    responses=error_responses(bad_request=DSL_SLUGS, busy=True),
     response_model=ProjectsResponse,
     summary="BioProjects of the matching BioSamples",
 )
@@ -32,7 +34,7 @@ def get_projects(
     ast = parse_condition(store, q)
     pop_ast = aggregation_population(ast, ["bioproject"], facet_self_exclude)
     pop = population(pop_ast, store.field_set)
-    with store.cursor() as cur:
+    with store.cursor(heavy=True) as cur:
         total = pq.count_projects(cur, pop)
         page_rows = pq.project_page(cur, pop, sort, page, per_page) if (page - 1) * per_page < total else []
     return ProjectsResponse(

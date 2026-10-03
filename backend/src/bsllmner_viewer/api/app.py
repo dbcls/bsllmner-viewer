@@ -8,14 +8,16 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI
+import anyio.to_thread
+from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.datastructures import Headers, MutableHeaders
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from bsllmner_viewer.api.deps import reject_unknown_query_params
+from bsllmner_viewer.api.limits import SERVER_THREADS, Limits
 from bsllmner_viewer.api.problems import (
     REQUEST_ID_HEADER,
-    ProblemDetails,
     UnhandledErrorMiddleware,
     install_problem_handlers,
 )
@@ -39,13 +41,8 @@ OPENAPI_TAGS: list[dict[str, str]] = [
     {"name": "Service Info", "description": "Service metadata and the state of the store."},
 ]
 
-_ERROR_STATUS_CODES = ("400", "404", "422", "500")
+_ERROR_STATUS_CODES = ("400", "404", "422", "500", "503")
 _PROBLEM_MEDIA_TYPE = "application/problem+json"
-_ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
-    400: {"model": ProblemDetails, "description": "Bad Request"},
-    422: {"model": ProblemDetails, "description": "Unprocessable Entity"},
-    500: {"model": ProblemDetails, "description": "Internal Server Error"},
-}
 
 
 class RequestIdMiddleware:
@@ -83,12 +80,13 @@ def _rewrite_error_content_types(operation: dict[str, Any]) -> None:
                 content[_PROBLEM_MEDIA_TYPE] = content.pop(media_type)
 
 
-def create_app(store_path: Path | None = None) -> FastAPI:
+def create_app(store_path: Path | None = None, limits: Limits | None = None) -> FastAPI:
     path = store_path or store_path_from_env()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        app.state.store = Store(path)
+        app.state.store = Store(path, limits)
+        anyio.to_thread.current_default_thread_limiter().total_tokens = SERVER_THREADS
         try:
             yield
         finally:
@@ -111,7 +109,13 @@ def create_app(store_path: Path | None = None) -> FastAPI:
         license_info={"name": "Apache-2.0", "url": "https://www.apache.org/licenses/LICENSE-2.0"},
     )
     app.add_middleware(UnhandledErrorMiddleware)
-    app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+        expose_headers=["Retry-After", REQUEST_ID_HEADER],
+    )
     app.add_middleware(RequestIdMiddleware)
     install_problem_handlers(app)
     for router in (
@@ -124,7 +128,7 @@ def create_app(store_path: Path | None = None) -> FastAPI:
         export.router,
         service_info.router,
     ):
-        app.include_router(router, prefix="/api", responses=_ERROR_RESPONSES)
+        app.include_router(router, prefix="/api", dependencies=[Depends(reject_unknown_query_params)])
 
     original_openapi = app.openapi
 

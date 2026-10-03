@@ -47,7 +47,6 @@ def test_validate_accepts_documented_field_examples(dsl: str) -> None:
         ("date_published:2020", ErrorType.invalid_operator_for_field),
         ("date_published:[2020-01-01 TO x]", ErrorType.invalid_date_format),
         ("date_published:2021-02-29", ErrorType.invalid_date_format),
-        ("date_published:[2021-01-01 TO 2020-01-01]", ErrorType.invalid_value),
         ("disease_status:bogus", ErrorType.invalid_value),
         ("organism_id:human", ErrorType.invalid_value),
         ("organism_id:\u0669\u0666\u0660\u0666", ErrorType.invalid_value),

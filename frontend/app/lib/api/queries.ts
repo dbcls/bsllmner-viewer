@@ -18,6 +18,12 @@ import type {
   Unit,
 } from "./types"
 
+/**
+ * Whether a query failed with nothing to show in its place. A request that fails while the result of the previous
+ * request is shown drops that result, so the failure is shown instead of a result that no longer answers the screen.
+ */
+export const queryFailed = (query: { isError: boolean; data: unknown }): boolean => query.isError && query.data === undefined
+
 const q = (value: string | null): string | undefined => (value ? value : undefined)
 
 /** Query parameters without the undefined members, typed as if every remaining member were present. */
@@ -29,22 +35,29 @@ const defined = <T extends Record<string, unknown>>(params: T): { [K in keyof T]
 /** Where the last description of the dataset is kept between visits. */
 export const DATASET_STORAGE_KEY = "bsllmner-viewer:dataset"
 
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value)
+const isStrings = (value: unknown): boolean => Array.isArray(value) && value.every((item) => typeof item === "string")
+const isList = (value: unknown, isItem: (item: Record<string, unknown>) => boolean): boolean =>
+  Array.isArray(value) && value.every((item) => isRecord(item) && isItem(item))
+
 /**
- * Whether a stored description has the shape that the screens read. A description kept by an older version of the api,
- * without the counts of the whole dataset or the names of the ontologies, is not used.
+ * Whether a stored description has the shape that the screens read, down to the members of its lists. A description kept
+ * by an older version of the api, without the counts of the whole dataset or the names of the ontologies, is not used.
  */
-const isDataset = (value: unknown): value is DatasetResponse => {
-  if (typeof value !== "object" || value === null) return false
-  const { fields, targetAssays, assays, organisms, ontologies } = value as Partial<DatasetResponse>
-  return (
-    Array.isArray(fields) &&
-    fields.every((field) => typeof field.mappedBiosampleCount === "number") &&
-    Array.isArray(targetAssays) &&
-    Array.isArray(assays) &&
-    Array.isArray(organisms) &&
-    Array.isArray(ontologies)
-  )
-}
+const isDataset = (value: unknown): value is DatasetResponse =>
+  isRecord(value) &&
+  isRecord(value["datasetVersion"]) &&
+  isRecord(value["totals"]) &&
+  ["biosample", "experiment", "bioproject"].every((unit) => typeof (value["totals"] as Record<string, unknown>)[unit] === "number") &&
+  isStrings(value["targetAssays"]) &&
+  isList(value["assays"], (a) => typeof a["name"] === "string" && typeof a["biosampleCount"] === "number") &&
+  isList(value["fields"], (f) => typeof f["name"] === "string" && isStrings(f["ontologies"]) && typeof f["mappedBiosampleCount"] === "number") &&
+  isList(value["dslFields"], (f) => typeof f["name"] === "string" && typeof f["kind"] === "string") &&
+  isList(
+    value["organisms"],
+    (o) => typeof o["identifier"] === "string" && (o["name"] === null || typeof o["name"] === "string") && typeof o["biosampleCount"] === "number",
+  ) &&
+  isList(value["ontologies"], (o) => typeof o["prefix"] === "string" && typeof o["name"] === "string")
 
 /** The description of the dataset from the last visit, or undefined when there is none or it cannot be read. */
 export const storedDataset = (): DatasetResponse | undefined => {
@@ -90,7 +103,6 @@ export const parsedConditionOptions = (condition: string | null) =>
     queryFn: async (): Promise<ParseResponse | null> =>
       condition ? unwrap(await api.GET("/api/dsl/parse", { params: { query: { q: condition } } })) : null,
     staleTime: Infinity,
-    retry: false,
   })
 
 /**
@@ -297,7 +309,6 @@ export const useEntry = (accession: string) =>
     queryKey: ["entry", accession],
     queryFn: async (): Promise<EntryResponse> =>
       unwrap(await api.GET("/api/entries/biosample/{accession}", { params: { path: { accession } } })),
-    retry: false,
   })
 
 export type TermsParams = {

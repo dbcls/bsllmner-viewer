@@ -13,6 +13,8 @@ from bsllmner_viewer.dsl.keyword import word_matches
 
 MAX_DEPTH = 5
 MAX_NODES = 512
+MAX_KEYWORDS = 16
+MAX_KEYWORD_WORDS = 64
 
 _DATE_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}\Z")
 
@@ -24,6 +26,7 @@ def validate(ast: Node, fields: FieldSet, *, max_depth: int = MAX_DEPTH, max_nod
     if total > max_nodes:
         raise DslError(type=ErrorType.nest_depth_exceeded, detail=f"total node count {total} exceeds limit {max_nodes}")
     _check_nodes(ast, fields)
+    _check_keywords(ast)
 
 
 def resolve_operator(clause: FieldClause, fields: FieldSet) -> tuple[FieldDef, Operator]:
@@ -91,6 +94,36 @@ def _check_depth(node: Node, current: int, max_depth: int) -> None:
         _check_depth(child, current + 1, max_depth)
 
 
+def _keywords(node: Node) -> list[FreeText]:
+    if isinstance(node, FreeText):
+        return [node]
+    if isinstance(node, FieldClause):
+        return []
+    return [keyword for child in node.children for keyword in _keywords(child)]
+
+
+def _check_keywords(ast: Node) -> None:
+    """Every keyword is a scan of the searchable text, so the keywords of a condition are limited in number."""
+    keywords = _keywords(ast)
+    if len(keywords) > MAX_KEYWORDS:
+        raise DslError(
+            type=ErrorType.invalid_value,
+            detail=f"a condition has at most {MAX_KEYWORDS} keywords, got {len(keywords)}",
+            column=keywords[MAX_KEYWORDS].position.column,
+            length=keywords[MAX_KEYWORDS].position.length,
+        )
+    words = 0
+    for keyword in keywords:
+        words += len(word_matches(keyword))
+        if words > MAX_KEYWORD_WORDS:
+            raise DslError(
+                type=ErrorType.invalid_value,
+                detail=f"the keywords of a condition have at most {MAX_KEYWORD_WORDS} words in total",
+                column=keyword.position.column,
+                length=keyword.position.length,
+            )
+
+
 def _check_nodes(node: Node, fields: FieldSet) -> None:
     if isinstance(node, FreeText):
         if not word_matches(node):
@@ -114,13 +147,6 @@ def _check_value(field: FieldDef, clause: FieldClause) -> None:
     if isinstance(clause.value, Range):
         for bound in (clause.value.from_, clause.value.to):
             _check_date(bound, col, length)
-        if clause.value.from_ > clause.value.to:
-            raise DslError(
-                type=ErrorType.invalid_value,
-                detail=f"range start is after range end at column {col}",
-                column=col,
-                length=length,
-            )
         return
     value = clause.value
     if not value:

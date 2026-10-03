@@ -9,13 +9,18 @@ import type { Patch, WorkspaceState } from "./state"
 
 const NO_CLAUSES: Clause[] = []
 
+/** What the screen says when an operation on the condition fails. */
+export const UPDATE_FAILED = "Could not update the condition."
+
 /**
  * The parsed condition plus the operations that change it, all of which go through the api. The operations run one at a
  * time, and each starts from the latest `q` (`latest` reads it from the URL), so that two quick operations both stay.
  * An operation writes its result only while the `q` that it started from is still the latest one, so that a response
- * does not undo a change made while it waited, such as clearing the condition.
+ * does not undo a change made while it waited, such as clearing the condition. An operation that fails leaves the
+ * condition as it is and reports `UPDATE_FAILED` to `onError`, except the keyword operation, whose failure is thrown to
+ * the keyword box that shows it.
  */
-export const useCondition = (q: string | null, update: (patch: Patch) => void, latest: () => WorkspaceState) => {
+export const useCondition = (q: string | null, update: (patch: Patch) => void, latest: () => WorkspaceState, onError?: (message: string) => void) => {
   const parsed = useParsedCondition(q)
   const select = useSelectElement()
   const keyword = useSetKeyword()
@@ -28,6 +33,18 @@ export const useCondition = (q: string | null, update: (patch: Patch) => void, l
     queue.current = run.catch(() => undefined)
     return run
   }, [])
+  /** Runs an operation that changes the condition; a failure is reported, and the operation then gives `fallback`. */
+  const guarded = useCallback(
+    async <T>(task: () => Promise<T>, fallback: T): Promise<T> => {
+      try {
+        return await task()
+      } catch {
+        onError?.(UPDATE_FAILED)
+        return fallback
+      }
+    },
+    [onError],
+  )
   const ast = parsed.data?.ast ?? null
   const labels = parsed.data?.labels ?? {}
   const selected = parsed.data?.selected ?? NO_CLAUSES
@@ -49,13 +66,15 @@ export const useCondition = (q: string | null, update: (patch: Patch) => void, l
 
   const toggle = useCallback(
     (clauses: Clause[]) =>
-      serial(async () => {
-        const startedQ = currentQ()
-        const result = await select.mutateAsync({ q: startedQ, clauses })
-        apply(result, startedQ)
-        return result
-      }),
-    [currentQ, serial, select, apply],
+      serial(() =>
+        guarded(async (): Promise<ConditionResponse | undefined> => {
+          const startedQ = currentQ()
+          const result = await select.mutateAsync({ q: startedQ, clauses })
+          apply(result, startedQ)
+          return result
+        }, undefined),
+      ),
+    [currentQ, serial, guarded, select, apply],
   )
 
   /** The clauses of the condition that the api names as selected. The AST is fetched for `q`, because the parsed condition of the hook can still be loading after `q` changed. */
@@ -67,40 +86,46 @@ export const useCondition = (q: string | null, update: (patch: Patch) => void, l
   /** Take the clauses off the condition. Whether the condition was written is returned. A clause that the condition no longer has stays off; nothing is added. */
   const remove = useCallback(
     (clauses: Clause[]) =>
-      serial(async () => {
-        const startedQ = currentQ()
-        const present = (await selectedOf(startedQ)).filter((s) => clauses.some((clause) => sameClause(s, clause)))
-        if (present.length === 0) return false
-        return apply(await select.mutateAsync({ q: startedQ, clauses: present }), startedQ)
-      }),
-    [currentQ, serial, selectedOf, select, apply],
+      serial(() =>
+        guarded(async () => {
+          const startedQ = currentQ()
+          const present = (await selectedOf(startedQ)).filter((s) => clauses.some((clause) => sameClause(s, clause)))
+          if (present.length === 0) return false
+          return apply(await select.mutateAsync({ q: startedQ, clauses: present }), startedQ)
+        }, false),
+      ),
+    [currentQ, serial, guarded, selectedOf, select, apply],
   )
 
   /** Take every clause of a field off the condition. */
   const removeField = useCallback(
     (field: string) =>
-      serial(async () => {
-        const startedQ = currentQ()
-        const present = (await selectedOf(startedQ)).filter((clause) => clause.field === field)
-        if (present.length === 0) return false
-        return apply(await select.mutateAsync({ q: startedQ, clauses: present }), startedQ)
-      }),
-    [currentQ, serial, selectedOf, select, apply],
+      serial(() =>
+        guarded(async () => {
+          const startedQ = currentQ()
+          const present = (await selectedOf(startedQ)).filter((clause) => clause.field === field)
+          if (present.length === 0) return false
+          return apply(await select.mutateAsync({ q: startedQ, clauses: present }), startedQ)
+        }, false),
+      ),
+    [currentQ, serial, guarded, selectedOf, select, apply],
   )
 
   /** Replace the clauses of a field with one clause. */
   const replaceField = useCallback(
     (field: string, clause: Clause) =>
-      serial(async () => {
-        const startedQ = currentQ()
-        let current = startedQ
-        const present = (await selectedOf(startedQ)).filter((s) => s.field === field)
-        if (present.length) {
-          current = (await select.mutateAsync({ q: current, clauses: present })).dsl
-        }
-        return apply(await select.mutateAsync({ q: current, clauses: [clause] }), startedQ)
-      }),
-    [currentQ, serial, selectedOf, select, apply],
+      serial(() =>
+        guarded(async () => {
+          const startedQ = currentQ()
+          let current = startedQ
+          const present = (await selectedOf(startedQ)).filter((s) => s.field === field)
+          if (present.length) {
+            current = (await select.mutateAsync({ q: current, clauses: present })).dsl
+          }
+          return apply(await select.mutateAsync({ q: current, clauses: [clause] }), startedQ)
+        }, false),
+      ),
+    [currentQ, serial, guarded, selectedOf, select, apply],
   )
 
   /** Whether the element's clauses are all selected: the api names the clauses that toggling removes. */
@@ -119,16 +144,18 @@ export const useCondition = (q: string | null, update: (patch: Patch) => void, l
     (populationQ: string | null, clauses: Clause[], tableQ: string | null) => {
       if (currentQ() !== tableQ) return Promise.resolve()
       const widen = isSelected(clauses)
-      return serial(async () => {
-        if (currentQ() !== tableQ) return
-        if (widen) {
-          update({ q: populationQ })
-          return
-        }
-        apply(await select.mutateAsync({ q: populationQ, clauses, mode: "narrow" }), tableQ)
-      })
+      return serial(() =>
+        guarded(async () => {
+          if (currentQ() !== tableQ) return
+          if (widen) {
+            update({ q: populationQ })
+            return
+          }
+          apply(await select.mutateAsync({ q: populationQ, clauses, mode: "narrow" }), tableQ)
+        }, undefined),
+      )
     },
-    [currentQ, serial, isSelected, select, apply, update],
+    [currentQ, serial, guarded, isSelected, select, apply, update],
   )
 
   /** Replace the keywords of the condition with the keywords of typed text. Empty text removes them. */
@@ -152,6 +179,7 @@ export const useCondition = (q: string | null, update: (patch: Patch) => void, l
     keywordText,
     parsing: q !== null && parsed.isPending,
     parseError: parsed.error,
+    retryParse: () => void parsed.refetch(),
     toggle,
     remove,
     removeField,

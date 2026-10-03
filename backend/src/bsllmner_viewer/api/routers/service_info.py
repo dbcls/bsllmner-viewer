@@ -9,6 +9,7 @@ from fastapi import APIRouter
 
 from bsllmner_viewer import __version__
 from bsllmner_viewer.api.deps import StoreDep
+from bsllmner_viewer.api.problems import error_responses
 from bsllmner_viewer.api.schemas import ServiceInfoResponse
 
 router = APIRouter(tags=["Service Info"])
@@ -26,20 +27,22 @@ def service_version() -> str:
 @router.get(
     "/service-info",
     operation_id="getServiceInfo",
+    responses=error_responses(),
     response_model=ServiceInfoResponse,
     summary="Get service information",
     description=(
         "The name, the version, and the state of the store, for health monitoring. The api starts only with a store "
         "that it can open and whose schema version its code reads, so a missing, invalid, or mismatched store stops "
         "the process at startup. While the api runs, the response has status 200, and `store` is `ok` if the api can "
-        "query the store and `unavailable` if a query fails."
+        "query the store and the store file has the size and the modification time that it had when the api opened "
+        "it, and `unavailable` otherwise."
     ),
 )
 def get_service_info(store: StoreDep) -> ServiceInfoResponse:
     try:
         with store.cursor() as cur:
             cur.execute("SELECT 1").fetchone()
-        state: Literal["ok", "unavailable"] = "ok"
+        state: Literal["ok", "unavailable"] = "ok" if store.file_unchanged() else "unavailable"
     except Exception:
         state = "unavailable"
     return ServiceInfoResponse(

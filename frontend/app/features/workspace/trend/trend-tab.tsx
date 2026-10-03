@@ -1,16 +1,17 @@
 import { type KeyboardEvent, useRef, useState } from "react"
 
-import { useDataset, useTrend } from "~/lib/api/queries"
+import { loadFailureProps } from "~/lib/api/client"
+import { queryFailed, useDataset, useTrend } from "~/lib/api/queries"
 import type { Clause, TermHit, TrendSeries } from "~/lib/api/types"
 import { token } from "~/lib/color"
 import { downloadPng, downloadSvg, downloadTsv } from "~/lib/export"
 import { formatCount } from "~/lib/format"
 import { fieldLabel, organismLabel, unitLabel } from "~/lib/labels"
 import { TREND_LIMIT } from "~/lib/workspace-state"
-import { busyClass, Card, CardHeader, cn, InlineLabel, Select, Skeleton, Toggle } from "~/ui"
+import { busyClass, Card, CardHeader, cn, EmptyNotice, ErrorNotice,InlineLabel, Select, Skeleton, Toggle } from "~/ui"
 
 import { AxisControls } from "../axis/axis-controls"
-import { replaceTerms, resolvePasted, toggleTerm } from "../axis/axis-terms"
+import { elementValidator, LOOKUP_FAILED, replaceTerms, resolvePasted, toggleTerm } from "../axis/axis-terms"
 import { AxisTermsDialog } from "../axis/axis-terms-dialog"
 import { findTermId } from "../axis/find-term"
 import { expectedElements } from "../expected-elements"
@@ -69,6 +70,7 @@ export const TrendTab = ({ state, condition, update, latest, replacing, setRepla
 
   const trend = useTrend(trendParams(state, dataset.data ? fields : null))
   const data = trend.data
+  const failed = queryFailed(trend)
   const years = data?.years ?? []
   const series = data?.series ?? []
   // Without a condition, the condition is the whole dataset, whose line is All entries.
@@ -110,11 +112,13 @@ export const TrendTab = ({ state, condition, update, latest, replacing, setRepla
   const replace = async (entries: string[]) => {
     setReplacing(true)
     try {
-      const result = await replaceTerms(entries, (list) => resolvePasted(list, fields.includes(split), (label) => findTermId(split, label)), limit)
+      const result = await replaceTerms(entries, (list) => resolvePasted(list, fields.includes(split), (label) => findTermId(split, label), elementValidator(split) ?? undefined), limit)
       // The terms belong to the dimension that the entries were resolved on; they are dropped when the lines moved to another one while they waited.
       if (latest().trendField !== state.trendField) return
       if (result.terms !== null) setTerms(result.terms)
       onAlert(result.alert)
+    } catch {
+      onAlert(LOOKUP_FAILED)
     } finally {
       setReplacing(false)
     }
@@ -168,8 +172,9 @@ export const TrendTab = ({ state, condition, update, latest, replacing, setRepla
             selectLabel="Line dimension"
             dimension={split}
             dimensions={dimensions}
-            elements={series}
-            pending={data === undefined ? expectedElements(split, dataset.data, TREND_LIMIT, state.trendTerms) : null}
+            elements={failed ? (state.trendTerms ?? []).map((value) => ({ value, label: value })) : series}
+            pending={data === undefined && !failed ? expectedElements(split, dataset.data, TREND_LIMIT, state.trendTerms) : null}
+            unknown={failed && state.trendTerms === null}
             onDimension={changeDimension}
             onOpenTerms={() => setTermsOpen(true)}
           />
@@ -190,7 +195,7 @@ export const TrendTab = ({ state, condition, update, latest, replacing, setRepla
         dimension={split}
         dimensions={dimensions}
         fields={fields}
-        elements={series}
+        elements={failed ? (state.trendTerms ?? []).map((value) => ({ value, label: value })) : series}
         pending={null}
         explicit={state.trendTerms !== null}
         limit={TREND_LIMIT}
@@ -209,7 +214,7 @@ export const TrendTab = ({ state, condition, update, latest, replacing, setRepla
           <div className="flex w-full items-start justify-between gap-x-4">
             <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3.5 gap-y-1">
               {data === undefined ? (
-                <Skeleton className="w-28" />
+                failed ? null : <Skeleton className="w-28" />
               ) : (
                 <>
                   {state.trendAll && <LegendItem color={allColor} width={2} label={allLabel} />}
@@ -329,9 +334,11 @@ export const TrendTab = ({ state, condition, update, latest, replacing, setRepla
               )}
             </svg>
           ) : data ? (
-            <div className="py-10 text-center text-fs-body-sm text-ink-soft">
-              {data.firstYear === null ? "No entries with a publication year match this condition." : "No entries match this condition in the chosen years."}
-            </div>
+            <EmptyNotice>
+              {data.firstYear === null ? `No ${unit} with a publication year match this condition.` : `No ${unit} match this condition in the chosen years.`}
+            </EmptyNotice>
+          ) : failed ? (
+            <ErrorNotice {...loadFailureProps(trend.error, "load the trend", () => void trend.refetch())} />
           ) : (
             <SkeletonChart />
           )}

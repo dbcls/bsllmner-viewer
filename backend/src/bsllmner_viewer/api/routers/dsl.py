@@ -7,6 +7,7 @@ from pydantic import TypeAdapter
 
 from bsllmner_viewer.api.common import condition_labels, q_of, to_api_clause, to_field_clause, version_ref
 from bsllmner_viewer.api.deps import StoreDep, parse_condition
+from bsllmner_viewer.api.problems import DSL_SLUGS, error_responses
 from bsllmner_viewer.api.schemas import (
     AstNode,
     ConditionResponse,
@@ -52,6 +53,7 @@ def _condition_response(store: Store, ast: Node | None) -> ConditionResponse:
 @router.get(
     "/dsl/parse",
     operation_id="parseCondition",
+    responses=error_responses(bad_request=DSL_SLUGS),
     response_model=ParseResponse,
     summary="Parse a condition string into an AST",
 )
@@ -74,6 +76,7 @@ def parse_dsl(store: StoreDep, q: str = Query(min_length=1)) -> ParseResponse:
 @router.post(
     "/dsl/select",
     operation_id="selectElement",
+    responses=error_responses(bad_request=(*DSL_SLUGS, "invalid-ast")),
     response_model=ConditionResponse,
     summary="Apply the clauses of an aggregation element to a condition",
     description=(
@@ -93,6 +96,7 @@ def select_dsl(store: StoreDep, body: SelectRequest) -> ConditionResponse:
 @router.post(
     "/dsl/keyword",
     operation_id="setKeyword",
+    responses=error_responses(bad_request=DSL_SLUGS),
     response_model=ConditionResponse,
     summary="Replace the keywords of a condition",
     description=(

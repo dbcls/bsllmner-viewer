@@ -8,12 +8,14 @@ from fastapi import APIRouter, Path, Query
 
 from bsllmner_viewer.api.common import aggregation_population, q_of, version_ref
 from bsllmner_viewer.api.deps import FacetSelfExcludeParam, QParam, StoreDep, parse_condition
-from bsllmner_viewer.api.problems import NOT_FOUND_RESPONSE, ApiError
+from bsllmner_viewer.api.problems import DSL_SLUGS, ApiError, error_responses
 from bsllmner_viewer.api.queries import terms as tq
 from bsllmner_viewer.api.queries.aggregate import element_counts, term_elements
 from bsllmner_viewer.api.queries.core import population
 from bsllmner_viewer.api.queries.dimensions import clauses_for, dimension
 from bsllmner_viewer.api.schemas import (
+    NAME_MAX_LENGTH,
+    TEXT_MAX_LENGTH,
     TermChildrenResponse,
     TermHit,
     TermOntology,
@@ -30,13 +32,19 @@ router = APIRouter(tags=["Terms"])
 def _term_dimension(store: StoreDep, field: str):  # type: ignore[no-untyped-def]
     dim = dimension(store.field_set, field)
     if dim.kind != "term":
-        raise ApiError("invalid-dimension", 400, f"{field!r} is not an annotation field")
+        raise ApiError(
+            "invalid-dimension",
+            400,
+            f"{field!r} is not an annotation field; the annotation fields are "
+            f"{', '.join(store.field_set.annotation_fields)}",
+        )
     return dim
 
 
 @router.get(
     "/terms",
     operation_id="searchTerms",
+    responses=error_responses(bad_request=(*DSL_SLUGS, "invalid-dimension"), busy=True),
     response_model=TermsResponse,
     summary="Search the terms annotated in a field, or in every annotation field",
     description=(
@@ -52,9 +60,16 @@ def _term_dimension(store: StoreDep, field: str):  # type: ignore[no-untyped-def
 )
 def search_terms(
     store: StoreDep,
-    field: Annotated[str | None, Query(description="Annotation field; omitted means every annotation field")] = None,
+    field: Annotated[
+        str | None,
+        Query(max_length=NAME_MAX_LENGTH, description="Annotation field; omitted means every annotation field"),
+    ] = None,
     query: Annotated[
-        str, Query(description="Substring of a label, synonym, or term ID; empty lists the most annotated terms")
+        str,
+        Query(
+            max_length=TEXT_MAX_LENGTH,
+            description="Substring of a label, synonym, or term ID; empty lists the most annotated terms",
+        ),
     ] = "",
     q: QParam = None,
     unit: Annotated[Unit, Query()] = "biosample",
@@ -69,7 +84,7 @@ def search_terms(
     pops = {name: population(pop_ast, store.field_set) for name, pop_ast in populations.items()}
     counts: dict[tuple[str, str], int] = {}
     descendants: dict[tuple[str, str], int] = {}
-    with store.cursor() as cur:
+    with store.cursor(heavy=True) as cur:
         hits = tq.search_terms(
             cur, {name: None if populations[name] is None else pops[name] for name in by_field}, query, limit
         )
@@ -110,13 +125,14 @@ def search_terms(
 @router.get(
     "/terms/children",
     operation_id="listTermChildren",
+    responses=error_responses(bad_request=(*DSL_SLUGS, "invalid-dimension"), not_found=True, busy=True),
     response_model=TermChildrenResponse,
     summary="Child terms of a term annotated in a field",
 )
 def term_children(
     store: StoreDep,
-    field: str,
-    term_id: Annotated[str, Query(alias="termId")],
+    field: Annotated[str, Query(max_length=NAME_MAX_LENGTH)],
+    term_id: Annotated[str, Query(alias="termId", max_length=NAME_MAX_LENGTH)],
     q: QParam = None,
     unit: Annotated[Unit, Query()] = "biosample",
     facet_self_exclude: FacetSelfExcludeParam = False,
@@ -126,7 +142,9 @@ def term_children(
     pop_ast = aggregation_population(ast, [dim.name], facet_self_exclude)
     pop = population(pop_ast, store.field_set)
     assert dim.annotation_field is not None
-    with store.cursor() as cur:
+    with store.cursor(heavy=True) as cur:
+        if cur.execute("SELECT 1 FROM term WHERE term_id = ?", [term_id]).fetchone() is None:
+            raise ApiError(None, 404, f"term {term_id} is not in the dataset")
         listed = tq.children_of(cur, dim.annotation_field, term_id)
         counts = element_counts(cur, pop, dim, [t for t, _ in listed], unit)
         # Only the child terms with a count in the population, as `hasChildren` of the term promises.
@@ -147,11 +165,13 @@ def term_children(
 @router.get(
     "/terms/{termId}",
     operation_id="getTerm",
-    responses=NOT_FOUND_RESPONSE,
+    responses=error_responses(not_found=True),
     response_model=TermResponse,
     summary="A term with its synonyms, parents, ontology, and page",
 )
-def get_term(store: StoreDep, term_id: Annotated[str, Path(alias="termId")]) -> TermResponse:
+def get_term(
+    store: StoreDep, term_id: Annotated[str, Path(alias="termId", max_length=NAME_MAX_LENGTH)]
+) -> TermResponse:
     with store.cursor() as cur:
         row = cur.execute("SELECT label FROM term WHERE term_id = ?", [term_id]).fetchone()
         if row is None:

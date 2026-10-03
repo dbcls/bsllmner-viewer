@@ -1,14 +1,14 @@
 import { Fragment, type ReactNode, useState } from "react"
 import { Link, useLocation } from "react-router"
 
-import { ApiError } from "~/lib/api/client"
+import { isClientError, loadFailureProps } from "~/lib/api/client"
 import { useDataset, useEntry } from "~/lib/api/queries"
 import type { EntryResponse } from "~/lib/api/types"
 import { assayDotClass } from "~/lib/assays"
 import { backHref } from "~/lib/back-link"
 import { chipAtlasHref, ddbjSearchHref, ncbiHref, taxonomyHref } from "~/lib/external-links"
 import { fieldLabel, hasStatusValue, statusInfo, VALUE_STATUSES } from "~/lib/labels"
-import { Card, cn, ExternalLink, HelpHint, PageHeading, Pager, SectionHeading, Skeleton, StatusMeanings, StatusPill, Tag } from "~/ui"
+import { Card, cn, ErrorNotice,ExternalLink, HelpHint, PageHeading, Pager, SectionHeading, Skeleton, StatusMeanings, StatusPill, Tag } from "~/ui"
 
 import { segmentText, type Span } from "./evidence"
 import { TermPopover } from "./term-popover"
@@ -35,16 +35,19 @@ export const SamplePage = ({ accession }: SamplePageProps) => {
   }
 
   if (!entry.data) {
-    const notFound = entry.error instanceof ApiError && entry.error.problem.status === 404
+    // A request that the api refused (404, or 400 and 422 for an accession that cannot exist) names no BioSample of the dataset.
+    const notFound = isClientError(entry.error) && entry.error.problem.status !== 429
     return (
       <PageFrame>
         <BackLink href={back} />
         <div className="mt-3">
           <Card padding="lg">
             <AccessionHeading accession={accession} />
-            <div className="mt-1.5 text-fs-body-sm text-ink-soft">
-              {notFound ? `BioSample ${accession} is not in the dataset.` : "Something went wrong loading this BioSample."}
-            </div>
+            {notFound ? (
+              <div className="mt-1.5 text-fs-body-sm text-ink-soft">BioSample {accession} is not in the dataset.</div>
+            ) : (
+              <ErrorNotice {...loadFailureProps(entry.error, "load this BioSample", () => void entry.refetch())} className="mt-3" />
+            )}
           </Card>
         </div>
       </PageFrame>

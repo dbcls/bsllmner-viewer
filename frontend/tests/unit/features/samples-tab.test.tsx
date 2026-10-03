@@ -30,7 +30,7 @@ describe("SamplesTab", () => {
     const open = vi.spyOn(window, "open").mockReturnValue(null)
     renderWithQuery(
       <MemoryRouter>
-        <SamplesTab state={DEFAULTS} onPage={vi.fn()} onPerPage={vi.fn()} search="" />
+        <SamplesTab state={DEFAULTS} onPage={vi.fn()} onPastEnd={vi.fn()} onPerPage={vi.fn()} search="" />
       </MemoryRouter>,
     )
     const link = (await screen.findByText("DDBJ")).closest("a") as HTMLElement

@@ -6,6 +6,7 @@ from fastapi import APIRouter
 
 from bsllmner_viewer.api.common import camelize_keys, version_ref
 from bsllmner_viewer.api.deps import StoreDep
+from bsllmner_viewer.api.problems import error_responses
 from bsllmner_viewer.api.schemas import (
     DatasetAssay,
     DatasetOntology,
@@ -24,6 +25,7 @@ router = APIRouter(tags=["Dataset"])
 @router.get(
     "/dataset",
     operation_id="getDataset",
+    responses=error_responses(),
     response_model=DatasetResponse,
     summary="Version information, fields, and population totals",
 )

@@ -24,16 +24,65 @@ The api follows the conventions of the [DDBJ Search API](https://ddbj.nig.ac.jp/
 
 ### Errors
 
-Errors are RFC 7807 Problem Details (`application/problem+json`) with `type`, `title`, `status`, `detail`, `instance`, `timestamp` (ISO 8601, UTC), and `requestId` (the value of the `X-Request-ID` header).
+Errors are RFC 7807 Problem Details (`application/problem+json`) with `type`, `title`, `status`, `detail`, `instance`, `timestamp` (ISO 8601, UTC), and `requestId` (the value of the `X-Request-ID` header). `detail` names the wrong parameter or value, and lists the values that the api accepts where the set is small.
 
-- `type` is `about:blank` for errors that the HTTP status describes, such as an unknown accession (404) or an invalid query parameter (422). `title` is the HTTP status phrase.
-- `type` is `https://ddbj.nig.ac.jp/problems/<slug>` for errors specific to the api. Errors of the condition DSL use the slugs of the DDBJ Search API where the same error exists, for example `unknown-field` and `unexpected-token`. A request body whose clauses are not valid is rejected with status 400 and slug `invalid-ast`.
+- `type` is `about:blank` for errors that the HTTP status describes, such as an unknown accession (404) or a request that does not match the OpenAPI document (422). `title` is the HTTP status phrase.
+- `type` is `https://ddbj.nig.ac.jp/problems/<slug>` for errors specific to the api. Errors of the condition DSL use the slugs of the DDBJ Search API where the same error exists, for example `unknown-field` and `unexpected-token`.
+
+A client can predict the status from the OpenAPI document. The OpenAPI document of each operation declares the statuses that the operation can return, and the slugs of its 400 and 503. It does not declare 404 for an unknown path, 405, or the statuses 413 and 429, which the web server in front of the api returns.
+
+| Status | When |
+|---|---|
+| 422 | The request does not match the OpenAPI document of the operation. Examples: a query parameter that the operation does not declare, a missing parameter, a value of the wrong type, out of range, outside an enumeration, or longer than the limit, a body that is not JSON, an unknown or a missing key in a body, and an empty `clauses`. |
+| 400 | The request matches the OpenAPI document, but it breaks a rule of the condition DSL or of the dataset. The slug of `type` names the rule (see below). |
+| 404 | The path does not exist, or the entry type, the accession, or the term does not exist. |
+| 405 | The method is not allowed for the path. The `Allow` header lists the allowed methods. |
+| 413 | The body is too large. The web server in front of the api returns this status ([operations.md](operations.md#limits-of-the-web-server)). |
+| 429 | One client has too many requests in progress. The web server in front of the api returns this status, with a `Retry-After` header ([operations.md](operations.md#limits-of-the-web-server)). |
+| 500 | The api failed unexpectedly. `detail` does not give the cause. |
+| 503 | The api is at its limits (see [Limits](#limits)). The slug of `type` names the limit. |
+
+A parameter whose name differs only in letter case, such as `facetselfexclude`, is an unknown parameter. A parameter that a request repeats takes its last value.
+
+The slugs of the status 400:
+
+| Slug | Cause |
+|---|---|
+| `unexpected-token` | The condition does not parse, is longer than 4096 characters, or is blank where a condition is required. A keyword has a wildcard. |
+| `unknown-field` | A condition, a clause, or a parameter (`field`, `row`, `col`) names a field that the dataset does not have. |
+| `invalid-date-format` | A date is not a calendar date in the form `YYYY-MM-DD`. |
+| `invalid-operator-for-field` | The form of a value does not fit the field, for example a range on a field other than `date_published`. |
+| `invalid-value` | A value is not allowed for the field, for example an unknown status or a keyword without a letter or a digit, or the keywords exceed their limits. |
+| `nest-depth-exceeded` | Groups nest deeper than 5 levels, or the condition has more than 512 nodes. |
+| `missing-value` | A clause has an empty value. |
+| `invalid-ast` | A clause of `POST /api/dsl/select` does not have either `value`, or `from` and `to` together. |
+| `invalid-dimension` | A field exists but cannot be the dimension of the aggregation, or the two dimensions of a cross-tabulation are the same (see [Aggregations](#aggregations)). |
+| `invalid-element` | A named element is not valid for its dimension (see [Default elements](#default-elements)). |
+| `too-many-elements` | A request names more elements of one dimension than the limit. |
+
+The clauses of `POST /api/dsl/select` are checked by the rules of a condition. A clause with a field or a value that a condition would reject gets the slug that the same clause gets in `q`, for example `unknown-field` and `invalid-value`. `invalid-ast` is only for a clause that is not a value and not a range.
+
+An export reads the store before it sends the first byte. If that fails, then the response is an error status: 500, or one of the 503 statuses of [Limits](#limits). If the export fails after the response has started, then the api cannot change the status. It ends the response without completing it. In HTTP/1.1, the last chunk does not arrive, and a client that checks the end of the response sees an error. A client must treat a response that did not complete as incomplete. A response that completed has every matching entry.
 
 ### Service information
 
 `GET /api/service-info` returns the name, the version, the description, and the state of the store (`ok` or `unavailable`). It is the endpoint for health monitoring.
 
-The api starts only with a store that it can open and whose schema version its code reads. If the store file is missing, is not a DuckDB file, or has another schema version, then the process stops at startup and the endpoint does not answer. While the api runs, the endpoint returns status 200. `store` is `ok` if the api can query the store, and `unavailable` if a query fails.
+The api starts only with a store that it can open and whose schema version its code reads. If the store file is missing, is not a DuckDB file, or has another schema version, then the process stops at startup and the endpoint does not answer. While the api runs, the endpoint returns status 200. `store` is `ok` if the api can query the store and the store file has the size and the modification time that it had when the api opened it. Otherwise, `store` is `unavailable`. A store file that someone overwrote or truncated while the api served it is therefore reported.
+
+### Limits
+
+The api limits the size of a request and the resources that one request uses. The limits apply to each api worker process.
+
+- A condition (`q`), a keyword, a search text (`query` of `GET /api/terms`), and a value of a clause have at most 4096 characters. A field name, an element, and a term ID have at most 256 characters. An accession has at most 64 characters.
+- A value that is too long is rejected with status 422. There are two exceptions. A `q` in a query string that is too long is rejected with status 400 and slug `unexpected-token`. A named element that is too long is rejected with status 400 and slug `invalid-element`.
+- The limits of the number of keywords, clauses, and elements are in [Keywords](#keywords), [Condition DSL](#condition-dsl), and [Default elements](#default-elements).
+- A worker runs a limited number of requests that read the store at the same time. These are the entry list, the aggregations, the project statistics, the term search, and the child terms. A request without a free slot waits for up to 10 seconds. If no slot is free after that time, or if many requests wait already, then the api answers status 503 with slug `server-busy` and a `Retry-After` header. A client retries after that time.
+- A worker runs at most 2 exports at the same time. The wait and the answer are the same as for the other requests. An export does not have a limit on the number of entries.
+- A request may read the store for 60 seconds. The time starts when the request gets a slot, and it includes the work between the queries. When the time has passed, the api stops the running query and answers status 503 with slug `query-timeout`. The wait for a slot does not count. An export has this limit for each page of entries, or for the first read of an accession list. The time that the client takes to read the response does not count.
+- A query that needs more memory than a worker may use, or more temporary disk space, is stopped. The api answers status 503 with slug `query-too-large`. A narrower condition needs less.
+
+The numbers in this list are the defaults. [operations.md](operations.md#limits-of-a-worker) lists the settings that change them.
 
 ## Condition DSL
 
@@ -55,7 +104,7 @@ The grammar is the Lucene subset used by the DDBJ Search API search DSL (the `/d
 - `selected` holds the clauses that selecting an element treats as already in the condition (see [From elements to conditions](#from-elements-to-conditions)).
 - `keyword` holds the text of a keyword box for the top-level keywords of the condition: the words, then the phrases in double quotes, with a backslash and a double quote escaped. `POST /api/dsl/keyword` reads the text back as the same keywords.
 
-`POST /api/dsl/select` and `POST /api/dsl/keyword` return the changed condition as `dsl`, with `ast`, `labels`, `selected`, and `keyword`. The api has no operation that converts an AST to a string.
+`POST /api/dsl/select` and `POST /api/dsl/keyword` return the changed condition as `dsl`, with `ast`, `labels`, `selected`, and `keyword`. The body of `POST /api/dsl/select` has at most 512 clauses. The api has no operation that converts an AST to a string.
 
 Compatibility covers the grammar and the AST shape. The set of fields and the evaluation of fields and keywords are specific to this API.
 
@@ -70,6 +119,7 @@ Compatibility covers the grammar and the AST shape. The set of fields and the ev
 | Publication date | `date_published:[2015-01-01 TO 2020-12-31]` | the BioSample's publication date is in the range |
 | BioProject | `bioproject:PRJNA123456` | the BioSample belongs to the given BioProject |
 
+- A range with a start after its end is valid and matches nothing. `NOT` of it matches the whole population.
 - An `organism_id` value is a decimal number of ASCII digits with no sign and no leading zero, and at most 2147483647. Any other value is rejected with status 400 and slug `invalid-value`.
 - Annotation field names are the field names of the select configuration. `_status` is a suffix appended to a field name.
 - Other fields use the DDBJ Search API field name when the DDBJ Search API has a field for the same concept.
@@ -89,7 +139,7 @@ A term without a field is a keyword, such as `hypoxia organoid` or `"breast canc
 - A word in the form of an accession matches the entry that has that accession, case-insensitively. The accession can be that of a BioSample (`SAMN`, `SAMD`, `SAMEA`), an SRA Experiment (`SRX`, `DRX`, `ERX`), an SRA Run (`SRR`, `DRR`, `ERR`), or a BioProject (`PRJNA`, `PRJDB`, `PRJEB`). An SRA Experiment or SRA Run accession matches only the entry of its experiment.
 - Wildcards are rejected with an error, as in the DDBJ Search API. A keyword without a letter or a digit is rejected with an error.
 
-Unlike the DDBJ Search API, a keyword may appear anywhere in a condition, including under `OR` and `NOT`, and a condition may have several keywords.
+Unlike the DDBJ Search API, a keyword may appear anywhere in a condition, including under `OR` and `NOT`, and a condition may have several keywords. Each keyword is a scan of the searchable text, so a condition has at most 16 keywords and at most 64 words in all of its keywords. A phrase is one word. A condition over these limits is rejected with status 400 and slug `invalid-value`.
 
 ## Entries
 
@@ -107,7 +157,7 @@ The exports return every matching entry as TSV or as newline-delimited JSON (`ap
 
 An accession list starts with one header line, and then has one accession per line. A client skips the header line, which starts with `#`. The header line has the form `# bsllmner-viewer <type> accessions; q=<q>; dataset=<name> <createdAt> <digest>`. `<q>` is the condition, and `<name>` is the name of the dataset. Both are JSON strings. In a JSON string, a line break and every non-ASCII character are escaped, such as `\n` and `\u00e9`, so the header is always one line. If the condition is empty, then `<q>` is `""`.
 
-In the TSV, a header line names the columns, and every row has as many cells as the header. A cell with several values joins them with `;`. After the entry columns come one column per annotation field. Each annotation in these columns is `value|termId|label|status`: always four parts in this order, with an empty part when the annotation has no value, no term, or no label. A client splits a cell on `;` and then each annotation on `|`. The characters that delimit a cell are percent-encoded inside a part (`%` as `%25`, `|` as `%7C`, `;` as `%3B`, tab as `%09`, carriage return as `%0D`, line feed as `%0A`), so a value that contains them still splits into the same four parts. In the other columns, a tab or a line break in a value is replaced with a space.
+In the TSV, a header line names the columns, and every row has as many cells as the header. A cell with several values joins them with `;`. After the entry columns come one column per annotation field. Each annotation in these columns is `value|termId|label|status`: always four parts in this order, with an empty part when the annotation has no value, no term, or no label. A client splits a cell on `;` and then each annotation on `|`. The characters that delimit a cell are percent-encoded inside a part (`%` as `%25`, `|` as `%7C`, `;` as `%3B`, tab as `%09`, carriage return as `%0D`, line feed as `%0A`), so a value that contains them still splits into the same four parts. In the other columns, a tab or a line break in a value is replaced with a space. The TSV writes every other value as it is, so a spreadsheet program can read a cell that starts with `=`, `+`, `-`, or `@` as a formula. A client that needs the exact values reads the newline-delimited JSON.
 
 ## Terms
 
@@ -119,9 +169,11 @@ An aggregation counts the matches of `q` per element along one or two **dimensio
 
 The two dimensions of a cross-tabulation are different fields, and the dimension of a trend is not `date_published`, because the trend already counts per year. `disease` and `disease_status` are different dimensions. A request that breaks either rule is rejected with status 400 and slug `invalid-dimension`.
 
+A `field`, `row`, or `col` that is not a field of the dataset is rejected with status 400 and slug `unknown-field`, as in a condition. A field of the dataset that cannot be a dimension, such as `bioproject`, is rejected with slug `invalid-dimension`. The term search and the child terms accept only annotation fields, so they reject the other fields with `invalid-dimension`. `detail` lists the accepted fields.
+
 The bucket of an element has `value`, `label`, and `count`, as a facet bucket of the DDBJ Search API, and the element's `clauses` in addition.
 
-An element of an annotation term dimension also tells where the term sits in the ontology, so that a client can show the elements of a list as a tree. `parents` has every element of the same list that is a direct parent of the term. A term can have several parents in a list. `hasChildren` is true if a direct child term of the term has a count above 0 in the population of the list, in the same counting unit. `GET /api/terms/children` returns exactly those child terms. To get the children of a term element of a cross-tabulation, call it with the `populationQ` of the cross-tabulation as `q`, so that both use the same population.
+An element of an annotation term dimension also tells where the term sits in the ontology, so that a client can show the elements of a list as a tree. `parents` has every element of the same list that is a direct parent of the term. A term can have several parents in a list. `hasChildren` is true if a direct child term of the term has a count above 0 in the population of the list, in the same counting unit. `GET /api/terms/children` returns exactly those child terms. It answers 404 for a `termId` that is not a term of the dataset, and an empty list for a term of the dataset without such children. To get the children of a term element of a cross-tabulation, call it with the `populationQ` of the cross-tabulation as `q`, so that both use the same population.
 
 A distribution on an annotation term dimension also returns `withoutTerm`, the count of its population that has no term of the field: the population combined by `AND` with `NOT <field>_status:mapped`, in the same counting unit. The elements count only the matches that have a term, so `withoutTerm` shows how much of the population they cannot count. For example, if most BioSamples of a condition state no disease, then the bars of the disease distribution cover a small part of the condition.
 
@@ -143,7 +195,7 @@ If a request does not name the elements of a dimension, then the api chooses the
 - For an assay dimension or an organism dimension, the api chooses the assays or the organisms of the most BioSamples in the population of the aggregation, whatever the counting unit of the request.
 - The api adds the elements that `q` names in a top-level clause, or in a top-level disjunction of clauses, on the dimension without `NOT`. A selected element is therefore present even if it is not one of the most frequent elements.
 - The api returns term, assay, and organism elements that it chose, and the elements that `q` names, in descending order of their counts in the counting unit of the request. The count of a term includes its descendants, and the count of a series of a trend is the sum of its counts over the years. Elements with the same count are in ascending order of the element, and organism IDs compare as numbers. The elements of a distribution, the rows and the columns of a cross-tabulation, and the series of a trend all follow this order. Elements that the request names with `elements`, `rowElements`, or `colElements` keep the order of the request.
-- A named organism element is an NCBI Taxonomy ID, and a named year element is a year from 1000 to 9999. Each is a decimal number of ASCII digits with no sign and no leading zero, and an organism ID is at most 2147483647. Any other element is rejected with status 400 and slug `invalid-element`.
+- A named organism element is an NCBI Taxonomy ID, and a named year element is a year from 1000 to 9999. Each is a decimal number of ASCII digits with no sign and no leading zero, and an organism ID is at most 2147483647. Any other element is rejected with status 400 and slug `invalid-element`. A request names at most 100 elements of a dimension. A request with more is rejected with status 400 and slug `too-many-elements`. The `limit` of a cross-tabulation is at most 100, and a larger `limit` is rejected with status 422.
 
 The term search (`GET /api/terms`) chooses its terms in the population that it counts them in. If the search text is empty, then it chooses the terms that are assigned directly to the most BioSamples of that population, as for the elements of an annotation term dimension. If the search text is not empty, then every term of the dataset whose label, synonym, or ID contains the text is a candidate. This includes a broad term that is counted only through its descendants, so that a user can find such a term and choose all of its descendants at once. The OpenAPI document describes the order of the hits.
 

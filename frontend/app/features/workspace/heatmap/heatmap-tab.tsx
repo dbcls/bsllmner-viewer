@@ -1,16 +1,17 @@
 import { useMemo, useState } from "react"
 
-import { fetchTermChildren, useCrosstab, useDataset } from "~/lib/api/queries"
+import { loadFailureProps } from "~/lib/api/client"
+import { fetchTermChildren, queryFailed, useCrosstab, useDataset } from "~/lib/api/queries"
 import type { Cell, Clause, Element, TermElement, TermHit } from "~/lib/api/types"
 import { countScale, countScaleIsDark, logPosition, RATIO_STEPS, ratioScale, ratioScaleIsDark, token } from "~/lib/color"
 import { downloadPngMarkup, downloadSvgMarkup, downloadTsv } from "~/lib/export"
 import { formatCount, formatRatio } from "~/lib/format"
 import { fieldLabel, unitLabel } from "~/lib/labels"
 import { MATRIX_PRESETS } from "~/lib/presets"
-import { ACTION_ICON, busyClass, Card, CardHeader, Clickable, cn, HelpHint, Icon, InlineLabel, LinkButton, Segmented, Select, Skeleton } from "~/ui"
+import { ACTION_ICON, busyClass, Card, CardHeader, Clickable, cn, EmptyNotice, ErrorNotice,HelpHint, Icon, InlineLabel, LinkButton, Segmented, Select, Skeleton } from "~/ui"
 
 import { AxisControls } from "../axis/axis-controls"
-import { type AxisMemory, limitAlert, MAX_AXIS_TERMS, replaceTerms, resolvePasted, switchDimension, toggleTerm } from "../axis/axis-terms"
+import { type AxisMemory, elementValidator, limitAlert, LOOKUP_FAILED, MAX_AXIS_TERMS, replaceTerms, resolvePasted, switchDimension, toggleTerm } from "../axis/axis-terms"
 import { AxisTermsDialog } from "../axis/axis-terms-dialog"
 import { findTermId } from "../axis/find-term"
 import { expectedElements } from "../expected-elements"
@@ -65,8 +66,10 @@ export const HeatmapTab = ({ state, condition, update, latest, replacing, setRep
   const [termsSide, setTermsSide] = useState<AxisSide | null>(null)
   const crosstab = useCrosstab(crosstabParams(state, dataset.data ? fields : null))
   const data = crosstab.data
-  const pendingRows = data === undefined ? expectedElements(axes.row, dataset.data, HEATMAP_LIMIT, axes.rowTerms) : null
-  const pendingCols = data === undefined ? expectedElements(axes.col, dataset.data, HEATMAP_LIMIT, axes.colTerms) : null
+  const failed = queryFailed(crosstab)
+  const nothing = data !== undefined && data.total === 0
+  const pendingRows = data === undefined && !failed ? expectedElements(axes.row, dataset.data, HEATMAP_LIMIT, axes.rowTerms) : null
+  const pendingCols = data === undefined && !failed ? expectedElements(axes.col, dataset.data, HEATMAP_LIMIT, axes.colTerms) : null
   const rows = useMemo(() => data?.rows ?? [], [data])
   const cols = useMemo(() => data?.cols ?? [], [data])
 
@@ -153,6 +156,8 @@ export const HeatmapTab = ({ state, condition, update, latest, replacing, setRep
         return
       }
       update({ rowTerms: opened })
+    } catch {
+      onAlert("Could not load the child terms.")
     } finally {
       setExpanding((previous) => {
         const next = new Set(previous)
@@ -168,12 +173,14 @@ export const HeatmapTab = ({ state, condition, update, latest, replacing, setRep
     const started = side === "row" ? state.row : state.col
     setReplacing(true)
     try {
-      const result = await replaceTerms(entries, (list) => resolvePasted(list, fields.includes(dimension), (label) => findTermId(dimension, label)), limit)
+      const result = await replaceTerms(entries, (list) => resolvePasted(list, fields.includes(dimension), (label) => findTermId(dimension, label), elementValidator(dimension) ?? undefined), limit)
       // The terms belong to the dimension that the entries were resolved on; they are dropped when the axis moved to another one while they waited.
       const now = latest()
       if ((side === "row" ? now.row : now.col) !== started) return
       if (result.terms !== null) setValues(side, result.terms)
       onAlert(result.alert)
+    } catch {
+      onAlert(LOOKUP_FAILED)
     } finally {
       setReplacing(false)
     }
@@ -218,8 +225,10 @@ export const HeatmapTab = ({ state, condition, update, latest, replacing, setRep
   const axisProps = (side: AxisSide) => ({
     dimension: dimensionOf(side),
     dimensions: dimensionsOf(side),
-    elements: side === "row" ? rows : cols,
+    // A heatmap that could not be loaded lists the terms of the URL, so that a term that the api refuses can be taken off.
+    elements: failed ? (side === "row" ? axes.rowTerms : axes.colTerms)?.map((value) => ({ value, label: value })) ?? [] : side === "row" ? rows : cols,
     pending: side === "row" ? pendingRows : pendingCols,
+    unknown: failed && (side === "row" ? axes.rowTerms : axes.colTerms) === null,
     onDimension: (dimension: string) => changeDimension(side, dimension),
   })
 
@@ -374,7 +383,7 @@ export const HeatmapTab = ({ state, condition, update, latest, replacing, setRep
                 {state.color === "count" ? (
                   <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
                     0<span className="inline-block h-2.5 w-25 rounded-badge" style={{ background: gradient }} />
-                    {data === undefined ? <Skeleton className="w-12" /> : formatCount(max)}
+                    {data === undefined ? failed ? "–" : <Skeleton className="w-12" /> : formatCount(max)}
                     {state.unit !== "biosample" && <span>{unit}</span>}
                   </span>
                 ) : (
@@ -401,8 +410,14 @@ export const HeatmapTab = ({ state, condition, update, latest, replacing, setRep
           </div>
         </CardHeader>
         <div className="max-h-matrix-max overflow-auto">
+          {failed && (
+            <div className="p-4">
+              <ErrorNotice {...loadFailureProps(crosstab.error, "load the heatmap", () => void crosstab.refetch())} />
+            </div>
+          )}
+          {nothing && <EmptyNotice>No {unit} match this condition.</EmptyNotice>}
           {pendingRows !== null && pendingCols !== null && <SkeletonMatrix rows={pendingRows} cols={pendingCols} />}
-          <table className={cn("min-w-full border-separate border-spacing-0.5 text-fs-label", data === undefined && "hidden")}>
+          <table className={cn("min-w-full border-separate border-spacing-0.5 text-fs-label", (data === undefined || nothing) && "hidden")}>
             <thead>
               <tr>
                 <th className="sticky top-0 left-0 z-20 bg-surface px-2.5 py-1.5 text-left align-bottom text-fs-micro font-semibold whitespace-nowrap text-ink-soft">

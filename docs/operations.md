@@ -111,14 +111,43 @@ podman-compose -p bsllmner-viewer up -d
 | `BSLLMNER_VIEWER_PORT` | Host port of the web container (default 20081) |
 | `BSLLMNER_VIEWER_API_WORKERS` | uvicorn worker processes (default 2); each opens the store |
 | `BSLLMNER_VIEWER_THREADS` | DuckDB threads per worker (default 8) |
+| `BSLLMNER_VIEWER_MEMORY_LIMIT` | DuckDB memory per worker (default `4GB`) |
+| `BSLLMNER_VIEWER_MAX_TEMP_SIZE` | Disk space that DuckDB can use per worker for data that does not fit in memory (default `20GB`) |
+| `BSLLMNER_VIEWER_QUERY_TIMEOUT` | Seconds that a request may read the store (default 60) |
+| `BSLLMNER_VIEWER_MAX_QUERIES` | Requests per worker that read the store at the same time (default 8) |
+| `BSLLMNER_VIEWER_MAX_EXPORTS` | Exports per worker at the same time (default 2) |
+| `BSLLMNER_VIEWER_QUEUE_TIMEOUT` | Seconds that a request waits for a free slot before the api answers 503 (default 10) |
 | `BSLLMNER_VIEWER_NOINDEX` | `true` for a deployment that search engines must not index, such as a staging deployment (default `false`) |
 | `BSLLMNER_VIEWER_COMMIT` | Commit that the images carry. The footer of the frontend and the version in `/api/service-info` show it. Only the build reads it, so give it on the command that builds the images, not in `deploy/.env`. If it is not set, then no commit is shown |
 
+### Limits of a worker
+
+Each api worker limits its use of memory, disk, and time, so that one heavy request cannot stop the others. The variables above set the limits. The behavior seen by a client is in [api.md](api.md#limits).
+
+- The api configures DuckDB when it starts, and then locks the configuration. DuckDB can read and write only the store file and its temporary files, and it cannot load an extension.
+- Memory: a query that needs more than `BSLLMNER_VIEWER_MEMORY_LIMIT` writes the excess to disk. A cross-tabulation that counts BioProjects (`unit=bioproject`) uses several GB even with 10 terms on each axis, so the limit is a setting that you tune to the host. Each worker has its own limit, so the api can use up to the number of workers times the limit, plus the memory of the Python process, which the limit does not include.
+- Disk: the store directory is mounted read-only, so DuckDB writes the excess to the volume `api-temp`, which compose mounts at `/var/tmp/bsllmner-viewer`. Each worker uses a directory of its own in it and removes the directory when it stops. A worker that the system killed leaves its directory, and the next worker that starts in the container removes it. The volume needs the number of workers times `BSLLMNER_VIEWER_MAX_TEMP_SIZE` of free space. A tmpfs does not work, because it takes memory. When a worker is outside compose, `BSLLMNER_VIEWER_TEMP_DIRECTORY` names a writable directory, and the default is a directory in the system temporary directory.
+- Time: [api.md](api.md#limits) describes what the limit measures. The default is longer than the slowest query that the documented uses need on the full dataset. Measure that query on the deployment after you change the threads or the dataset.
+- Concurrency: a request that reads the store takes one of `BSLLMNER_VIEWER_MAX_QUERIES` slots of its worker. DuckDB shares its threads among the queries of a worker, but every query adds its own calling thread to the computation, so the CPU use of a worker grows with the number of concurrent queries. The default equals the default of `BSLLMNER_VIEWER_THREADS`. The UI sends many requests at once when a view opens, and a request waits when it has no slot. A worker holds the running requests and up to four times as many waiting requests. With fewer than 4 slots, one open view can get 503 responses. Raising the number of slots does not make a query faster, because the queries share the CPU.
+- Exports: an export keeps its cursor for as long as the client reads, so exports have slots of their own. The worker frees the slot when the response ends or the client disconnects.
+
 ### Health
 
-`GET /api/service-info` reports `"store": "ok"` while the api can query the store. The health check of the api container calls it, and `podman ps` shows the container as unhealthy when the check fails. An external monitor should check the same URL on the public host.
+`GET /api/service-info` reports `"store": "ok"` while the api can query the store and the store file has the size and the modification time that it had when the api opened it. If someone overwrites or truncates a served store file, then the state is `unavailable`. The health check of the api container calls it, and `podman ps` shows the container as unhealthy when the check fails. An external monitor should check the same URL on the public host.
 
 Logs go to the container logs: `podman logs bsllmner-viewer_api_1` for the api requests and `podman logs bsllmner-viewer_web_1` for the nginx access log.
+
+### Limits of the web server
+
+nginx in the web container adds limits and headers that the api does not set.
+
+- nginx accepts request bodies of up to 64 KiB for `/api`. A larger body gets a 413 problem response.
+- nginx counts the requests in progress for each client address. A client with more than 100 requests in progress gets a 429 problem response with `Retry-After: 1`. People who share an address share the limit.
+- nginx takes the client address from the `X-Real-IP` request header only when the peer address is a private IPv4 address, an IPv6 unique local address, or a loopback address. The reverse proxy in front of the web container must set `X-Real-IP` to the address of the client. For any other peer, nginx uses the address of the peer. A value of `X-Real-IP` that is not an IP address is ignored.
+- The 413 and 429 responses of nginx use the `X-Request-ID` request header as the request ID if the header has at most 128 characters and contains only letters, digits, `.`, `_`, and `-`. Otherwise nginx makes the ID. These responses allow every origin and expose `Retry-After` and `X-Request-ID`, as the api does.
+- The web container sends the `Content-Security-Policy`, `Permissions-Policy`, and `X-Frame-Options` headers. The build computes the SHA-256 hash of every inline script in `index.html` and writes it into the nginx configuration, so the policy does not allow `unsafe-inline` for scripts. The Swagger UI (`/api`) and ReDoc (`/api/redoc`) pages have a policy of their own that allows the CDNs that FastAPI uses by default. The other `/api` responses have `default-src 'none'`.
+- The web container sends `Strict-Transport-Security: max-age=31536000` only when the `X-Forwarded-Proto` request header is `https`. It sets neither `includeSubDomains` nor `preload`.
+- A path that is neither a file nor a page of the application gets status 404 with the 404 page of the application. A 404 under `/assets/` has no long-term cache.
 
 ### Crawlers
 

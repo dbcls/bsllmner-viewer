@@ -65,7 +65,7 @@ Build operations validate their inputs before ingesting anything and stop on the
 
 The status and term of each annotation are read from a SelectResult entry. Statuses are defined in [data-model.md](data-model.md).
 
-The extracted values of a field are the string in `extract.extracted[field]`, or each string element if it is an array. An extracted value is **mapped** when `results[field]` has an element whose `value` equals the extracted value and whose `term_id` is not null; the term is taken from that element.
+The extracted values of a field are the string in `extract.extracted[field]`, or each string element if it is an array. An empty string is not a value, and an array that holds the same string several times gives the value once, at the position of its first occurrence. For example, an array with 400 copies of `GFP-TF or GFP only as control` and 3 other strings gives 4 values. An extracted value is **mapped** when `results[field]` has an element whose `value` equals the extracted value and whose `term_id` is not null; the term is taken from that element.
 
 | Status | Condition |
 |---|---|

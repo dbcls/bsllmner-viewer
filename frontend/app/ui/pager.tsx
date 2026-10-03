@@ -9,6 +9,8 @@ type PagerProps = {
   /** The number of items in the whole list, or undefined while it is being counted. */
   total: number | undefined
   onChange: (page: number) => void
+  /** The list could not be loaded: there is no range to show, and no page to step to. */
+  failed?: boolean
 }
 
 const STEP =
@@ -19,15 +21,17 @@ const formatCount = (value: number): string => value.toLocaleString("en-US")
 /**
  * Which items of a list are on screen (`1–20 / 4,100,500`), and the steps to the previous and the next page. Both steps
  * are always drawn, and a step that leads nowhere is disabled, so the pager keeps its width on every page. While the
- * list is counted, the range is a skeleton and both steps are disabled.
+ * list is counted, the range is a skeleton and both steps are disabled; a list that could not be loaded shows a dash.
  */
-export const Pager = ({ page, perPage, total, onChange }: PagerProps) => {
+export const Pager = ({ page, perPage, total, onChange, failed = false }: PagerProps) => {
   const pages = total === undefined ? page : pageCount(total, perPage)
   const range = total === undefined ? null : pageRange(page, perPage, total)
   return (
-    <nav aria-label="Pages" aria-busy={total === undefined || undefined} className="flex items-center gap-2">
+    <nav aria-label="Pages" aria-busy={(total === undefined && !failed) || undefined} className="flex items-center gap-2">
       <span className="text-fs-micro whitespace-nowrap text-ink-soft tabular-nums">
-        {total === undefined ? (
+        {failed ? (
+          "–"
+        ) : total === undefined ? (
           <Skeleton className="w-24" />
         ) : range ? (
           `${formatCount(range.from)}–${formatCount(range.to)} / ${formatCount(total)}`
@@ -36,10 +40,10 @@ export const Pager = ({ page, perPage, total, onChange }: PagerProps) => {
         )}
       </span>
       <span className="flex gap-1">
-        <button type="button" className={cn(STEP)} onClick={() => onChange(page - 1)} disabled={page <= 1} aria-label="Previous page">
+        <button type="button" className={cn(STEP)} onClick={() => onChange(page - 1)} disabled={failed || page <= 1} aria-label="Previous page">
           <Icon name={ACTION_ICON.goBack} />
         </button>
-        <button type="button" className={cn(STEP)} onClick={() => onChange(page + 1)} disabled={page >= pages} aria-label="Next page">
+        <button type="button" className={cn(STEP)} onClick={() => onChange(page + 1)} disabled={failed || page >= pages} aria-label="Next page">
           <Icon name={ACTION_ICON.goTo} />
         </button>
       </span>

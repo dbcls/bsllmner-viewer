@@ -1,12 +1,13 @@
 import { Link } from "react-router"
 
-import { useDataset } from "~/lib/api/queries"
+import { loadFailureProps } from "~/lib/api/client"
+import { queryFailed, useDataset } from "~/lib/api/queries"
 import type { Clause, DatasetResponse, Unit } from "~/lib/api/types"
 import { formatCount } from "~/lib/format"
 import { fieldLabel, organismLabel, unitLabel } from "~/lib/labels"
 import { MATRIX_PRESETS, type Preset, QUESTION_PRESETS } from "~/lib/presets"
 import { workspaceSearch } from "~/lib/workspace-state"
-import { ACTION_ICON, Caption, Card, ExternalLink, Icon, PageHeading, SectionHeading, Skeleton, Tag } from "~/ui"
+import { ACTION_ICON, Caption, Card, ErrorNotice,ExternalLink, Icon, PageHeading, SectionHeading, Skeleton, Tag } from "~/ui"
 
 import { ConditionLink } from "./condition-link"
 import { CountBar, countBarRowClass, CountBarSkeleton } from "./count-bar"
@@ -40,14 +41,20 @@ export const LandingPage = () => {
         <div className="flex flex-col gap-4">
           <Card padding="lg">
             <SectionHeading>Statistics</SectionHeading>
-            <div className="mt-4 grid grid-cols-3 gap-3">
-              <Total unit="biosample" value={totals?.biosample} />
-              <Total unit="sra-experiment" value={totals?.experiment} />
-              <Total unit="bioproject" value={totals?.bioproject} />
-            </div>
-            {STATISTICS_FIELDS.map((field) => (
-              <FieldStatistics key={field} field={field} />
-            ))}
+            {queryFailed(dataset) ? (
+              <ErrorNotice {...loadFailureProps(dataset.error, "load the dataset statistics", () => void dataset.refetch())} className="mt-4" />
+            ) : (
+              <>
+                <div className="mt-4 grid grid-cols-3 gap-3">
+                  <Total unit="biosample" value={totals?.biosample} />
+                  <Total unit="sra-experiment" value={totals?.experiment} />
+                  <Total unit="bioproject" value={totals?.bioproject} />
+                </div>
+                {STATISTICS_FIELDS.map((field) => (
+                  <FieldStatistics key={field} field={field} />
+                ))}
+              </>
+            )}
           </Card>
           <Card padding="lg">
             <div className="mb-3">

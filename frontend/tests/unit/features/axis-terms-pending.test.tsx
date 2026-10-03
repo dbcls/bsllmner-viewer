@@ -9,14 +9,14 @@ import { DEFAULTS, type Patch, type WorkspaceState } from "~/lib/workspace-state
 
 import { renderWithQuery } from "../query"
 
-const net = vi.hoisted(() => ({ answered: new Set<string>(), termsGate: null as Promise<void> | null }))
+const net = vi.hoisted(() => ({ answered: new Set<string>(), termsGate: null as Promise<void> | null, termsStatus: (_query: string): number | null => null }))
 
 const VERSION = { name: "test", createdAt: "2026-10-03T00:00:00Z", model: "m", digest: "0000000000000000" }
 const label = (value: string) => `label ${value}`
 
 vi.mock("~/lib/api/client", async (importOriginal) => {
   const original = await importOriginal<typeof Client>()
-  const { ok } = await import("../query")
+  const { ok, failure } = await import("../query")
   const GET = async (path: string, init?: { params?: { query?: Record<string, unknown> } }) => {
     const query = init?.params?.query ?? {}
     if (path === "/api/dataset") {
@@ -26,6 +26,8 @@ vi.mock("~/lib/api/client", async (importOriginal) => {
     }
     if (path === "/api/terms") {
       await net.termsGate
+      const status = net.termsStatus(String(query["query"]))
+      if (status !== null) return failure(status)
       const terms = ["T:9"].map((termId) => ({ field: "disease", termId, label: label(termId), ontology: "T", path: [], descendantCount: 0, count: 1, matchedSynonym: null, clauses: [] }))
       return ok({ field: "disease", query: "", populationQ: null, unit: "biosample", terms })
     }
@@ -98,6 +100,7 @@ const openTerms = async (user: ReturnType<typeof userEvent.setup>, axis: string)
 beforeEach(() => {
   net.answered.clear()
   net.termsGate = null
+  net.termsStatus = () => null
 })
 
 /** Holds the answers of the term search until the returned function is called. */
@@ -142,18 +145,18 @@ describe("HeatmapTab while the cross-tabulation of the new terms is on its way",
 })
 
 describe("HeatmapTab with the most terms that the api takes on an axis", () => {
-  const FULL = Array.from({ length: 500 }, (_, index) => `F:${index}`)
+  const FULL = Array.from({ length: 100 }, (_, index) => `F:${index}`)
 
-  it("does not add a found term to an axis of 500 terms and says so", async () => {
+  it("does not add a found term to an axis of 100 terms and says so", async () => {
     const user = userEvent.setup()
     const { onUpdate, onAlert } = renderView(HeatmapTab, { tab: "heatmap", row: "disease", col: "library_strategy", rowTerms: FULL })
     const dialog = await openTerms(user, "Rows")
     await user.click(await within(dialog).findByRole("button", { name: /label T:9/ }))
-    expect(onAlert).toHaveBeenLastCalledWith("A heatmap axis shows up to 500 terms")
+    expect(onAlert).toHaveBeenLastCalledWith("A heatmap axis shows up to 100 terms")
     expect(onUpdate).not.toHaveBeenCalled()
   })
 
-  it("takes a term off an axis of 500 terms", async () => {
+  it("takes a term off an axis of 100 terms", async () => {
     const user = userEvent.setup()
     const { onUpdate } = renderView(HeatmapTab, { tab: "heatmap", row: "disease", col: "library_strategy", rowTerms: FULL })
     const dialog = await openTerms(user, "Rows")
@@ -161,16 +164,16 @@ describe("HeatmapTab with the most terms that the api takes on an axis", () => {
     expect(onUpdate).toHaveBeenLastCalledWith({ rowTerms: FULL.slice(1) })
   })
 
-  it("uses the first 500 of a longer pasted list and says so", async () => {
+  it("uses the first 100 of a longer pasted list and says so", async () => {
     const user = userEvent.setup()
     const { onUpdate, onAlert } = renderView(HeatmapTab, { tab: "heatmap", row: "disease", col: "library_strategy", rowTerms: FIVE })
     const dialog = await openTerms(user, "Rows")
     await user.click(within(dialog).getByRole("radio", { name: "Paste list" }))
-    const pasted = Array.from({ length: 501 }, (_, index) => `P:${index}`)
+    const pasted = Array.from({ length: 101 }, (_, index) => `P:${index}`)
     fireEvent.change(within(dialog).getByRole("textbox", { name: "Terms to set" }), { target: { value: pasted.join("\n") } })
     await user.click(within(dialog).getByRole("button", { name: "Replace terms" }))
-    await vi.waitFor(() => expect(onAlert).toHaveBeenCalledWith("The first 500 of 501 terms are shown"))
-    expect(onUpdate).toHaveBeenLastCalledWith({ rowTerms: pasted.slice(0, 500) })
+    await vi.waitFor(() => expect(onAlert).toHaveBeenCalledWith("The first 100 of 101 terms are shown"))
+    expect(onUpdate).toHaveBeenLastCalledWith({ rowTerms: pasted.slice(0, 100) })
   })
 })
 
@@ -301,5 +304,35 @@ describe("a pasted list that is being resolved", () => {
     await open()
     await vi.waitFor(() => expect(onAlert).toHaveBeenCalledWith("1 of 1 terms recognised"))
     expect(onUpdate).toHaveBeenLastCalledWith({ rowTerms: ["T:9"] })
+  })
+})
+
+describe("Paste list when the api does not answer for some lines", () => {
+  const paste = async (user: ReturnType<typeof userEvent.setup>, lines: string[], setReplacing = vi.fn()) => {
+    const onUpdate = vi.fn<(patch: Patch) => void>()
+    const onAlert = vi.fn<(message: string) => void>()
+    renderWithQuery(
+      <HeatmapTab state={{ ...DEFAULTS, tab: "heatmap", row: "disease", col: "library_strategy", rowTerms: FIVE }} condition={condition} update={onUpdate} latest={() => ({ ...DEFAULTS, row: "disease" })} replacing={false} setReplacing={setReplacing} onAlert={onAlert} />,
+    )
+    const dialog = await openTerms(user, "Rows")
+    await user.click(within(dialog).getByRole("radio", { name: "Paste list" }))
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "Terms to set" }), { target: { value: lines.join("\n") } })
+    await user.click(within(dialog).getByRole("button", { name: "Replace terms" }))
+    return { onUpdate, onAlert, setReplacing }
+  }
+
+  it("uses the other lines and reports the lines that the api rejects", async () => {
+    net.termsStatus = (query) => (query === "too long" ? 422 : null)
+    const { onUpdate, onAlert } = await paste(userEvent.setup(), ["A:1", "too long", "liver"])
+    await vi.waitFor(() => expect(onAlert).toHaveBeenCalledWith("2 of 3 terms recognised, 1 rejected"))
+    expect(onUpdate).toHaveBeenLastCalledWith({ rowTerms: ["A:1", "T:9"] })
+  })
+
+  it("says that the terms could not be looked up when the server fails, and makes the axis wait for nothing", async () => {
+    net.termsStatus = () => 500
+    const { onUpdate, onAlert, setReplacing } = await paste(userEvent.setup(), ["liver"])
+    await vi.waitFor(() => expect(onAlert).toHaveBeenCalledWith("Could not look up the terms."))
+    expect(onUpdate).not.toHaveBeenCalled()
+    expect(setReplacing).toHaveBeenLastCalledWith(false)
   })
 })

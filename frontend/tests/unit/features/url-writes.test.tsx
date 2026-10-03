@@ -209,11 +209,11 @@ describe("useCondition operations", () => {
       failed = hook.current.toggle([RNA])
       next = hook.current.toggle([CHIP])
     })
-    const rejection = expect(failed).rejects.toThrow("the api failed")
+    const settled = expect(failed).resolves.toBeUndefined()
     await flush()
     await act(async () => {
       pending[0]?.release(true)
-      await rejection
+      await settled
     })
     await flush()
     expect(pending).toHaveLength(2)

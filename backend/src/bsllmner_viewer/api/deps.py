@@ -5,7 +5,10 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import Depends, Query, Request
+from fastapi.dependencies.models import Dependant
+from fastapi.routing import APIRoute
 
+from bsllmner_viewer.api.problems import ApiError
 from bsllmner_viewer.api.store import Store
 from bsllmner_viewer.dsl.ast import Node, normalize
 from bsllmner_viewer.dsl.parser import parse
@@ -18,6 +21,32 @@ def get_store(request: Request) -> Store:
 
 
 StoreDep = Annotated[Store, Depends(get_store)]
+
+
+def _query_param_names(dependant: Dependant) -> set[str]:
+    names = {param.alias for param in dependant.query_params}
+    for sub in dependant.dependencies:
+        names |= _query_param_names(sub)
+    return names
+
+
+def reject_unknown_query_params(request: Request) -> None:
+    """Answer 422 when the request has a query parameter that its operation does not declare.
+
+    A misspelled parameter would otherwise be ignored, and the response would answer another question than the one
+    that the client asked.
+    """
+    route = request.scope.get("route")
+    if not isinstance(route, APIRoute):
+        return
+    declared = _query_param_names(route.dependant)
+    unknown = sorted(set(request.query_params) - declared)
+    if unknown:
+        accepted = (
+            f"the accepted parameters are {', '.join(sorted(declared))}" if declared else "it has no query parameters"
+        )
+        raise ApiError(None, 422, f"unknown query parameter(s) for this endpoint: {', '.join(unknown)}; {accepted}")
+
 
 FacetSelfExcludeParam = Annotated[
     bool,

@@ -10,6 +10,7 @@ import { QueryClientProvider } from "@tanstack/react-query"
 import type { ReactNode } from "react"
 import {
   isRouteErrorResponse,
+  Link,
   Links,
   Meta,
   Outlet,
@@ -20,7 +21,7 @@ import {
 
 import { queryClient } from "~/lib/query-client"
 import { ShellLayout } from "~/shell"
-import { Card, PageHeading } from "~/ui"
+import { Button, Card, PageHeading } from "~/ui"
 
 export const Layout = ({ children }: { children: ReactNode }) => (
   <html lang="en">
@@ -52,14 +53,24 @@ export default App
 
 const ErrorBoundaryContent = () => {
   const error = useRouteError()
-  const message = isRouteErrorResponse(error)
-    ? `${error.status} ${error.statusText}`
-    : "Something went wrong."
+  const notFound = isRouteErrorResponse(error) && error.status === 404
+  const message = isRouteErrorResponse(error) ? `${error.status} ${error.statusText}` : "Something went wrong."
 
   return (
     <section className="mx-auto w-full max-w-content-max px-page-gutter py-8">
       <Card padding="lg">
         <PageHeading>{message}</PageHeading>
+        <div className="mt-4">
+          {notFound ? (
+            <Link to="/" className="text-fs-body-sm text-brand hover:text-brand-deep">
+              Go to the top page
+            </Link>
+          ) : (
+            <Button kind="secondary" onClick={() => window.location.reload()}>
+              Reload
+            </Button>
+          )}
+        </div>
       </Card>
     </section>
   )

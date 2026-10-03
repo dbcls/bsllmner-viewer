@@ -92,3 +92,15 @@ describe("workspace state in the URL", () => {
     expect(writeState(state).has("se")).toBe(false)
   })
 })
+
+describe("readState terms of an axis", () => {
+  const terms = (count: number) => Array.from({ length: count }, (_, i) => `T:${i}`).join(",")
+
+  it("keeps at most 100 terms of a row and of a column, and at most 5 of the lines, so that an old shared URL still works", () => {
+    const state = readState(new URLSearchParams(`row_terms=${terms(150)}&col=tissue&col_terms=${terms(101)}&trend_terms=${terms(9)}`))
+    expect(state.rowTerms).toHaveLength(100)
+    expect(state.colTerms).toHaveLength(100)
+    expect(state.trendTerms).toHaveLength(5)
+    expect(state.rowTerms?.[99]).toBe("T:99")
+  })
+})

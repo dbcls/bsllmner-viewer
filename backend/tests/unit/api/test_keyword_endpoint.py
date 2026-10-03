@@ -101,9 +101,15 @@ def test_keyword_endpoint_without_the_keyword_field_is_unprocessable(client: Tes
     assert response.json()["type"] == "about:blank"
 
 
-def test_keyword_endpoint_accepts_a_long_keyword_without_error(client: TestClient) -> None:
-    body = _set(client, None, " ".join(f"w{i}" for i in range(100)))
+def test_keyword_endpoint_accepts_a_keyword_of_the_most_words(client: TestClient) -> None:
+    body = _set(client, None, " ".join(f"w{i}" for i in range(64)))
     assert str(body["dsl"]).startswith("w0 w1 w2")
+
+
+def test_keyword_endpoint_rejects_a_keyword_of_more_words_than_the_limit(client: TestClient) -> None:
+    response = client.post("/api/dsl/keyword", json={"q": None, "keyword": " ".join(f"w{i}" for i in range(65))})
+    assert response.status_code == 400
+    assert response.json()["type"] == "https://ddbj.nig.ac.jp/problems/invalid-value"
 
 
 def test_keyword_whole_word_does_not_match_the_start_of_a_longer_word_but_the_last_word_does(

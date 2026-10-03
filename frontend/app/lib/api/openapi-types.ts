@@ -283,7 +283,7 @@ export interface paths {
         };
         /**
          * Get service information
-         * @description The name, the version, and the state of the store, for health monitoring. The api starts only with a store that it can open and whose schema version its code reads, so a missing, invalid, or mismatched store stops the process at startup. While the api runs, the response has status 200, and `store` is `ok` if the api can query the store and `unavailable` if a query fails.
+         * @description The name, the version, and the state of the store, for health monitoring. The api starts only with a store that it can open and whose schema version its code reads, so a missing, invalid, or mismatched store stops the process at startup. While the api runs, the response has status 200, and `store` is `ok` if the api can query the store and the store file has the size and the modification time that it had when the api opened it, and `unavailable` otherwise.
          */
         get: operations["getServiceInfo"];
         put?: never;
@@ -846,7 +846,7 @@ export interface components {
         ProblemDetails: {
             /**
              * Type
-             * @description `about:blank`, or a URI that identifies an error specific to the api
+             * @description `about:blank` for an error that the HTTP status describes. Otherwise a URI that ends with the slug of the rule that the request broke. The description of the 400 response of each operation lists its slugs.
              */
             type: string;
             /**
@@ -1179,16 +1179,7 @@ export interface operations {
                     "application/json": components["schemas"]["DatasetResponse"];
                 };
             };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
-                };
-            };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Entity (the request does not match the operation) */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -1228,7 +1219,7 @@ export interface operations {
                     "application/json": components["schemas"]["ParseResponse"];
                 };
             };
-            /** @description Bad Request */
+            /** @description Bad Request (the slug of `type` is one of `unexpected-token`, `unknown-field`, `invalid-date-format`, `invalid-operator-for-field`, `invalid-value`, `nest-depth-exceeded`, `missing-value`) */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -1237,7 +1228,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Entity (the request does not match the operation) */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -1279,7 +1270,7 @@ export interface operations {
                     "application/json": components["schemas"]["ConditionResponse"];
                 };
             };
-            /** @description Bad Request */
+            /** @description Bad Request (the slug of `type` is one of `unexpected-token`, `unknown-field`, `invalid-date-format`, `invalid-operator-for-field`, `invalid-value`, `nest-depth-exceeded`, `missing-value`, `invalid-ast`) */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -1288,7 +1279,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Entity (the request does not match the operation) */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -1330,7 +1321,7 @@ export interface operations {
                     "application/json": components["schemas"]["ConditionResponse"];
                 };
             };
-            /** @description Bad Request */
+            /** @description Bad Request (the slug of `type` is one of `unexpected-token`, `unknown-field`, `invalid-date-format`, `invalid-operator-for-field`, `invalid-value`, `nest-depth-exceeded`, `missing-value`) */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -1339,7 +1330,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Entity (the request does not match the operation) */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -1384,7 +1375,7 @@ export interface operations {
                     "application/json": components["schemas"]["EntriesResponse"];
                 };
             };
-            /** @description Bad Request */
+            /** @description Bad Request (the slug of `type` is one of `unexpected-token`, `unknown-field`, `invalid-date-format`, `invalid-operator-for-field`, `invalid-value`, `nest-depth-exceeded`, `missing-value`) */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -1402,7 +1393,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Entity (the request does not match the operation) */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -1413,6 +1404,15 @@ export interface operations {
             };
             /** @description Internal Server Error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Service Unavailable (the slug of `type` is one of `server-busy`, `query-timeout`, `query-too-large`) */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1442,15 +1442,6 @@ export interface operations {
                     "application/json": components["schemas"]["EntryResponse"];
                 };
             };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
-                };
-            };
             /** @description Not Found */
             404: {
                 headers: {
@@ -1460,7 +1451,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Entity (the request does not match the operation) */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -1510,7 +1501,7 @@ export interface operations {
                     "application/json": components["schemas"]["DistributionResponse"];
                 };
             };
-            /** @description Bad Request */
+            /** @description Bad Request (the slug of `type` is one of `unexpected-token`, `unknown-field`, `invalid-date-format`, `invalid-operator-for-field`, `invalid-value`, `nest-depth-exceeded`, `missing-value`, `invalid-dimension`, `invalid-element`, `too-many-elements`) */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -1519,7 +1510,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Entity (the request does not match the operation) */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -1530,6 +1521,15 @@ export interface operations {
             };
             /** @description Internal Server Error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Service Unavailable (the slug of `type` is one of `server-busy`, `query-timeout`, `query-too-large`) */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1554,7 +1554,7 @@ export interface operations {
                 rowElements?: string | null;
                 /** @description Comma-separated column elements; omitted means the top columns */
                 colElements?: string | null;
-                /** @description Number of elements when they are not named */
+                /** @description Number of elements of each axis when they are not named */
                 limit?: number;
             };
             header?: never;
@@ -1572,7 +1572,7 @@ export interface operations {
                     "application/json": components["schemas"]["CrosstabResponse"];
                 };
             };
-            /** @description Bad Request */
+            /** @description Bad Request (the slug of `type` is one of `unexpected-token`, `unknown-field`, `invalid-date-format`, `invalid-operator-for-field`, `invalid-value`, `nest-depth-exceeded`, `missing-value`, `invalid-dimension`, `invalid-element`, `too-many-elements`) */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -1581,7 +1581,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Entity (the request does not match the operation) */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -1592,6 +1592,15 @@ export interface operations {
             };
             /** @description Internal Server Error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Service Unavailable (the slug of `type` is one of `server-busy`, `query-timeout`, `query-too-large`) */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1636,7 +1645,7 @@ export interface operations {
                     "application/json": components["schemas"]["TrendResponse"];
                 };
             };
-            /** @description Bad Request */
+            /** @description Bad Request (the slug of `type` is one of `unexpected-token`, `unknown-field`, `invalid-date-format`, `invalid-operator-for-field`, `invalid-value`, `nest-depth-exceeded`, `missing-value`, `invalid-dimension`, `invalid-element`, `too-many-elements`) */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -1645,7 +1654,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Entity (the request does not match the operation) */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -1656,6 +1665,15 @@ export interface operations {
             };
             /** @description Internal Server Error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Service Unavailable (the slug of `type` is one of `server-busy`, `query-timeout`, `query-too-large`) */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1691,7 +1709,7 @@ export interface operations {
                     "application/json": components["schemas"]["ProjectsResponse"];
                 };
             };
-            /** @description Bad Request */
+            /** @description Bad Request (the slug of `type` is one of `unexpected-token`, `unknown-field`, `invalid-date-format`, `invalid-operator-for-field`, `invalid-value`, `nest-depth-exceeded`, `missing-value`) */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -1700,7 +1718,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Entity (the request does not match the operation) */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -1711,6 +1729,15 @@ export interface operations {
             };
             /** @description Internal Server Error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Service Unavailable (the slug of `type` is one of `server-busy`, `query-timeout`, `query-too-large`) */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1749,7 +1776,7 @@ export interface operations {
                     "application/json": components["schemas"]["TermsResponse"];
                 };
             };
-            /** @description Bad Request */
+            /** @description Bad Request (the slug of `type` is one of `unexpected-token`, `unknown-field`, `invalid-date-format`, `invalid-operator-for-field`, `invalid-value`, `nest-depth-exceeded`, `missing-value`, `invalid-dimension`) */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -1758,7 +1785,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Entity (the request does not match the operation) */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -1769,6 +1796,15 @@ export interface operations {
             };
             /** @description Internal Server Error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Service Unavailable (the slug of `type` is one of `server-busy`, `query-timeout`, `query-too-large`) */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1804,7 +1840,7 @@ export interface operations {
                     "application/json": components["schemas"]["TermChildrenResponse"];
                 };
             };
-            /** @description Bad Request */
+            /** @description Bad Request (the slug of `type` is one of `unexpected-token`, `unknown-field`, `invalid-date-format`, `invalid-operator-for-field`, `invalid-value`, `nest-depth-exceeded`, `missing-value`, `invalid-dimension`) */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -1813,7 +1849,16 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unprocessable Entity (the request does not match the operation) */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -1824,6 +1869,15 @@ export interface operations {
             };
             /** @description Internal Server Error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Service Unavailable (the slug of `type` is one of `server-busy`, `query-timeout`, `query-too-large`) */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1853,15 +1907,6 @@ export interface operations {
                     "application/json": components["schemas"]["TermResponse"];
                 };
             };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
-                };
-            };
             /** @description Not Found */
             404: {
                 headers: {
@@ -1871,7 +1916,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Entity (the request does not match the operation) */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -1912,7 +1957,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Bad Request */
+            /** @description Bad Request (the slug of `type` is one of `unexpected-token`, `unknown-field`, `invalid-date-format`, `invalid-operator-for-field`, `invalid-value`, `nest-depth-exceeded`, `missing-value`) */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -1930,7 +1975,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Entity (the request does not match the operation) */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -1941,6 +1986,15 @@ export interface operations {
             };
             /** @description Internal Server Error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Service Unavailable (the slug of `type` is one of `server-busy`, `query-timeout`, `query-too-large`) */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1972,7 +2026,7 @@ export interface operations {
                 };
                 content?: never;
             };
-            /** @description Bad Request */
+            /** @description Bad Request (the slug of `type` is one of `unexpected-token`, `unknown-field`, `invalid-date-format`, `invalid-operator-for-field`, `invalid-value`, `nest-depth-exceeded`, `missing-value`) */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -1990,7 +2044,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Entity (the request does not match the operation) */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -2001,6 +2055,15 @@ export interface operations {
             };
             /** @description Internal Server Error */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Service Unavailable (the slug of `type` is one of `server-busy`, `query-timeout`, `query-too-large`) */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2028,16 +2091,7 @@ export interface operations {
                     "application/json": components["schemas"]["ServiceInfoResponse"];
                 };
             };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
-                };
-            };
-            /** @description Unprocessable Entity */
+            /** @description Unprocessable Entity (the request does not match the operation) */
             422: {
                 headers: {
                     [name: string]: unknown;

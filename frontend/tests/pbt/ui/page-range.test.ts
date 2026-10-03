@@ -1,7 +1,7 @@
 import { fc, test } from "@fast-check/vitest"
 import { describe, expect } from "vitest"
 
-import { pageCount, pageRange } from "~/ui/page-range"
+import { pageAfterLast, pageCount, pageRange } from "~/ui/page-range"
 
 const list = fc.tuple(fc.integer({ min: 0, max: 10_000_000 }), fc.integer({ min: 1, max: 100 }))
 
@@ -28,4 +28,16 @@ describe("page ranges", () => {
       expect(range?.from).toBe(page === 1 ? 1 : (pageRange(page - 1, perPage, total)?.to ?? 0) + 1)
     },
   )
+})
+
+describe("pageAfterLast", () => {
+  test.prop([list, fc.integer({ min: 1, max: 1_000_000 })])("gives a page that holds items, or the empty first page, for a page past the end", ([total, perPage], page) => {
+    const last = pageAfterLast(page, total, perPage)
+    if (page <= pageCount(total, perPage)) {
+      expect(last).toBeNull()
+      return
+    }
+    expect(last).toBe(pageCount(total, perPage))
+    expect(pageAfterLast(last ?? 0, total, perPage)).toBeNull()
+  })
 })

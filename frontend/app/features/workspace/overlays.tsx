@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react"
 
-import { exportAccessionsUrl, exportEntriesUrl } from "~/lib/api/client"
-import { useDataset } from "~/lib/api/queries"
+import { ApiError, canTryAgain, exportAccessionsUrl, exportEntriesUrl, loadFailureProps } from "~/lib/api/client"
+import { queryFailed, useDataset } from "~/lib/api/queries"
 import type { AccessionType } from "~/lib/api/types"
 import { copyText } from "~/lib/export"
 import { formatCount } from "~/lib/format"
-import { ACTION_ICON, CopyButton, MenuButton, Modal } from "~/ui"
+import { ACTION_ICON, CopyButton, ErrorNotice, MenuButton, Modal, Skeleton } from "~/ui"
 
 import { TAB_LABELS, type WorkspaceState } from "./state"
 import { apiRequestsFor } from "./view-requests"
@@ -86,8 +86,26 @@ export const responseExcerpt = (text: string): string => {
 
 const BLOCK_HEADING = "mb-1.5 text-fs-body-sm font-semibold text-ink"
 
+/** What the dialog shows for the response of the first request. */
+type Shown = { kind: "loading" } | { kind: "body"; text: string } | { kind: "failed"; text: string; retry: boolean }
+
+/** The one line that says why a response failed: its status and the title that the api gave it, or the status text of the response. */
+const failureLine = (response: Response, body: string): string => {
+  let title = ""
+  try {
+    const parsed: unknown = JSON.parse(body)
+    if (typeof parsed === "object" && parsed !== null && "title" in parsed && typeof parsed.title === "string") title = parsed.title
+  } catch {
+    // A body that is not JSON, such as the page of a proxy, has no title.
+  }
+  return `${response.status} ${title || response.statusText}`.trim()
+}
+
+const UNREACHABLE = "Could not reach the server."
+
 export const ApiModal = ({ open, onClose, state, onAlert }: ApiModalProps) => {
-  const [response, setResponse] = useState<string>("")
+  const [response, setResponse] = useState<Shown>({ kind: "loading" })
+  const [attempt, setAttempt] = useState(0)
   const dataset = useDataset()
   const requests = apiRequestsFor(state, dataset.data ? dataset.data.fields.map((f) => f.name) : null)
   const [first] = requests
@@ -96,17 +114,20 @@ export const ApiModal = ({ open, onClose, state, onAlert }: ApiModalProps) => {
   useEffect(() => {
     if (!open || first === undefined) return
     let cancelled = false
-    setResponse("")
+    setResponse({ kind: "loading" })
     fetch(first)
-      .then((r) => r.text())
-      .then((text) => {
-        if (!cancelled) setResponse(responseExcerpt(text))
+      .then(async (r) => {
+        const text = await r.text()
+        if (!cancelled) setResponse(r.ok ? { kind: "body", text: responseExcerpt(text) } : { kind: "failed", text: failureLine(r, text), retry: canTryAgain(new ApiError({ type: "about:blank", title: "", status: r.status })) })
       })
-      .catch(() => setResponse("(request failed)"))
+      .catch(() => {
+        if (!cancelled) setResponse({ kind: "failed", text: UNREACHABLE, retry: true })
+      })
     return () => {
       cancelled = true
     }
-  }, [open, first])
+  }, [open, first, attempt])
+  const datasetFailed = queryFailed(dataset)
   return (
     <Modal
       open={open}
@@ -123,7 +144,9 @@ export const ApiModal = ({ open, onClose, state, onAlert }: ApiModalProps) => {
       <div className="px-6 pb-6">
         <h3 className={BLOCK_HEADING}>{requests.length > 1 ? "Requests" : "Request"}</h3>
         <div className="relative mb-4">
-          <pre className="max-h-60 overflow-auto rounded-button bg-ink py-3 pr-28 pl-3.5 font-mono text-fs-label leading-relaxed break-all whitespace-pre-wrap text-brand-soft">{curl}</pre>
+          <pre aria-busy={requests.length === 0 && !datasetFailed ? true : undefined} className="max-h-60 min-h-12 overflow-auto rounded-button bg-ink py-3 pr-28 pl-3.5 font-mono text-fs-label leading-relaxed break-all whitespace-pre-wrap text-brand-soft">
+            {requests.length === 0 && !datasetFailed ? <Skeleton className="w-2/3" /> : curl}
+          </pre>
           <span className="absolute top-2 right-2">
             <CopyButton
               kind="inverse"
@@ -138,10 +161,28 @@ export const ApiModal = ({ open, onClose, state, onAlert }: ApiModalProps) => {
           </span>
         </div>
         <h3 className={BLOCK_HEADING}>{requests.length > 1 ? "Response to the first request (excerpt)" : "Response (excerpt)"}</h3>
-        <pre className="max-h-64 overflow-auto rounded-button border border-border-soft bg-surface-subtle px-3.5 py-3 font-mono text-fs-label leading-relaxed whitespace-pre-wrap text-ink-mid">
-          {response || "Loading…"}
-        </pre>
+        {datasetFailed && requests.length === 0 ? (
+          <ErrorNotice {...loadFailureProps(dataset.error, "load the dataset", () => void dataset.refetch(), "dataset")} />
+        ) : response.kind === "failed" ? (
+          <ErrorNotice message={response.text} {...(response.retry ? { onRetry: () => setAttempt((n) => n + 1) } : {})} />
+        ) : (
+          <pre
+            aria-busy={response.kind === "loading" || undefined}
+            className="max-h-64 overflow-auto rounded-button border border-border-soft bg-surface-subtle px-3.5 py-3 font-mono text-fs-label leading-relaxed whitespace-pre-wrap text-ink-mid"
+          >
+            {response.kind === "loading" ? <ResponseSkeleton /> : response.text}
+          </pre>
+        )}
       </div>
     </Modal>
   )
 }
+
+/** The lines of a response before it arrives. */
+const ResponseSkeleton = () => (
+  <>
+    <Skeleton className="w-1/3" />
+    <Skeleton className="w-1/2" />
+    <Skeleton className="w-2/5" />
+  </>
+)

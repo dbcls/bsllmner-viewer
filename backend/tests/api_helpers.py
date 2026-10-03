@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+import asyncio
+from collections.abc import Callable, Iterator
 from typing import Any
 
 from fastapi.testclient import TestClient
@@ -63,3 +64,52 @@ def and_clauses(q: str | None, clauses: list[dict[str, str]]) -> str | None:
     for clause in clauses:
         q = select_clause(q, clause)
     return q
+
+
+async def call_asgi(
+    app: Any,
+    path: str,
+    query: bytes = b"",
+    *,
+    disconnect_after: int | None = None,
+    on_send: Callable[[dict[str, Any]], None] | None = None,
+) -> list[dict[str, Any]]:
+    """Call the ASGI app of a started test client and return the messages that it sent.
+
+    The client is slow (every message takes 20 milliseconds), and it disconnects after `disconnect_after` messages
+    when that is given, as a browser does when a download is cancelled.
+    """
+    messages: list[dict[str, Any]] = []
+    disconnect = asyncio.Event()
+    if disconnect_after == 0:
+        disconnect.set()
+
+    async def receive() -> dict[str, Any]:
+        await disconnect.wait()
+        return {"type": "http.disconnect"}
+
+    async def send(message: dict[str, Any]) -> None:
+        messages.append(message)
+        if on_send is not None:
+            on_send(message)
+        await asyncio.sleep(0.02)
+        if disconnect_after is not None and len(messages) >= disconnect_after:
+            disconnect.set()
+
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "GET",
+        "scheme": "http",
+        "path": path,
+        "raw_path": path.encode(),
+        "root_path": "",
+        "query_string": query,
+        "headers": [],
+        "client": ("127.0.0.1", 50000),
+        "server": ("testserver", 80),
+        "state": {},
+    }
+    await app(scope, receive, send)
+    return messages

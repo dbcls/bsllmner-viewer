@@ -21,11 +21,13 @@ import { DATASET_STORAGE_KEY, storedDataset, useDataset } from "~/lib/api/querie
 
 const description = (name: string) => ({
   datasetVersion: { name },
-  fields: [{ name: "disease", mappedBiosampleCount: 3 }],
   targetAssays: ["RNA-Seq"],
   assays: [{ name: "RNA-Seq", biosampleCount: 5 }],
-  organisms: [],
+  organisms: [{ identifier: "9606", name: "Homo sapiens", biosampleCount: 2 }],
   ontologies: [{ prefix: "MONDO", name: "MONDO" }],
+  dslFields: [{ name: "disease", kind: "term", operators: [] }],
+  totals: { biosample: 5, experiment: 6, bioproject: 7 },
+  fields: [{ name: "disease", multiValued: false, ontologies: ["MONDO"], mappedBiosampleCount: 3 }],
 })
 
 beforeEach(() => {
@@ -48,6 +50,26 @@ describe("storedDataset", () => {
     expect(storedDataset()).toBeUndefined()
     localStorage.setItem(DATASET_STORAGE_KEY, JSON.stringify({ ...description("old"), ontologies: undefined }))
     expect(storedDataset()).toBeUndefined()
+  })
+
+  it("gives nothing when an element of a list has another shape than the screens read", () => {
+    const stored = (changed: Record<string, unknown>) => {
+      localStorage.setItem(DATASET_STORAGE_KEY, JSON.stringify({ ...description("old"), ...changed }))
+      return storedDataset()
+    }
+    expect(stored({ assays: [null] })).toBeUndefined()
+    expect(stored({ assays: [{ name: "RNA-Seq" }] })).toBeUndefined()
+    expect(stored({ fields: [null] })).toBeUndefined()
+    expect(stored({ fields: [{ name: "disease", mappedBiosampleCount: 3 }] })).toBeUndefined()
+    expect(stored({ fields: [{ name: "disease", mappedBiosampleCount: 3, ontologies: [1] }] })).toBeUndefined()
+    expect(stored({ targetAssays: [1] })).toBeUndefined()
+    expect(stored({ organisms: ["9606"] })).toBeUndefined()
+    expect(stored({ organisms: [{ identifier: "9606", name: 1, biosampleCount: 2 }] })).toBeUndefined()
+    expect(stored({ ontologies: [{ prefix: "MONDO" }] })).toBeUndefined()
+    expect(stored({ dslFields: [null] })).toBeUndefined()
+    expect(stored({ totals: null })).toBeUndefined()
+    expect(stored({ totals: { biosample: "5" } })).toBeUndefined()
+    expect(stored({ datasetVersion: null })).toBeUndefined()
   })
 
   it("gives the description kept by the last visit", () => {

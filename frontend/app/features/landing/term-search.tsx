@@ -1,11 +1,12 @@
 import { useState } from "react"
 
-import { useDataset, useTerms } from "~/lib/api/queries"
+import { loadFailureProps } from "~/lib/api/client"
+import { queryFailed, useDataset, useTerms } from "~/lib/api/queries"
 import { formatCount } from "~/lib/format"
 import { fieldLabel } from "~/lib/labels"
 import { ALL_FIELDS, SKELETON_TERMS, TERM_SEARCH_DEBOUNCE_MS, termFieldOptions, termHitRowProps, useResultListRef } from "~/lib/terms"
 import { useDebounced } from "~/lib/use-debounced"
-import { ACTION_ICON, busyClass, Button, Card, CardHeader, Clickable, cn, Select, termRowClass, TermRowContent, TermRowSkeleton, TextInput } from "~/ui"
+import { ACTION_ICON, busyClass, Button, Card, CardHeader, Clickable, cn, ErrorNotice,Select, termRowClass, TermRowContent, TermRowSkeleton, TextInput } from "~/ui"
 
 import { ConditionLink } from "./condition-link"
 import { CountBar, countBarRowClass, CountBarSkeleton } from "./count-bar"
@@ -32,6 +33,8 @@ export const TermSearch = () => {
     active && (!everyField || debounced !== ""),
   )
   const list = useResultListRef(terms.data?.query, terms.data?.field)
+  const failed = queryFailed(terms)
+  const datasetFailed = queryFailed(dataset)
 
   const clear = () => {
     setField(ALL_FIELDS)
@@ -62,10 +65,15 @@ export const TermSearch = () => {
             </CardHeader>
             <div
               ref={list}
-              aria-busy={!terms.data || terms.isPlaceholderData || undefined}
+              aria-busy={(!terms.data && !failed) || terms.isPlaceholderData || undefined}
               className={cn("max-h-picker-list overflow-auto", busyClass(terms.isPlaceholderData))}
             >
-              {!terms.data && Array.from({ length: SKELETON_TERMS }, (_, index) => <TermRowSkeleton key={index} />)}
+              {failed && (
+                <div className="px-6 py-4">
+                  <ErrorNotice {...loadFailureProps(terms.error, "search terms", () => void terms.refetch())} />
+                </div>
+              )}
+              {!terms.data && !failed && Array.from({ length: SKELETON_TERMS }, (_, index) => <TermRowSkeleton key={index} />)}
               {(terms.data?.terms ?? []).map((hit) => (
                 <ConditionLink
                   key={`${hit.field}:${hit.termId}`}
@@ -87,7 +95,12 @@ export const TermSearch = () => {
           <Card padding="sm">
             <div className="mb-1.5 font-semibold">Annotation terms</div>
             <div className="grid grid-cols-3 gap-x-5">
-              {dataset.data === undefined && Array.from({ length: SKELETON_FIELDS }, (_, index) => <CountBarSkeleton key={index} padding="md" />)}
+              {datasetFailed && (
+                <div className="col-span-3">
+                  <ErrorNotice {...loadFailureProps(dataset.error, "load the terms", () => void dataset.refetch())} />
+                </div>
+              )}
+              {dataset.data === undefined && !datasetFailed && Array.from({ length: SKELETON_FIELDS }, (_, index) => <CountBarSkeleton key={index} padding="md" />)}
               {fieldCounts.map(({ name, mappedBiosampleCount }) => (
                 <FieldRow key={name} field={name} mapped={mappedBiosampleCount} total={total} onSelect={() => setField(name)} />
               ))}

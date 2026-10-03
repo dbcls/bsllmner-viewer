@@ -1,9 +1,10 @@
-import { useDataset, useDistribution } from "~/lib/api/queries"
+import { loadFailureProps } from "~/lib/api/client"
+import { queryFailed, useDataset, useDistribution } from "~/lib/api/queries"
 import type { DatasetResponse, Element, TermElement, Unit } from "~/lib/api/types"
 import { downloadPngMarkup, downloadSvgMarkup, downloadTsv } from "~/lib/export"
 import { formatCount, formatPercent } from "~/lib/format"
 import { fieldLabel, ontologyName, unitLabel } from "~/lib/labels"
-import { Card, Clickable, cn, Skeleton } from "~/ui"
+import { Card, Clickable, cn, EmptyNotice, ErrorNotice,Skeleton } from "~/ui"
 
 import { clausesOfField } from "../ast"
 import { expectedElements } from "../expected-elements"
@@ -30,6 +31,7 @@ export const DistributionTab = ({ state, condition, onUnit, onTermIds }: Distrib
   const dataset = useDataset()
   const fields = dataset.data?.fields ?? []
   const ordered = distributionFields(fields.map((f) => f.name))
+  const datasetFailed = queryFailed(dataset)
   const known = dataset.data?.ontologies ?? []
   const ontologies = new Map(fields.map((f) => [f.name, f.ontologies.map((prefix) => ontologyName(prefix, known)).join(" / ")]))
   return (
@@ -42,7 +44,12 @@ export const DistributionTab = ({ state, condition, onUnit, onTermIds }: Distrib
         help="Each card shows the terms assigned to the most BioSamples. Counts include child terms."
       />
       <div className="grid grid-cols-3 gap-4">
-        {dataset.data === undefined &&
+        {datasetFailed && (
+          <div className="col-span-3">
+            <ErrorNotice {...loadFailureProps(dataset.error, "load the dataset", () => void dataset.refetch(), "dataset, distribution")} />
+          </div>
+        )}
+        {dataset.data === undefined && !datasetFailed &&
           Array.from({ length: FIELD_CARDS }, (_, index) => (
             <Card key={index} padding="sm">
               <Skeleton className="w-32" />
@@ -82,6 +89,7 @@ const DistributionCard = ({ field, ontology, dataset, state, condition }: CardPr
   const elements = data?.elements ?? []
   const max = Math.max(1, ...elements.map((e) => e.count))
   const unit = unitLabel(state.unit)
+  const failed = queryFailed(distribution)
 
   const collect = (): BarDatum[] =>
     elements.map((e) => ({
@@ -113,13 +121,16 @@ const DistributionCard = ({ field, ontology, dataset, state, condition }: CardPr
         <FigureExport figure={`${fieldLabel(field)} distribution`} onTsv={exportTsv} onSvg={exportSvg} onPng={exportPng} />
       </div>
       <div className="mt-2 flex-1">
-        {data === undefined && <SkeletonBars count={expectedElements(field, dataset, DISTRIBUTION_LIMIT)} />}
+        {failed && (
+          <ErrorNotice {...loadFailureProps(distribution.error, `load the ${fieldLabel(field)} distribution`, () => void distribution.refetch(), `${fieldLabel(field)} distribution`)} />
+        )}
+        {data === undefined && !failed && <SkeletonBars count={expectedElements(field, dataset, DISTRIBUTION_LIMIT)} />}
         {elements.map((element) => (
           <ElementRow key={element.value} element={element} max={max} ownCondition={ownCondition} condition={condition} showId={state.termIds} />
         ))}
-        {data && elements.length === 0 && <div className="py-3 text-fs-label text-ink-soft">No values in this population.</div>}
+        {data && elements.length === 0 && <EmptyNotice>{data.total === 0 ? `No ${unit} match this condition.` : "No values in this population."}</EmptyNotice>}
         {data?.withoutTerm != null && <WithoutTermRow field={field} count={data.withoutTerm} total={data.total} />}
-        {data === undefined && <SkeletonWithoutTerm />}
+        {data === undefined && !failed && <SkeletonWithoutTerm />}
       </div>
 
     </Card>

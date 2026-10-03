@@ -1,11 +1,12 @@
 import { type ReactNode, useEffect, useRef, useState } from "react"
 
-import { useDataset, useDistribution } from "~/lib/api/queries"
+import { failureMessage, loadFailureProps } from "~/lib/api/client"
+import { queryFailed, useDataset, useDistribution } from "~/lib/api/queries"
 import type { Clause } from "~/lib/api/types"
 import { type DateRange, enteredRange, isoDate, RECENT_YEARS, recentRange, recentYearsOf } from "~/lib/date-range"
 import { formatCount } from "~/lib/format"
 import { fieldLabel, fieldOfStatusField, GROUP_LABELS, organismLabel, statusFieldOf,type StatusGroup } from "~/lib/labels"
-import { ACTION_ICON, Button, Caption, CheckboxRow, Clickable, cn, FieldChip, HelpHint, PaneHeading, Select, Skeleton, TextInput } from "~/ui"
+import { ACTION_ICON, Button, Caption, CheckboxRow, Clickable, cn, ErrorNotice,FieldChip, HelpHint, PaneHeading, Select, Skeleton, TextInput } from "~/ui"
 
 import { AssayTag } from "./assay-tags"
 import { clauseLabel, clausesOfField } from "./ast"
@@ -35,7 +36,8 @@ export const ConditionPanel = ({ q, condition, onAddTerm }: ConditionPanelProps)
     .filter((organism) => organism.biosampleCount >= datasetTotal * ORGANISM_MIN_SHARE)
     .sort((a, b) => b.biosampleCount - a.biosampleCount)
   // The counts are asked for the listed values by name, so that a value outside the most frequent ones under the condition is counted too.
-  const ready = dataset.data !== undefined
+  const ready = dataset.data !== undefined && !condition.parseError
+  const datasetFailed = queryFailed(dataset)
   const assays = useDistribution(
     { field: "library_strategy", q, unit: "biosample", selfExclusion: true, elements: targetAssays.join(",") },
     ready && targetAssays.length > 0,
@@ -58,8 +60,8 @@ export const ConditionPanel = ({ q, condition, onAddTerm }: ConditionPanelProps)
   const fieldOptions = fields.map((f) => ({ value: f.name, label: fieldLabel(f.name) }))
   // Without a status condition, the status buttons are on the first field of the dataset.
   const statusField = chosenStatusField ?? fields[0]?.name
-  const assayCounts = countsOf(assays.data?.elements)
-  const organismCount = countsOf(organismCounts.data?.elements)
+  const assayCounts = countsOf(assays.data?.elements, queryFailed(assays) || Boolean(condition.parseError))
+  const organismCount = countsOf(organismCounts.data?.elements, queryFailed(organismCounts) || Boolean(condition.parseError))
 
   // The terms of the condition, in the order of the dataset's fields.
   const terms = fields.flatMap((field) => clausesOfField(selected, field.name))
@@ -69,7 +71,7 @@ export const ConditionPanel = ({ q, condition, onAddTerm }: ConditionPanelProps)
       <KeywordSearch condition={condition} />
       <PaneHeading>Annotation terms</PaneHeading>
       <Section>
-        <Button kind="outline" size="sm" icon={ACTION_ICON.add} onClick={onAddTerm}>
+        <Button kind="outline" size="sm" icon={ACTION_ICON.add} onClick={onAddTerm} disabled={Boolean(condition.parseError)}>
           Add term
         </Button>
         {terms.length > 0 && (
@@ -87,7 +89,9 @@ export const ConditionPanel = ({ q, condition, onAddTerm }: ConditionPanelProps)
       </Section>
       <PaneHeading>Assay</PaneHeading>
       <Section>
-        {dataset.data === undefined && <SkeletonRows count={ASSAY_ROWS} className="py-1" />}
+        {datasetFailed && <ErrorNotice {...loadFailureProps(dataset.error, "load the dataset", () => void dataset.refetch(), "dataset, condition panel")} />}
+        {dataset.data === undefined && !datasetFailed && <SkeletonRows count={ASSAY_ROWS} className="py-1" />}
+        {queryFailed(assays) && !condition.parseError && <CountsNotice query={assays} name="Assay counts" />}
         {targetAssays.map((assay) => {
           const clause: Clause = { field: "library_strategy", value: assay }
           return (
@@ -103,7 +107,8 @@ export const ConditionPanel = ({ q, condition, onAddTerm }: ConditionPanelProps)
       </Section>
       <PaneHeading>Organism</PaneHeading>
       <Section>
-        {dataset.data === undefined && <SkeletonRows count={ORGANISM_ROWS} className="py-1" />}
+        {dataset.data === undefined && !datasetFailed && <SkeletonRows count={ORGANISM_ROWS} className="py-1" />}
+        {queryFailed(organismCounts) && !condition.parseError && <CountsNotice query={organismCounts} name="Organism counts" />}
         {organisms.map((organism) => {
           const clause: Clause = { field: "organism_id", value: organism.identifier }
           return (
@@ -143,13 +148,19 @@ export const ConditionPanel = ({ q, condition, onAddTerm }: ConditionPanelProps)
 }
 
 /**
- * The count shown beside each value of a field: a skeleton while the counts load, and 0 for a value that no entry of the
- * condition has, since an aggregation leaves such values out.
+ * The count shown beside each value of a field: a skeleton while the counts load, a dash when they could not be loaded,
+ * and 0 for a value that no entry of the condition has, since an aggregation leaves such values out.
  */
-const countsOf = (elements: { value: string; count: number }[] | undefined) => {
+const countsOf = (elements: { value: string; count: number }[] | undefined, failed: boolean) => {
   const counts = new Map((elements ?? []).map((element) => [element.value, element.count]))
-  return (value: string): ReactNode => (elements === undefined ? <Skeleton className="w-10" /> : formatCount(counts.get(value) ?? 0))
+  return (value: string): ReactNode =>
+    elements === undefined ? failed ? "–" : <Skeleton className="w-10" /> : formatCount(counts.get(value) ?? 0)
 }
+
+/** The notice over the values of a section whose counts could not be loaded. */
+const CountsNotice = ({ query, name }: { query: { error: unknown; refetch: () => unknown }; name: string }) => (
+  <ErrorNotice {...loadFailureProps(query.error, "load the counts", () => void query.refetch(), name)} className="mb-1" />
+)
 
 /**
  * How many skeleton rows a section shows before the description of the dataset arrives. Only the first visit needs a
@@ -244,7 +255,7 @@ const KeywordSearch = ({ condition }: { condition: Condition }) => {
       if (!(await condition.setKeyword(next))) dropped.current = true
       setError(null)
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : String(caught))
+      setError(failureMessage(caught, "update the keywords"))
     } finally {
       applying.current = false
       if (dropped.current) setResync((n) => n + 1)

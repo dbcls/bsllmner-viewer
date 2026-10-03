@@ -186,7 +186,7 @@ def test_invalid_query_parameters_are_problem_documents(client: TestClient) -> N
     assert response.json()["type"] == "about:blank"
     assert response.json()["title"] == "Unprocessable Entity"
     invalid = client.get("/api/distribution", params={"field": "title"}).json()
-    assert invalid["type"] == "https://ddbj.nig.ac.jp/problems/invalid-dimension"
+    assert invalid["type"] == "https://ddbj.nig.ac.jp/problems/unknown-field"
 
 
 def test_distribution_returns_elements_with_clauses_and_the_count_without_a_term(client: TestClient) -> None:
@@ -394,8 +394,8 @@ def test_select_narrow_builds_the_documented_condition(client: TestClient) -> No
     ).json()
     assert kept["dsl"] == "(cell_line:A OR cell_line:B) AND organism_id:9606 AND cell_line:A"
     invalid = client.post("/api/dsl/select", json={"q": None, "clauses": cell, "mode": "other"})
-    assert invalid.status_code == 400
-    assert invalid.json()["type"] == "https://ddbj.nig.ac.jp/problems/invalid-ast"
+    assert invalid.status_code == 422
+    assert invalid.json()["type"] == "about:blank"
 
 
 def _two_disease_terms(client: TestClient) -> tuple[str, str]:

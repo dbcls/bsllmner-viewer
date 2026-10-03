@@ -1,9 +1,10 @@
 import { Fragment, useEffect, useState } from "react"
 
-import { useDataset, useDistribution, useEntries, useParsedCondition, useProjects } from "~/lib/api/queries"
+import { failureMessage, isInvalidCondition, loadFailureProps } from "~/lib/api/client"
+import { queryFailed, useDataset, useDistribution, useEntries, useParsedCondition, useProjects } from "~/lib/api/queries"
 import { formatCount } from "~/lib/format"
 import { unitLabel } from "~/lib/labels"
-import { ACTION_ICON, Button, Chip, cn, CopyButton, LinkButton, Segmented, Skeleton, TextArea } from "~/ui"
+import { ACTION_ICON, Button, Chip, cn, CopyButton, ErrorNotice, LinkButton, Segmented, Skeleton, TextArea } from "~/ui"
 
 import { clauseLabel, type ConditionGroup, conditionGroups, describeAst, groupLabel } from "./ast"
 import { TermIdHover } from "./term-id-hover"
@@ -121,8 +122,8 @@ const Tree = ({ groups, condition, termFields }: TreeProps) => (
 )
 
 type Total = {
-  /** Undefined while the count is on its way. */
-  count: number | undefined
+  /** Undefined while the count is on its way, and null when it cannot be had. */
+  count: number | null | undefined
   unit: string
 }
 
@@ -131,7 +132,7 @@ const Totals = ({ totals }: { totals: Total[] }) => (
   <p aria-live="polite" aria-busy={totals.some((total) => total.count === undefined) || undefined} className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
     {totals.map(({ count, unit }) => (
       <span key={unit} className="inline-flex items-baseline gap-1.5 whitespace-nowrap">
-        <span className="text-fs-body font-semibold text-ink tabular-nums">{count === undefined ? <Skeleton className="w-16" /> : formatCount(count)}</span>
+        <span className="text-fs-body font-semibold text-ink tabular-nums">{count === undefined ? <Skeleton className="w-16" /> : count === null ? "–" : formatCount(count)}</span>
         <span className="text-fs-label text-ink-soft">{unit}</span>
       </span>
     ))}
@@ -169,10 +170,12 @@ export const ConditionBar = ({ q, condition, onShare, onApi, exportMenu }: Condi
   const [draft, setDraft] = useState(q ?? "")
   const [draftError, setDraftError] = useState<string | null>(null)
   const draftParse = useParsedCondition(draftError === "pending" ? draft : null)
-  const biosamples = useEntries({ q, page: 1, perPage: 1 })
+  // The counts are not asked for while the condition cannot be read.
+  const readable = !condition.parseError
+  const biosamples = useEntries({ q, page: 1, perPage: 1 }, readable)
   // Experiments are not entries; the total of any distribution counted in experiments is the count of the condition.
-  const experiments = useDistribution({ field: "library_strategy", q, unit: "sra-experiment", selfExclusion: false, limit: 1 })
-  const projects = useProjects({ q, selfExclusion: false, sort: "biosampleCount:desc", page: 1, perPage: 1 })
+  const experiments = useDistribution({ field: "library_strategy", q, unit: "sra-experiment", selfExclusion: false, limit: 1 }, readable)
+  const projects = useProjects({ q, selfExclusion: false, sort: "biosampleCount:desc", page: 1, perPage: 1 }, readable)
   const groups = conditionGroups(condition.ast, condition.selected, condition.keywordText)
   const dataset = useDataset()
   const termFields = new Set(dataset.data?.dslFields.filter((field) => field.kind === "term").map((field) => field.name))
@@ -197,14 +200,15 @@ export const ConditionBar = ({ q, condition, onShare, onApi, exportMenu }: Condi
       setDraftError(null)
       condition.applyText(draftParse.data.q)
     } else if (draftParse.error) {
-      setDraftError(draftParse.error.message)
+      setDraftError(failureMessage(draftParse.error, "load the condition"))
     }
   }, [draftError, draftParse.data, draftParse.error, condition])
 
+  const countOf = (query: { isError: boolean; data: unknown }, count: number | undefined) => (!readable || queryFailed(query) ? null : count)
   const totals: Total[] = [
-    { count: biosamples.data?.pagination.total, unit: unitLabel("biosample") },
-    { count: experiments.data?.total, unit: unitLabel("sra-experiment") },
-    { count: projects.data?.pagination.total, unit: unitLabel("bioproject") },
+    { count: countOf(biosamples, biosamples.data?.pagination.total), unit: unitLabel("biosample") },
+    { count: countOf(experiments, experiments.data?.total), unit: unitLabel("sra-experiment") },
+    { count: countOf(projects, projects.data?.pagination.total), unit: unitLabel("bioproject") },
   ]
 
   return (
@@ -213,7 +217,13 @@ export const ConditionBar = ({ q, condition, onShare, onApi, exportMenu }: Condi
         <div className="flex flex-1 items-start gap-4 px-3 py-2">
           <div className="min-w-0 flex-1">
             {mode === "visual" ? (
-              condition.parsing && q ? (
+              condition.parseError ? (
+                isInvalidCondition(condition.parseError) ? (
+                  <ErrorNotice message={`The condition in the URL is not valid: ${condition.parseError.message}`} />
+                ) : (
+                  <ErrorNotice {...loadFailureProps(condition.parseError, "load the condition", condition.retryParse)} />
+                )
+              ) : condition.parsing && q ? (
                 <SkeletonRows count={estimatedRows(q)} />
               ) : groups.length === 0 ? (
                 <div className="flex min-h-7 items-center px-1 text-fs-body-sm text-ink-soft">No condition. All entries of the dataset are shown.</div>

@@ -6,7 +6,7 @@ RUN --mount=type=cache,target=/root/.npm npm ci
 COPY . .
 # The commit that the footer shows. After the copy, so that a new value rebuilds only the build step.
 ARG BSLLMNER_VIEWER_COMMIT=
-RUN npm run build
+RUN npm run build && node nginx/csp-hashes.mjs build/client/index.html /app/csp-hashes.conf
 
 FROM nginx:1.29-alpine
 # The image's entrypoint writes the nameservers into NGINX_LOCAL_RESOLVERS and fills the template with the filtered variables.
@@ -15,6 +15,6 @@ ENV NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1 \
     BSLLMNER_VIEWER_NOINDEX=false
 COPY --from=build /app/build/client /usr/share/nginx/html
 COPY --from=build /app/nginx/default.conf.template /etc/nginx/templates/default.conf.template
-COPY --from=build /app/nginx/proxy.inc /etc/nginx/proxy.inc
+COPY --from=build /app/nginx/proxy.inc /app/csp-hashes.conf /etc/nginx/
 COPY --from=build /app/nginx/robots.txt /app/nginx/robots.noindex.txt /usr/share/nginx/robots/
 EXPOSE 80

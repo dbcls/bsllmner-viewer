@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { pageCount, pageRange } from "~/ui/page-range"
+import { pageAfterLast, pageCount, pageRange } from "~/ui/page-range"
 
 describe("pageCount", () => {
   it("gives an empty list one page and rounds a partial page up", () => {
@@ -19,5 +19,19 @@ describe("pageRange", () => {
   it("gives null for an empty list and for a page after the last one", () => {
     expect(pageRange(1, 25, 0)).toBeNull()
     expect(pageRange(3, 25, 30)).toBeNull()
+  })
+})
+
+describe("pageAfterLast", () => {
+  it("gives the last page for a page past it and null otherwise", () => {
+    expect(pageAfterLast(6, 100, 20)).toBe(5)
+    expect(pageAfterLast(5, 100, 20)).toBeNull()
+    expect(pageAfterLast(2, 21, 20)).toBeNull()
+    expect(pageAfterLast(3, 21, 20)).toBe(2)
+  })
+
+  it("gives page 1 for an empty list", () => {
+    expect(pageAfterLast(2, 0, 20)).toBe(1)
+    expect(pageAfterLast(1, 0, 20)).toBeNull()
   })
 })

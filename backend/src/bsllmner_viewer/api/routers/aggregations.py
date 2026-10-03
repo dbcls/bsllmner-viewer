@@ -10,7 +10,7 @@ from fastapi import APIRouter, Query
 
 from bsllmner_viewer.api.common import aggregation_population, q_of, split_csv, version_ref
 from bsllmner_viewer.api.deps import FacetSelfExcludeParam, QParam, StoreDep, parse_condition
-from bsllmner_viewer.api.problems import ApiError
+from bsllmner_viewer.api.problems import AGGREGATION_SLUGS, ApiError, error_responses
 from bsllmner_viewer.api.queries import aggregate
 from bsllmner_viewer.api.queries.core import Population, population
 from bsllmner_viewer.api.queries.dimensions import (
@@ -22,6 +22,7 @@ from bsllmner_viewer.api.queries.dimensions import (
     labels_for,
 )
 from bsllmner_viewer.api.schemas import (
+    NAME_MAX_LENGTH,
     Cell,
     CrosstabResponse,
     DistributionResponse,
@@ -38,7 +39,11 @@ router = APIRouter(tags=["Aggregations"])
 
 UnitParam = Annotated[Unit, Query(description="Counting unit")]
 LimitParam = Annotated[int, Query(ge=1, le=200, description="Number of elements when they are not named")]
-MAX_ELEMENTS = 500
+MAX_ELEMENTS = 100
+CrosstabLimitParam = Annotated[
+    int, Query(ge=1, le=MAX_ELEMENTS, description="Number of elements of each axis when they are not named")
+]
+FieldParam = Annotated[str, Query(max_length=NAME_MAX_LENGTH)]
 
 
 def _ordered(dim: FieldDef, named: str | None, chosen: list[str], counts: dict[str, int]) -> list[str]:
@@ -76,6 +81,7 @@ def _elements(
 @router.get(
     "/distribution",
     operation_id="getDistribution",
+    responses=error_responses(bad_request=AGGREGATION_SLUGS, busy=True),
     response_model=DistributionResponse,
     summary="Counts per element of one dimension",
     description=(
@@ -87,7 +93,7 @@ def _elements(
 )
 def get_distribution(
     store: StoreDep,
-    field: str,
+    field: FieldParam,
     q: QParam = None,
     unit: UnitParam = "biosample",
     facet_self_exclude: FacetSelfExcludeParam = False,
@@ -100,7 +106,7 @@ def get_distribution(
     ast = parse_condition(store, q)
     pop_ast = aggregation_population(ast, [dim.name], facet_self_exclude)
     pop = population(pop_ast, store.field_set)
-    with store.cursor() as cur:
+    with store.cursor(heavy=True) as cur:
         chosen = _elements(cur, dim, elements, ast, pop, limit)
         total = aggregate.population_total(cur, pop, unit)
         counts = aggregate.element_counts(cur, pop, dim, chosen, unit)
@@ -128,13 +134,14 @@ def get_distribution(
 @router.get(
     "/crosstab",
     operation_id="getCrosstab",
+    responses=error_responses(bad_request=AGGREGATION_SLUGS, busy=True),
     response_model=CrosstabResponse,
     summary="Counts per cell of two dimensions with expected counts",
 )
 def get_crosstab(
     store: StoreDep,
-    row: str,
-    col: str,
+    row: FieldParam,
+    col: FieldParam,
     q: QParam = None,
     unit: UnitParam = "biosample",
     facet_self_exclude: FacetSelfExcludeParam = False,
@@ -145,7 +152,7 @@ def get_crosstab(
         str | None,
         Query(alias="colElements", description="Comma-separated column elements; omitted means the top columns"),
     ] = None,
-    limit: LimitParam = 10,
+    limit: CrosstabLimitParam = 10,
 ) -> CrosstabResponse:
     row_dim = dimension(store.field_set, row)
     col_dim = dimension(store.field_set, col)
@@ -154,7 +161,7 @@ def get_crosstab(
     ast = parse_condition(store, q)
     pop_ast = aggregation_population(ast, [row_dim.name, col_dim.name], facet_self_exclude)
     pop = population(pop_ast, store.field_set)
-    with store.cursor() as cur:
+    with store.cursor(heavy=True) as cur:
         rows_chosen = _elements(cur, row_dim, row_elements, ast, pop, limit)
         cols_chosen = _elements(cur, col_dim, col_elements, ast, pop, limit)
         result = aggregate.crosstab(cur, pop, row_dim, rows_chosen, col_dim, cols_chosen, unit)
@@ -207,6 +214,7 @@ def _year_span(years: Iterable[int]) -> list[int]:
 @router.get(
     "/trend",
     operation_id="getTrend",
+    responses=error_responses(bad_request=AGGREGATION_SLUGS, busy=True),
     response_model=TrendResponse,
     summary="Counts of the condition per BioSample publication year",
     description=(
@@ -220,7 +228,9 @@ def _year_span(years: Iterable[int]) -> list[int]:
 )
 def get_trend(
     store: StoreDep,
-    field: Annotated[str | None, Query(description="Dimension of the series; omitted means no series")] = None,
+    field: Annotated[
+        str | None, Query(max_length=NAME_MAX_LENGTH, description="Dimension of the series; omitted means no series")
+    ] = None,
     q: QParam = None,
     unit: UnitParam = "biosample",
     facet_self_exclude: FacetSelfExcludeParam = False,
@@ -242,7 +252,7 @@ def get_trend(
         total_ast if dim is None else aggregation_population(ast, [dim.name, date_dim.name], facet_self_exclude)
     )
     series: list[TrendSeries] = []
-    with store.cursor() as cur:
+    with store.cursor(heavy=True) as cur:
         total_counts = aggregate.trend_total(cur, total_pop, unit)
         all_counts = (
             total_counts if total_ast is None else aggregate.trend_total(cur, population(None, store.field_set), unit)

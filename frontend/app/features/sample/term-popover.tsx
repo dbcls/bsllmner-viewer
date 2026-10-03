@@ -32,7 +32,7 @@ export const TermPopover = ({ label, termId, clauses }: TermPopoverProps) => (
 /** The panel of a term with what the api gives for it, asked for when the panel opens, and the link to its BioSamples. */
 const TermPanelLoader = ({ label, termId, clauses }: TermPopoverProps) => {
   const term = useTerm(termId)
-  const href = useConditionHref(clauses)
+  const { href, failed } = useConditionHref(clauses)
   const text = (
     <>
       Show BioSamples with this term <Icon name={ACTION_ICON.goTo} />
@@ -49,7 +49,7 @@ const TermPanelLoader = ({ label, termId, clauses }: TermPopoverProps) => {
             {text}
           </Link>
         ) : (
-          <span className="text-brand">{text}</span>
+          <span aria-disabled={failed || undefined} className={failed ? "text-ink-soft" : "text-brand"}>{text}</span>
         )
       }
     />

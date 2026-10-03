@@ -90,6 +90,9 @@ const UNIT_SET: Record<Unit, true> = {
 
 export const UNITS = Object.keys(UNIT_SET) as Unit[]
 
+/** The most terms that the api takes for one dimension of an aggregation. A URL that names more keeps the first ones. */
+export const AXIS_TERM_LIMIT = 100
+
 /** An empty list reads as no explicit terms, the same as a missing parameter. */
 const list = (value: string | null): string[] | null => {
   const terms = value === null ? [] : value.split(",").map((s) => s.trim()).filter(Boolean)
@@ -124,8 +127,8 @@ export const readState = (params: URLSearchParams): WorkspaceState => {
     sort: PROJECT_SORTS.includes(sort as ProjectSort) ? (sort as ProjectSort) : DEFAULTS.sort,
     row,
     col,
-    rowTerms: list(params.get("row_terms")),
-    colTerms: col === named ? list(params.get("col_terms")) : null,
+    rowTerms: list(params.get("row_terms"))?.slice(0, AXIS_TERM_LIMIT) ?? null,
+    colTerms: col === named ? (list(params.get("col_terms"))?.slice(0, AXIS_TERM_LIMIT) ?? null) : null,
     color: params.get("color") === "ratio" ? "ratio" : "count",
     trendField: params.get("trend_field") || DEFAULTS.trendField,
     trendTerms: list(params.get("trend_terms"))?.slice(0, TREND_LIMIT) ?? null,

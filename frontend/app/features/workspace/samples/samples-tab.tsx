@@ -1,19 +1,21 @@
 import { Fragment, type MouseEvent } from "react"
 import { Link, useNavigate } from "react-router"
 
-import { useDataset, useEntries } from "~/lib/api/queries"
+import { loadFailureProps } from "~/lib/api/client"
+import { queryFailed, useDataset, useEntries } from "~/lib/api/queries"
 import type { AnnotationValue, EntryItem } from "~/lib/api/types"
 import { backLinkState } from "~/lib/back-link"
 import { ddbjSearchHref, ncbiHref } from "~/lib/external-links"
 import { fieldLabel, hasStatusValue, statusInfo, VALUE_STATUSES } from "~/lib/labels"
 import type { TablePerPage } from "~/lib/workspace-state"
-import { Card, CardFooter, CardHeader, cn, ExternalLink, FrozenTd, HelpHint, InlineLabel, Pager, StatusGlyph, StatusMeanings, StatusPill, TableScroller } from "~/ui"
+import { Card, CardFooter, CardHeader, cn, EmptyNotice, ErrorNotice,ExternalLink, FrozenTd, HelpHint, InlineLabel, Pager, StatusGlyph, StatusMeanings, StatusPill, TableScroller } from "~/ui"
 
 import { AssayTags } from "../assay-tags"
 import { PerPageChooser } from "../per-page-chooser"
 import { SkeletonTableRows } from "../skeleton-rows"
 import type { WorkspaceState } from "../state"
-import { TABLE_CELL, Th } from "../table"
+import { TABLE_CELL, TableMessageRow, Th } from "../table"
+import { usePastEnd } from "../use-past-end"
 import { useTableTop } from "../use-table-top"
 
 /** The page of a BioSample. */
@@ -34,17 +36,21 @@ const FROZEN_WIDTH = "w-36 min-w-36 max-w-36"
 type SamplesTabProps = {
   state: WorkspaceState
   onPage: (page: number) => void
+  /** Moves to the last page, in the place of the current page of the URL, when the page is past it. */
+  onPastEnd: (page: number, from: { q: string | null; page: number }) => void
   onPerPage: (perPage: TablePerPage) => void
   search: string
 }
 
 /** The entry list: one row per BioSample, filtered by the full condition. */
-export const SamplesTab = ({ state, onPage, onPerPage, search }: SamplesTabProps) => {
+export const SamplesTab = ({ state, onPage, onPastEnd, onPerPage, search }: SamplesTabProps) => {
   const navigate = useNavigate()
   const dataset = useDataset()
   const fields = dataset.data?.fields.map((f) => f.name) ?? []
   const entries = useEntries({ q: state.q, page: state.page, perPage: state.perPage })
   const total = entries.data?.pagination.total
+  const failed = queryFailed(entries)
+  usePastEnd(entries, state.page, state.perPage, state.q, onPastEnd)
   const table = useTableTop(onPage)
   // A row opens its BioSample as its link does: a click with Cmd or Ctrl, or with the middle button, opens a new tab, which
   // has no list to return to; a plain click opens it here, with the list to return to.
@@ -69,7 +75,7 @@ export const SamplesTab = ({ state, onPage, onPerPage, search }: SamplesTabProps
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-2">
           <PerPageChooser value={state.perPage} onChange={onPerPage} />
-          <Pager page={state.page} perPage={state.perPage} total={total} onChange={onPage} />
+          <Pager page={state.page} perPage={state.perPage} total={total} onChange={onPage} failed={failed} />
         </div>
       </CardHeader>
       <TableScroller>
@@ -91,7 +97,19 @@ export const SamplesTab = ({ state, onPage, onPerPage, search }: SamplesTabProps
             </tr>
           </thead>
           <tbody>
-            {entries.data === undefined && <SkeletonTableRows rows={state.perPage} columns={[...LEAD_SKELETONS, ...fields.map(() => "w-24"), "w-20"]} frozen />}
+            {failed && (
+              <TableMessageRow columns={COLUMNS + fields.length}>
+                <div className="p-4">
+                  <ErrorNotice {...loadFailureProps(entries.error, "load the BioSamples", () => void entries.refetch())} />
+                </div>
+              </TableMessageRow>
+            )}
+            {entries.data?.pagination.total === 0 && (
+              <TableMessageRow columns={COLUMNS + fields.length}>
+                <EmptyNotice>No BioSamples match this condition.</EmptyNotice>
+              </TableMessageRow>
+            )}
+            {entries.data === undefined && !failed && <SkeletonTableRows rows={state.perPage} columns={[...LEAD_SKELETONS, ...fields.map(() => "w-24"), "w-20"]} frozen />}
             {(entries.data?.items ?? []).map((row) => (
               <tr
                 key={row.identifier}
@@ -139,12 +157,15 @@ export const SamplesTab = ({ state, onPage, onPerPage, search }: SamplesTabProps
       </TableScroller>
       <CardFooter>
         <div className="ml-auto">
-          <Pager page={state.page} perPage={state.perPage} total={total} onChange={table.onFootPage} />
+          <Pager page={state.page} perPage={state.perPage} total={total} onChange={table.onFootPage} failed={failed} />
         </div>
       </CardFooter>
     </Card>
   )
 }
+
+/** The columns of the table besides the annotation columns: BioSample, Title, Organism, Assay, BioProject, Published, and Links. */
+const COLUMNS = 7
 
 /** The widths of the skeletons of the columns before the annotation columns, near the widths of their values. */
 const LEAD_SKELETONS = ["w-24", "w-48", "w-24", "w-16", "w-20", "w-20"]

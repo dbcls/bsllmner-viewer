@@ -38,12 +38,20 @@ def test_select_that_makes_q_too_long_is_the_problem_of_a_too_long_parse(client:
 
 
 def test_keyword_that_makes_q_too_long_is_the_problem_of_a_too_long_parse(client: TestClient) -> None:
-    response = client.post("/api/dsl/keyword", json={"q": None, "keyword": "a" * (MAX_LENGTH + 1)})
+    q = " OR ".join(["organism_id:9606"] * 205)
+    assert len(q) == MAX_LENGTH
+    response = client.post("/api/dsl/keyword", json={"q": q, "keyword": "abcdefghijkl"})
     assert response.status_code == 400
     assert response.json()["type"] == f"{PROBLEM}unexpected-token"
     ok = client.post("/api/dsl/keyword", json={"q": None, "keyword": "a" * MAX_LENGTH})
     assert ok.status_code == 200
     assert client.get("/api/dsl/parse", params={"q": ok.json()["dsl"]}).status_code == 200
+
+
+def test_keyword_longer_than_the_limit_is_unprocessable(client: TestClient) -> None:
+    response = client.post("/api/dsl/keyword", json={"q": None, "keyword": "a" * (MAX_LENGTH + 1)})
+    assert response.status_code == 422
+    assert response.json()["type"] == "about:blank"
 
 
 @pytest.mark.parametrize("value", ["09606", "+9606", "\uff19\uff16\uff10\uff16", "2147483648", "9" * 39])

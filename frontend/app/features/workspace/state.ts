@@ -5,8 +5,8 @@ import { type Patch, readState, type WorkspaceState, writeState } from "~/lib/wo
 
 export { type HeatmapColor, type Patch, type Tab, TAB_LABELS, TABS, workspaceSearch,type WorkspaceState } from "~/lib/workspace-state"
 
-/** Writes a patch to the URL. */
-export type Update = (patch: Patch) => void
+/** Writes a patch to the URL. With `replace`, the change takes the place of the current history entry instead of adding one. */
+export type Update = (patch: Patch, options?: { replace?: boolean }) => void
 
 /**
  * The workspace state read from the URL, an updater that writes a patch back to it, and a reader of the latest state.
@@ -24,7 +24,7 @@ export const useWorkspaceState = (): [WorkspaceState, Update, () => WorkspaceSta
   }, [params])
   const latest = useCallback(() => readState(latestParams.current), [])
   const update = useCallback<Update>(
-    (patch) => {
+    (patch, options) => {
       const next: WorkspaceState = { ...readState(latestParams.current), ...patch }
       // The page keeps its scroll position: a change of the condition or of a view redraws the views in place.
       if ("q" in patch && !("page" in patch)) next.page = 1
@@ -32,7 +32,7 @@ export const useWorkspaceState = (): [WorkspaceState, Update, () => WorkspaceSta
       // A patch that changes nothing does not add a history entry.
       if (written.toString() === latestParams.current.toString()) return
       latestParams.current = written
-      setParams(latestParams.current, { preventScrollReset: true })
+      setParams(latestParams.current, { preventScrollReset: true, ...(options?.replace ? { replace: true } : {}) })
     },
     [setParams],
   )

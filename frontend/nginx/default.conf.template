@@ -1,3 +1,4 @@
+include /etc/nginx/csp-hashes.conf;
 # The nginx image replaces ${BSLLMNER_VIEWER_*} and ${NGINX_LOCAL_RESOLVERS} when the container starts.
 
 map "${BSLLMNER_VIEWER_NOINDEX}" $robots_file {
@@ -10,12 +11,64 @@ map "${BSLLMNER_VIEWER_NOINDEX}" $x_robots_tag {
     default "";
 }
 
-# One add_header set at the server level, because a location with its own add_header drops the inherited ones.
-map $uri $cache_control {
-    ~^/assets/ "public, max-age=31536000, immutable";
-    ~^/api     "";
-    default    no-cache;
+# The Swagger UI and ReDoc pages of the api load their scripts, styles, and fonts from the CDNs that FastAPI uses by default.
+map $uri $csp {
+    ~^/api(/redoc)?$ "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; style-src 'self' https://cdn.jsdelivr.net https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://fastapi.tiangolo.com https://cdn.redoc.ly; worker-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'";
+    ~^/api/     "default-src 'none'; frame-ancestors 'none'";
+    default     "default-src 'self'; script-src 'self' $csp_script_hashes; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 }
+
+# One add_header set at the server level, because a location with its own add_header drops the inherited ones.
+# A 404 under /assets/ is not cached for long.
+map "$status:$uri" $cache_control_v {
+    ~^(200|206|304):/assets/ "public, max-age=31536000, immutable";
+    ~^[0-9]+:/api            "";
+    default                  no-cache;
+}
+
+# The api sets these headers for its own responses. nginx sets them for the errors that it returns.
+map $status $retry_after {
+    429     1;
+    default "";
+}
+
+# The request ID of the gateway is used when it is safe to put in a JSON body. Otherwise nginx makes its own.
+map $http_x_request_id $problem_request_id {
+    "~^[A-Za-z0-9._-]{1,128}$" $http_x_request_id;
+    default                  $request_id;
+}
+
+map $status $nginx_request_id {
+    413     $problem_request_id;
+    429     $problem_request_id;
+    default "";
+}
+
+# The api allows every origin. nginx does the same for the errors that it returns.
+map $status $cors_origin {
+    413     "*";
+    429     "*";
+    default "";
+}
+
+map $status $cors_expose {
+    413     "Retry-After, X-Request-ID";
+    429     "Retry-After, X-Request-ID";
+    default "";
+}
+
+map $http_x_forwarded_proto $hsts {
+    https   "max-age=31536000";
+    default "";
+}
+
+# The path in the body of a 413 response is limited to characters that need no JSON escaping.
+map $uri $problem_instance {
+    ~^(/[A-Za-z0-9_.~/-]*)$ $1;
+    default                 /api;
+}
+
+limit_conn_zone $binary_remote_addr zone=per_client:10m;
 
 map $http_x_forwarded_proto $forwarded_proto {
     ""      $scheme;
@@ -40,20 +93,49 @@ server {
     gzip_min_length 1024;
     gzip_types text/plain text/css text/markdown text/tab-separated-values application/javascript application/json application/x-ndjson image/svg+xml;
 
-    add_header Cache-Control $cache_control always;
+    add_header Cache-Control $cache_control_v always;
+    add_header Content-Security-Policy $csp always;
+    add_header Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()" always;
     add_header X-Content-Type-Options nosniff always;
     add_header X-Frame-Options DENY always;
     add_header Referrer-Policy strict-origin-when-cross-origin always;
     add_header X-Robots-Tag $x_robots_tag always;
+    add_header Strict-Transport-Security $hsts always;
+    add_header Retry-After $retry_after always;
+    add_header X-Request-ID $nginx_request_id always;
+    add_header Access-Control-Allow-Origin $cors_origin always;
+    add_header Access-Control-Expose-Headers $cors_expose always;
 
-    location = /api {
+    # The gateway and the container networks are private addresses. Their X-Real-IP is the address of the client.
+    # For a peer outside these ranges, the address of the peer is the address of the client.
+    set_real_ip_from 10.0.0.0/8;
+    set_real_ip_from 172.16.0.0/12;
+    set_real_ip_from 192.168.0.0/16;
+    set_real_ip_from 127.0.0.0/8;
+    set_real_ip_from ::1;
+    set_real_ip_from fc00::/7;
+    real_ip_header X-Real-IP;
+
+    # A body that the api accepts is far smaller than this limit.
+    client_max_body_size 64k;
+
+    location ~ ^/api(/|$) {
+        limit_conn per_client 100;
+        limit_conn_status 429;
+        error_page 413 @payload_too_large;
+        error_page 429 @too_many_requests;
         proxy_pass $api_upstream;
         include /etc/nginx/proxy.inc;
     }
 
-    location /api/ {
-        proxy_pass $api_upstream;
-        include /etc/nginx/proxy.inc;
+    location @payload_too_large {
+        default_type application/problem+json;
+        return 413 '{"type":"about:blank","title":"Content Too Large","status":413,"detail":"The request body is larger than 64 KiB.","instance":"$problem_instance","timestamp":"$time_iso8601","requestId":"$problem_request_id"}';
+    }
+
+    location @too_many_requests {
+        default_type application/problem+json;
+        return 429 '{"type":"about:blank","title":"Too Many Requests","status":429,"detail":"This client has too many requests in progress.","instance":"$problem_instance","timestamp":"$time_iso8601","requestId":"$problem_request_id"}';
     }
 
     location = /robots.txt {
@@ -63,14 +145,22 @@ server {
 
     location = /llms.txt {
         types { }
-        default_type "text/markdown; charset=utf-8";
+        default_type text/markdown;
+        charset utf-8;
+        charset_types text/markdown;
     }
 
     location /assets/ {
         try_files $uri =404;
     }
 
+    # The routes of the single-page application. A path that is neither a file nor a route is a 404.
+    location ~ ^/(entries(/[^/]+)?/?)?$ {
+        try_files /index.html =404;
+    }
+
     location / {
-        try_files $uri /index.html;
+        try_files $uri =404;
+        error_page 404 /index.html;
     }
 }

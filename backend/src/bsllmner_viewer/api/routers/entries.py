@@ -2,18 +2,21 @@
 
 from __future__ import annotations
 
+from typing import Annotated
+
 import orjson
-from fastapi import APIRouter
+from fastapi import APIRouter, Path
 
 from bsllmner_viewer.api.common import q_of, version_ref
 from bsllmner_viewer.api.deps import PageParam, PerPageParam, QParam, StoreDep, parse_condition
-from bsllmner_viewer.api.problems import NOT_FOUND_RESPONSE, ApiError
+from bsllmner_viewer.api.problems import DSL_SLUGS, ApiError, error_responses
 from bsllmner_viewer.api.queries import entries as rq
 from bsllmner_viewer.api.queries.core import population
 from bsllmner_viewer.api.queries.dimensions import clauses_for, dimension
 from bsllmner_viewer.api.queries.entries import organism_of
 from bsllmner_viewer.api.record_names import record_name
 from bsllmner_viewer.api.schemas import (
+    ACCESSION_MAX_LENGTH,
     EntriesResponse,
     EntryAnnotation,
     EntryBioProject,
@@ -33,7 +36,7 @@ router = APIRouter(tags=["Entries"])
 @router.get(
     "/entries/{type}",
     operation_id="listEntries",
-    responses=NOT_FOUND_RESPONSE,
+    responses=error_responses(bad_request=DSL_SLUGS, not_found=True, busy=True),
     response_model=EntriesResponse,
     summary="BioSample entries that match the condition",
 )
@@ -46,7 +49,7 @@ def list_entries(
 ) -> EntriesResponse:
     ast = parse_condition(store, q)
     pop = population(ast, store.field_set)
-    with store.cursor() as cur:
+    with store.cursor(heavy=True) as cur:
         total = rq.count_entries(cur, pop)
         keys = rq.page_keys(cur, pop, page, per_page) if (page - 1) * per_page < total else []
         rows = rq.entry_rows(cur, pop, keys, tuple(f.name for f in store.fields))
@@ -62,11 +65,11 @@ def list_entries(
 @router.get(
     "/entries/biosample/{accession}",
     operation_id="getEntry",
-    responses=NOT_FOUND_RESPONSE,
+    responses=error_responses(not_found=True),
     response_model=EntryResponse,
     summary="A BioSample with its annotations and evidence",
 )
-def get_entry(store: StoreDep, accession: str) -> EntryResponse:
+def get_entry(store: StoreDep, accession: Annotated[str, Path(max_length=ACCESSION_MAX_LENGTH)]) -> EntryResponse:
     with store.cursor() as cur:
         row = cur.execute(
             "SELECT b.accession, b.title, b.organism_id, b.organism_name, b.date_published, "

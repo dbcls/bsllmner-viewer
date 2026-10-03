@@ -161,7 +161,7 @@ export default tseslint.config(
   },
 
   {
-    files: ["**/*.config.{ts,js,mjs}"],
+    files: ["**/*.config.{ts,js,mjs}", "nginx/**/*.mjs"],
     languageOptions: { globals: globals.node },
     rules: {
       "func-style": "off",

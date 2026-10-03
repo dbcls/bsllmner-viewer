@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react"
 import { useLocation } from "react-router"
 
+import { isInvalidCondition } from "~/lib/api/client"
 import { useDataset, useEntries } from "~/lib/api/queries"
 import type { TermHit } from "~/lib/api/types"
 import { copyText } from "~/lib/export"
-import { Alert } from "~/ui"
+import { Alert, Card } from "~/ui"
 
 import { ConditionBar } from "./condition-bar"
 import { ConditionPanel } from "./condition-panel"
@@ -18,6 +19,7 @@ import { Tabs } from "./tabs"
 import { TermPicker } from "./term-picker/term-picker"
 import { TrendTab } from "./trend/trend-tab"
 import { useCondition } from "./use-condition"
+import { replaceIfCurrent } from "./use-past-end"
 
 /**
  * How long an alert stays. It is at the top of the viewport, away from the control that raised it, so it stays long
@@ -28,16 +30,8 @@ const ALERT_MS = 4000
 export const WorkspacePage = () => {
   const [state, update, latest] = useWorkspaceState()
   const location = useLocation()
-  const condition = useCondition(state.q, update, latest)
-  const dataset = useDataset()
-  const fields = dataset.data?.fields.map((f) => f.name) ?? []
-  const [pickerOpen, setPickerOpen] = useState(false)
-  const [apiOpen, setApiOpen] = useState(false)
-  // Pasted entries of an axis are being resolved. This page outlives the views, so a view that is left and opened again still knows.
-  const [replacing, setReplacing] = useState(false)
   const [alert, setAlert] = useState<string | null>(null)
   const alertTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const entries = useEntries({ q: state.q, page: 1, perPage: 1 })
 
   const showAlert = useCallback((message: string) => {
     setAlert(message)
@@ -45,9 +39,22 @@ export const WorkspacePage = () => {
     alertTimer.current = setTimeout(() => setAlert(null), ALERT_MS)
   }, [])
 
+  const condition = useCondition(state.q, update, latest, showAlert)
+  // The views are not asked for while the condition cannot be read: the api would refuse every request the same way.
+  const broken = Boolean(condition.parseError)
+  const dataset = useDataset()
+  const fields = dataset.data?.fields.map((f) => f.name) ?? []
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const [apiOpen, setApiOpen] = useState(false)
+  // Pasted entries of an axis are being resolved. This page outlives the views, so a view that is left and opened again still knows.
+  const [replacing, setReplacing] = useState(false)
+  const entries = useEntries({ q: state.q, page: 1, perPage: 1 }, !broken)
+
   useEffect(() => () => {
     if (alertTimer.current) clearTimeout(alertTimer.current)
   }, [])
+
+  const pastEnd = replaceIfCurrent(latest, update)
 
   const onPick = (hit: TermHit) => {
     void condition.toggle(hit.clauses)
@@ -74,10 +81,23 @@ export const WorkspacePage = () => {
         <main className="min-w-0 flex-1 pb-4">
           <Tabs state={state} onTab={(tab) => update({ tab, page: 1 })} />
           <div className="px-workspace-gutter pt-4">
-            {state.tab === "samples" && (
-              <SamplesTab state={state} onPage={(page) => update({ page })} onPerPage={(perPage) => update({ perPage, page: 1 })} search={location.search} />
+            {broken && (
+              <Card padding="lg">
+                <p className="text-fs-body-sm text-ink-soft">
+                  {isInvalidCondition(condition.parseError) ? "Fix the condition to see results." : "The results are shown when the condition has loaded."}
+                </p>
+              </Card>
             )}
-            {state.tab === "distribution" && (
+            {!broken && state.tab === "samples" && (
+              <SamplesTab
+                state={state}
+                onPage={(page) => update({ page })}
+                onPastEnd={pastEnd}
+                onPerPage={(perPage) => update({ perPage, page: 1 })}
+                search={location.search}
+              />
+            )}
+            {!broken && state.tab === "distribution" && (
               <DistributionTab
                 state={state}
                 condition={condition}
@@ -85,7 +105,7 @@ export const WorkspacePage = () => {
                 onTermIds={() => update({ termIds: !state.termIds })}
               />
             )}
-            {state.tab === "heatmap" && (
+            {!broken && state.tab === "heatmap" && (
               <HeatmapTab
                 state={state}
                 condition={condition}
@@ -96,7 +116,7 @@ export const WorkspacePage = () => {
                 onAlert={showAlert}
               />
             )}
-            {state.tab === "trend" && (
+            {!broken && state.tab === "trend" && (
               <TrendTab
                 state={state}
                 condition={condition}
@@ -107,11 +127,12 @@ export const WorkspacePage = () => {
                 onAlert={showAlert}
               />
             )}
-            {state.tab === "projects" && (
+            {!broken && state.tab === "projects" && (
               <ProjectsTab
                 state={state}
                 condition={condition}
                 onPage={(page) => update({ page })}
+                onPastEnd={pastEnd}
                 onSort={(sort) => update({ sort, page: 1 })}
                 onPerPage={(perPage) => update({ perPage, page: 1 })}
               />

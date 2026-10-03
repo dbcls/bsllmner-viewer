@@ -9,9 +9,20 @@ services:
     image: bsllmner-viewer-api
     volumes:
       - ${BSLLMNER_VIEWER_STORE_DIR:?set to the directory holding the store files}:/data/store:ro
+      # DuckDB spills to disk when a query needs more than the memory limit. The store directory is read-only, so the
+      # spill goes to a volume on disk (a tmpfs would take memory).
+      - api-temp:/var/tmp/bsllmner-viewer
     environment:
       BSLLMNER_VIEWER_STORE: /data/store/${BSLLMNER_VIEWER_STORE_FILE:-current.duckdb}
       BSLLMNER_VIEWER_THREADS: ${BSLLMNER_VIEWER_THREADS:-8}
+      BSLLMNER_VIEWER_TEMP_DIRECTORY: /var/tmp/bsllmner-viewer
+      # An empty value selects the default of the api.
+      BSLLMNER_VIEWER_MEMORY_LIMIT: ${BSLLMNER_VIEWER_MEMORY_LIMIT:-}
+      BSLLMNER_VIEWER_MAX_TEMP_SIZE: ${BSLLMNER_VIEWER_MAX_TEMP_SIZE:-}
+      BSLLMNER_VIEWER_QUERY_TIMEOUT: ${BSLLMNER_VIEWER_QUERY_TIMEOUT:-}
+      BSLLMNER_VIEWER_MAX_QUERIES: ${BSLLMNER_VIEWER_MAX_QUERIES:-}
+      BSLLMNER_VIEWER_MAX_EXPORTS: ${BSLLMNER_VIEWER_MAX_EXPORTS:-}
+      BSLLMNER_VIEWER_QUEUE_TIMEOUT: ${BSLLMNER_VIEWER_QUEUE_TIMEOUT:-}
     command: >
       uv run uvicorn bsllmner_viewer.api.app:create_app --factory
       --host 0.0.0.0 --port 8000 --workers ${BSLLMNER_VIEWER_API_WORKERS:-2}
@@ -39,3 +50,6 @@ services:
     depends_on:
       - api
     restart: always
+
+volumes:
+  api-temp:

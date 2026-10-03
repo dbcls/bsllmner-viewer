@@ -9,7 +9,7 @@ import duckdb
 
 from bsllmner_viewer.api.problems import ApiError
 from bsllmner_viewer.api.queries.core import Population, population_years
-from bsllmner_viewer.api.schemas import Clause
+from bsllmner_viewer.api.schemas import NAME_MAX_LENGTH, Clause
 from bsllmner_viewer.dsl.canonical import ORGANISM_ID_MAX, YEAR_MAX, YEAR_MIN, canonical_int
 from bsllmner_viewer.dsl.fields import STATUS_GROUPS, FieldDef, FieldKind, FieldSet, expand_status
 
@@ -28,9 +28,20 @@ class Membership:
 
 def dimension(fields: FieldSet, name: str) -> FieldDef:
     field = fields.get(name)
-    if field is None or field.kind not in DIMENSION_KINDS:
-        raise ApiError("invalid-dimension", 400, f"{name!r} is not an aggregation dimension")
+    if field is None:
+        raise ApiError("unknown-field", 400, f"unknown field {name!r}; the fields are {_names(fields, None)}")
+    if field.kind not in DIMENSION_KINDS:
+        raise ApiError(
+            "invalid-dimension",
+            400,
+            f"{name!r} is not an aggregation dimension; the dimensions are {_names(fields, DIMENSION_KINDS)}",
+        )
     return field
+
+
+def _names(fields: FieldSet, kinds: frozenset[FieldKind] | None) -> str:
+    found = (fields.get(name) for name in fields.names())
+    return ", ".join(f.name for f in found if f is not None and (kinds is None or f.kind in kinds))
 
 
 def membership(dim: FieldDef, elements: list[str]) -> Membership:
@@ -119,7 +130,11 @@ def default_elements(
 
 
 def check_elements(dim: FieldDef, elements: list[str]) -> None:
-    """Reject a named organism or year element that is not a canonical decimal number in range."""
+    """Reject a named element that is too long, and an organism or year element that is not a canonical decimal number
+    in range."""
+    for element in elements:
+        if len(element) > NAME_MAX_LENGTH:
+            raise ApiError("invalid-element", 400, f"an element has at most {NAME_MAX_LENGTH} characters")
     if dim.kind == "organism":
         low, high = 0, ORGANISM_ID_MAX
     elif dim.kind == "date":

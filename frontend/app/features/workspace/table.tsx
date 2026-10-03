@@ -27,3 +27,21 @@ export const Th = ({ children, width, frozen = false, align = "left" }: ThProps)
   )
   return frozen ? <FrozenTh className={className}>{children}</FrozenTh> : <th className={className}>{children}</th>
 }
+
+type TableMessageRowProps = {
+  /** The number of columns of the table. */
+  columns: number
+  children: ReactNode
+}
+
+/**
+ * A row that holds one message in place of the rows of a table: that nothing matches, or that the rows could not be
+ * loaded. The message brings its own space. The message stays at the left edge of the visible part, so that it is in view when the table scrolls sideways.
+ */
+export const TableMessageRow = ({ columns, children }: TableMessageRowProps) => (
+  <tr>
+    <td colSpan={columns} className="p-0">
+      <div className="sticky left-0 w-fit max-w-full">{children}</div>
+    </td>
+  </tr>
+)
