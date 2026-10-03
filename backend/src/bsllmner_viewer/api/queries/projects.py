@@ -2,21 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Literal
-
 import duckdb
 
 from bsllmner_viewer.api.queries.core import Population
-
-type ProjectSort = Literal[
-    "biosampleCount:desc",
-    "biosampleCount:asc",
-    "experimentCount:desc",
-    "experimentCount:asc",
-]
+from bsllmner_viewer.api.schemas import ProjectSort
 
 # A count breaks ties with the other count in the same direction, then with the accession, so each order is total.
-_ORDER = {
+_ORDER: dict[ProjectSort, str] = {
     "biosampleCount:desc": "n_biosample DESC, n_experiment DESC, bioproject",
     "biosampleCount:asc": "n_biosample, n_experiment, bioproject",
     "experimentCount:desc": "n_experiment DESC, n_biosample DESC, bioproject",

@@ -13,6 +13,7 @@ import duckdb
 import orjson
 
 from bsllmner_viewer.dsl.fields import FieldSet
+from bsllmner_viewer.store.organisms import ORGANISM_NAMES
 from bsllmner_viewer.store.schema import SCHEMA_VERSION
 from bsllmner_viewer.store.version import DatasetVersion, read_version
 
@@ -54,6 +55,9 @@ class Store:
             ).fetchall()
         )
         self.field_set = FieldSet(tuple(f.name for f in self.fields))
+        self.organism_names: dict[int, str | None] = {
+            int(organism_id): name for organism_id, name in self._con.execute(ORGANISM_NAMES).fetchall()
+        }
         self.target_assays: tuple[str, ...] = tuple(self.version.target_assays)
 
     @contextmanager

@@ -6,11 +6,11 @@ import { useDataset, useEntry } from "~/lib/api/queries"
 import type { EntryResponse } from "~/lib/api/types"
 import { assayDotClass } from "~/lib/assays"
 import { backHref } from "~/lib/back-link"
-import { fieldLabel, STATUS_ORDER, statusInfo } from "~/lib/labels"
-import { Card, cn, ExternalLink, HelpHint, PageHeading, Pager, SectionHeading, Skeleton, StatusPill, Tag } from "~/ui"
+import { chipAtlasHref, ddbjSearchHref, ncbiHref, taxonomyHref } from "~/lib/external-links"
+import { fieldLabel, hasStatusValue, statusInfo, VALUE_STATUSES } from "~/lib/labels"
+import { Card, cn, ExternalLink, HelpHint, PageHeading, Pager, SectionHeading, Skeleton, StatusMeanings, StatusPill, Tag } from "~/ui"
 
 import { segmentText, type Span } from "./evidence"
-import { taxonomyHref } from "./links"
 import { TermPopover } from "./term-popover"
 
 type SamplePageProps = {
@@ -37,7 +37,7 @@ export const SamplePage = ({ accession }: SamplePageProps) => {
   if (!entry.data) {
     const notFound = entry.error instanceof ApiError && entry.error.problem.status === 404
     return (
-      <div className="mx-auto w-full max-w-content-max px-page-gutter py-4">
+      <PageFrame>
         <BackLink href={back} />
         <div className="mt-3">
           <Card padding="lg">
@@ -47,14 +47,14 @@ export const SamplePage = ({ accession }: SamplePageProps) => {
             </div>
           </Card>
         </div>
-      </div>
+      </PageFrame>
     )
   }
 
   const data = entry.data
 
   return (
-    <div className="mx-auto w-full max-w-content-max px-page-gutter py-4">
+    <PageFrame>
       <BackLink href={back} />
       <div className="mt-3 mb-4">
         <Card padding="lg">
@@ -84,16 +84,23 @@ export const SamplePage = ({ accession }: SamplePageProps) => {
         <BioProjectsCard key={`bioprojects:${data.identifier}`} bioprojects={data.bioprojects} />
         <ExperimentsCard key={`experiments:${data.identifier}`} experiments={data.experiments} targetAssays={targetAssays} />
       </div>
-    </div>
+    </PageFrame>
   )
 }
 
+/** The frame of the page: centered at the content width, with the gutter of the pages. */
+const PageFrame = ({ busy = false, children }: { busy?: boolean; children: ReactNode }) => (
+  <div aria-busy={busy || undefined} className="mx-auto w-full max-w-content-max px-page-gutter py-4">
+    {children}
+  </div>
+)
+
 const EntryLinks = ({ accession }: { accession: string }) => (
   <div className="flex shrink-0 gap-2">
-    <ExternalLink kind="button" href={`https://ddbj.nig.ac.jp/search/entry/biosample/${accession}`}>
+    <ExternalLink kind="button" href={ddbjSearchHref("biosample", accession)}>
       DDBJ Search
     </ExternalLink>
-    <ExternalLink kind="button" href={`https://www.ncbi.nlm.nih.gov/biosample/${accession}`}>
+    <ExternalLink kind="button" href={ncbiHref("biosample", accession)}>
       NCBI BioSample
     </ExternalLink>
   </div>
@@ -101,7 +108,7 @@ const EntryLinks = ({ accession }: { accession: string }) => (
 
 /** The name of the page: the accession of the BioSample. */
 const AccessionHeading = ({ accession }: { accession: string }) => (
-  <PageHeading rule="edge">
+  <PageHeading>
     <span className="font-mono">{accession}</span>
   </PageHeading>
 )
@@ -186,7 +193,7 @@ type SampleSkeletonProps = {
 
 /** The page before the BioSample arrives: what the accession alone gives, and every card with skeleton rows. */
 const SampleSkeleton = ({ accession, back, annotationRows }: SampleSkeletonProps) => (
-  <div aria-busy="true" className="mx-auto w-full max-w-content-max px-page-gutter py-4">
+  <PageFrame busy>
     <BackLink href={back} />
     <div className="mt-3 mb-4">
       <Card padding="lg">
@@ -212,7 +219,7 @@ const SampleSkeleton = ({ accession, back, annotationRows }: SampleSkeletonProps
       <SkeletonTableCard title="BioProjects" columns={BIOPROJECT_COLUMNS} widths={["w-20", "w-48", "w-20"]} rows={2} />
       <SkeletonTableCard title="SRA Experiments" columns={EXPERIMENT_COLUMNS} widths={["w-20", "w-16", "w-6", "w-24"]} rows={2} />
     </div>
-  </div>
+  </PageFrame>
 )
 
 const SkeletonRows = ({ rows }: { rows: number }) =>
@@ -372,18 +379,10 @@ const Annotations = ({ entry, highlighted, onHighlight }: AnnotationsProps) => (
   </Card>
 )
 
-/** A field without a value (not stated, or extraction failed) shows its name only, without a status chip. */
-const hasValue = (status: string): boolean => statusInfo(status).group !== "no_value"
-
 const STATUS_HELP = (
-  <>
-    {STATUS_ORDER.filter(hasValue).map((status, index) => (
-      <span key={status} className={cn("block", index > 0 && "mt-1.5")}>
-        <StatusPill status={status} label={statusInfo(status).label} size="sm" /> {statusInfo(status).meaning}
-      </span>
-    ))}
-    <span className="mt-1.5 block">A field that shows no value has no extracted value. The sample can still have the property.</span>
-  </>
+  <StatusMeanings statuses={VALUE_STATUSES.map((code) => ({ code, ...statusInfo(code) }))}>
+    {"A field that shows no value has no extracted value. The sample can still have the property."}
+  </StatusMeanings>
 )
 
 const AnnotationRow = ({
@@ -396,7 +395,7 @@ const AnnotationRow = ({
   onHighlight: (field: string | null) => void
 }) => {
   const info = statusInfo(annotation.status)
-  const shown = hasValue(annotation.status)
+  const shown = hasStatusValue(annotation.status)
   // The last column holds the widest status chip that a row shows, LLM selected, so that the values of every row start
   // and end at the same place; each chip keeps the width of its text, at the right end of the row.
   return (
@@ -421,7 +420,7 @@ const AnnotationRow = ({
       </span>
       {shown && (
         <span className="flex justify-end">
-          <StatusPill status={annotation.status} label={info.label} />
+          <StatusPill mark={info.mark} tone={info.tone} label={info.label} />
         </span>
       )}
     </div>
@@ -451,10 +450,10 @@ const ExperimentsCard = ({ experiments, targetAssays }: { experiments: EntryExpe
             <td className={cn(TD, "font-mono text-fs-label")}>{experiment.runs.length}</td>
             <td className={cn(TD, "text-fs-label")}>
               <span className="inline-flex gap-3">
-                <ExternalLink href={`https://ddbj.nig.ac.jp/search/entry/sra-experiment/${experiment.accession}`}>DDBJ</ExternalLink>
-                <ExternalLink href={`https://www.ncbi.nlm.nih.gov/sra/${experiment.accession}`}>NCBI</ExternalLink>
+                <ExternalLink href={ddbjSearchHref("sra-experiment", experiment.accession)}>DDBJ</ExternalLink>
+                <ExternalLink href={ncbiHref("sra-experiment", experiment.accession)}>NCBI</ExternalLink>
                 {experiment.chipAtlas.length > 0 && (
-                  <ExternalLink href={`https://chip-atlas.org/view?id=${experiment.accession}`}>ChIP-Atlas</ExternalLink>
+                  <ExternalLink href={chipAtlasHref(experiment.accession)}>ChIP-Atlas</ExternalLink>
                 )}
               </span>
             </td>
@@ -480,8 +479,8 @@ const BioProjectsCard = ({ bioprojects }: { bioprojects: EntryBioProject[] }) =>
               <td className={cn(TD, "wrap-anywhere")}>{bioproject.title}</td>
               <td className={cn(TD, "text-fs-label whitespace-nowrap")}>
                 <span className="inline-flex gap-3">
-                  <ExternalLink href={`https://ddbj.nig.ac.jp/search/entry/bioproject/${bioproject.accession}`}>DDBJ</ExternalLink>
-                  <ExternalLink href={`https://www.ncbi.nlm.nih.gov/bioproject/${bioproject.accession}`}>NCBI</ExternalLink>
+                  <ExternalLink href={ddbjSearchHref("bioproject", bioproject.accession)}>DDBJ</ExternalLink>
+                  <ExternalLink href={ncbiHref("bioproject", bioproject.accession)}>NCBI</ExternalLink>
                 </span>
               </td>
             </tr>

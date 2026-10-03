@@ -7,6 +7,14 @@ export const TABLE_PER_PAGES = [20, 50, 100] as const
 export type TablePerPage = (typeof TABLE_PER_PAGES)[number]
 export type Tab = (typeof TABS)[number]
 
+export const TAB_LABELS: Record<Tab, string> = {
+  samples: "Samples",
+  distribution: "Distribution",
+  heatmap: "Heatmap",
+  trend: "Trend",
+  projects: "Projects",
+}
+
 export type HeatmapColor = "count" | "ratio"
 
 // A record rather than a list, so that the type checker reports a sort that the api adds and this list lacks.
@@ -70,7 +78,14 @@ export const DEFAULTS: WorkspaceState = {
   termIds: false,
 }
 
-const UNITS: readonly Unit[] = ["biosample", "sra-experiment", "bioproject"]
+// A record rather than a list, so that the type checker reports a unit that the api adds and this list lacks.
+const UNIT_SET: Record<Unit, true> = {
+  biosample: true,
+  "sra-experiment": true,
+  bioproject: true,
+}
+
+export const UNITS = Object.keys(UNIT_SET) as Unit[]
 
 const list = (value: string | null): string[] | null =>
   value === null ? null : value.split(",").map((s) => s.trim()).filter(Boolean)

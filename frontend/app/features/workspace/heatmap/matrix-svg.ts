@@ -1,4 +1,5 @@
 import { token } from "~/lib/color"
+import { escapeXml } from "~/lib/export"
 import { formatCount } from "~/lib/format"
 
 export type MatrixCell = {
@@ -13,7 +14,7 @@ export type MatrixCell = {
 }
 
 /** A row or a column: its element, its label, the term ID under the label when the chart shows term IDs, and its total. */
-export type MatrixLabel = { value: string; label: string; id?: string; total: number }
+type MatrixLabel = { value: string; label: string; id?: string; total: number }
 
 export type MatrixExport = {
   rowLabels: MatrixLabel[]
@@ -23,9 +24,6 @@ export type MatrixExport = {
   corner: { row: string; col: string }
   total: number
 }
-
-const escape = (text: string): string =>
-  text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;")
 
 const cellKey = (row: string, col: string): string => `${row}\t${col}`
 
@@ -58,21 +56,21 @@ export const matrixSvg = (data: MatrixExport): string => {
     `<rect width="${width}" height="${height}" fill="${token("--color-surface")}"/>`,
     // The corner names the axes on one line as the page does, the rows first and the columns after a wide space, in the
     // grey of the totals so that the names are not read as terms.
-    `<text x="10" y="${top - 12}" font-weight="600" fill="${token("--color-ink-soft")}">${escape(data.corner.row)} ↓<tspan dx="24">${escape(data.corner.col)} →</tspan></text>`,
+    `<text x="10" y="${top - 12}" font-weight="600" fill="${token("--color-ink-soft")}">${escapeXml(data.corner.row)} ↓<tspan dx="24">${escapeXml(data.corner.col)} →</tspan></text>`,
   ]
   const id = (x: number, y: number, text: string, anchor: string) =>
-    `<text x="${x}" y="${y}" text-anchor="${anchor}" font-family="${mono}" font-size="9.5" fill="${token("--color-ink-soft")}">${escape(text)}</text>`
+    `<text x="${x}" y="${y}" text-anchor="${anchor}" font-family="${mono}" font-size="9.5" fill="${token("--color-ink-soft")}">${escapeXml(text)}</text>`
   data.colLabels.forEach((col, j) => {
     const x = left + j * (cellW + 2) + cellW / 2
     parts.push(
-      `<text x="${x}" y="${col.id ? top - 24 : top - 12}" text-anchor="middle" fill="${token("--color-ink")}">${escape(col.label.slice(0, 14))}</text>`,
+      `<text x="${x}" y="${col.id ? top - 24 : top - 12}" text-anchor="middle" fill="${token("--color-ink")}">${escapeXml(col.label.slice(0, 14))}</text>`,
     )
     if (col.id) parts.push(id(x, top - 11, col.id, "middle"))
   })
   parts.push(`<text x="${totalX}" y="${top - 12}" text-anchor="end" fill="${token("--color-ink-soft")}" font-weight="600">Row total</text>`)
   data.rowLabels.forEach((row, i) => {
     const y = top + i * (cellH + 2)
-    parts.push(`<text x="10" y="${row.id ? y + 13 : y + cellH / 2 + 4}" fill="${token("--color-ink")}">${escape(row.label.slice(0, 26))}</text>`)
+    parts.push(`<text x="10" y="${row.id ? y + 13 : y + cellH / 2 + 4}" fill="${token("--color-ink")}">${escapeXml(row.label.slice(0, 26))}</text>`)
     if (row.id) parts.push(id(10, y + 26, row.id, "start"))
     data.colLabels.forEach((col, j) => {
       const cell = byKey.get(cellKey(row.value, col.value))
@@ -88,7 +86,7 @@ export const matrixSvg = (data: MatrixExport): string => {
             ? token("--color-ink-soft")
             : token("--color-ink")
       parts.push(
-        `<text x="${x + cellW / 2}" y="${y + cellH / 2 + 4}" text-anchor="middle" font-family="${mono}" fill="${color}">${escape(cell?.text ?? "")}</text>`,
+        `<text x="${x + cellW / 2}" y="${y + cellH / 2 + 4}" text-anchor="middle" font-family="${mono}" fill="${color}">${escapeXml(cell?.text ?? "")}</text>`,
       )
     })
     parts.push(

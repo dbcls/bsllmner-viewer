@@ -27,7 +27,7 @@ The api follows the conventions of the [DDBJ Search API](https://ddbj.nig.ac.jp/
 Errors are RFC 7807 Problem Details (`application/problem+json`) with `type`, `title`, `status`, `detail`, `instance`, `timestamp` (ISO 8601, UTC), and `requestId` (the value of the `X-Request-ID` header).
 
 - `type` is `about:blank` for errors that the HTTP status describes, such as an unknown accession (404) or an invalid query parameter (422). `title` is the HTTP status phrase.
-- `type` is `https://ddbj.nig.ac.jp/problems/<slug>` for errors specific to the api. Errors of the condition DSL use the slugs of the DDBJ Search API where the same error exists, for example `unknown-field` and `unexpected-token`. A request body that is not a valid AST is rejected with status 400 and slug `invalid-ast`.
+- `type` is `https://ddbj.nig.ac.jp/problems/<slug>` for errors specific to the api. Errors of the condition DSL use the slugs of the DDBJ Search API where the same error exists, for example `unknown-field` and `unexpected-token`. A request body whose clauses are not valid is rejected with status 400 and slug `invalid-ast`.
 
 ### Service information
 
@@ -47,7 +47,13 @@ The grammar is the Lucene subset used by the DDBJ Search API search DSL (the `/d
 - `AND`, `OR`, and `NOT` (upper case), and grouping with `( )`
 - The JSON representation of the AST has the same shape, with node types discriminated by `op`.
 
-`GET /api/dsl/parse` and `POST /api/dsl/serialize` convert between the string and the AST. Their requests and responses have the shape of `/db-portal/parse` (`{ast}`) and `/db-portal/serialize` (`{dsl}`) of the DDBJ Search API, with the display labels of the term IDs and organism IDs in the condition added.
+`GET /api/dsl/parse` converts the string to the AST. The response has the shape of `/db-portal/parse` (`{ast}`) of the DDBJ Search API, with three properties added:
+
+- `labels` holds the display labels of the term IDs and organism IDs in the condition.
+- `selected` holds the clauses that selecting an element treats as already in the condition (see [From elements to conditions](#from-elements-to-conditions)).
+- `keyword` holds the text of a keyword box for the top-level keywords of the condition: the words, then the phrases in double quotes, with a backslash and a double quote escaped. `POST /api/dsl/keyword` reads the text back as the same keywords.
+
+`POST /api/dsl/select` and `POST /api/dsl/keyword` return the changed condition as `dsl`, with `ast`, `labels`, `selected`, and `keyword`. The api has no operation that converts an AST to a string.
 
 Compatibility covers the grammar and the AST shape. The set of fields and the evaluation of fields and keywords are specific to this API.
 
@@ -95,6 +101,8 @@ The original metadata is a list of items. Each item has its kind (`description`,
 - An attribute is named by its attribute name. The attributes leave out each attribute whose name bsllmner-mk2 lists in its `filter_keys.json` ([build.md](build.md#runs)) and that no evidence of the BioSample points to. Such an attribute records how the BioSample was submitted and archived, so it is shown only when an annotation of the BioSample was derived from it. For example, `INSDC center name` is left out, but a `Submitter Id` of `E-MTAB-13151:ChIP_ETO2_DMSO_rep1` stays when the ChIP antigen ETO2 was found in it. Keywords still match the values of the attributes that are left out, so a BioSample can match a keyword through a value that its page does not show.
 
 The exports return every matching entry as TSV or as newline-delimited JSON (`application/x-ndjson`), and every matching accession of a type as plain text with one accession per line. Accession lists exist for `biosample`, `sra-experiment`, `sra-run`, and `bioproject`.
+
+In the TSV, a header line names the columns, and every row has as many cells as the header. A cell with several values joins them with `;`. After the entry columns come one column per annotation field. Each annotation in these columns is `value|termId|label|status`: always four parts in this order, with an empty part when the annotation has no value, no term, or no label. A client splits a cell on `;` and then each annotation on `|`. The characters that delimit a cell are percent-encoded inside a part (`%` as `%25`, `|` as `%7C`, `;` as `%3B`, tab as `%09`, carriage return as `%0D`, line feed as `%0A`), so a value that contains them still splits into the same four parts. In the other columns, a tab or a line break in a value is replaced with a space.
 
 ## Terms
 
@@ -176,9 +184,10 @@ For every element of an aggregation, the element's count equals the count of `q'
 
 An element with one clause is a bar of a distribution or a point of the trend of the condition. Selecting the element in the UI toggles the clause in `q`:
 
-- If `q` has a top-level conjunct that is a clause, or a disjunction of clauses, on the same field without `NOT`, then the new clause is joined to that conjunct with `OR`.
-- Otherwise, the new clause is added as a new top-level conjunct with `AND`.
-- If the clause is already in `q`, then selecting the element removes the clause, and removes a conjunct that becomes empty.
+- The clauses that count as already in `q` are the top-level clauses and the clauses of a top-level disjunction of clauses on one field, outside any `NOT`. The api returns them as `selected` in the responses of parse, select, and keyword.
+- If the clause is not in `selected` and `q` has a top-level conjunct that is a clause, or a disjunction of clauses, on the same field without `NOT`, then the new clause is joined with `OR` to the first such conjunct.
+- If the clause is not in `selected` and `q` has no such conjunct, then the new clause is added as a new top-level conjunct with `AND`.
+- If all clauses of the element are in `selected`, then selecting the element removes the clauses from every top-level conjunct that holds them, and removes a conjunct that becomes empty.
 
 For example, selecting `disease:A`, then `library_strategy:ATAC-seq`, then `disease:B` produces `(disease:A OR disease:B) AND library_strategy:ATAC-seq`.
 

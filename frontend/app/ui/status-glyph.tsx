@@ -2,28 +2,34 @@ import type { ReactNode } from "react"
 
 import { cn } from "./cn"
 
+/** The shape of a status mark. */
+export type StatusMarkShape = "filled" | "half" | "empty" | "struck" | "dash" | "alert"
+
+/** The color family of a status. */
+export type StatusToneName = "brand" | "brand-mid" | "warn" | "muted" | "critical"
+
 /**
  * The mark of each annotation status, drawn on one circle so that every mark has the same size whatever the font: filled
  * (exact match), half filled (selected by the LLM), empty (no candidate), struck through (rejected), a dash (not stated),
  * and an exclamation mark (extraction failed).
  */
-const MARKS: Record<string, ReactNode> = {
-  mapped_exact: <circle cx="6" cy="6" r="5" fill="currentColor" />,
-  mapped_selected: (
+const MARKS: Record<StatusMarkShape, ReactNode> = {
+  filled: <circle cx="6" cy="6" r="5" fill="currentColor" />,
+  half: (
     <>
       <circle cx="6" cy="6" r="4.25" fill="none" stroke="currentColor" strokeWidth="1.5" />
       <path d="M6 1v10A5 5 0 0 1 6 1Z" fill="currentColor" />
     </>
   ),
-  unmapped_no_candidate: <circle cx="6" cy="6" r="4.25" fill="none" stroke="currentColor" strokeWidth="1.5" />,
-  unmapped_rejected: (
+  empty: <circle cx="6" cy="6" r="4.25" fill="none" stroke="currentColor" strokeWidth="1.5" />,
+  struck: (
     <>
       <circle cx="6" cy="6" r="4.25" fill="none" stroke="currentColor" strokeWidth="1.5" />
       <path d="m3 9 6-6" stroke="currentColor" strokeWidth="1.5" />
     </>
   ),
-  not_stated: <path d="M3 6h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />,
-  extraction_failed: (
+  dash: <path d="M3 6h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />,
+  alert: (
     <>
       <path d="M6 1.75v5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
       <circle cx="6" cy="9.75" r="1" fill="currentColor" />
@@ -32,46 +38,41 @@ const MARKS: Record<string, ReactNode> = {
 }
 
 /** The status mark at 0.9em of the text around it. */
-const StatusMark = ({ status }: { status: string }) => (
+const StatusMark = ({ mark }: { mark: StatusMarkShape }) => (
   <svg viewBox="0 0 12 12" aria-hidden="true" className="inline-block size-[0.9em] shrink-0 align-[-0.1em]">
-    {MARKS[status] ?? MARKS["not_stated"]}
+    {MARKS[mark]}
   </svg>
 )
 
 type StatusGlyphProps = {
-  status: string
+  mark: StatusMarkShape
+  tone: StatusToneName
   label: string
   /** Larger mark for the status pill on the detail page. */
   size?: "sm" | "md"
 }
 
-const colorClass: Record<string, string> = {
-  mapped_exact: "text-brand",
-  mapped_selected: "text-brand-mid",
-  unmapped_no_candidate: "text-warn-fg",
-  unmapped_rejected: "text-warn-fg",
-  not_stated: "text-ink-soft",
-  extraction_failed: "text-critical-fg",
+const colorClass: Record<StatusToneName, string> = {
+  brand: "text-brand",
+  "brand-mid": "text-brand-mid",
+  warn: "text-warn-fg",
+  muted: "text-ink-soft",
+  critical: "text-critical-fg",
 }
 
-/** The mark of an annotation status, colored by status and named for assistive technology. */
-export const StatusGlyph = ({ status, label, size = "sm" }: StatusGlyphProps) => (
-  <span
-    role="img"
-    aria-label={label}
-    className={cn("inline-block leading-none", size === "sm" ? "text-fs-micro" : "text-fs-label", colorClass[status] ?? "text-ink-soft")}
-  >
-    <StatusMark status={status} />
+/** The mark of an annotation status, colored by its tone and named for assistive technology. */
+export const StatusGlyph = ({ mark, tone, label, size = "sm" }: StatusGlyphProps) => (
+  <span role="img" aria-label={label} className={cn("inline-block leading-none", size === "sm" ? "text-fs-micro" : "text-fs-label", colorClass[tone])}>
+    <StatusMark mark={mark} />
   </span>
 )
 
-const pillClass: Record<string, string> = {
-  mapped_exact: "bg-brand-tint text-brand",
-  mapped_selected: "bg-brand-tint text-brand",
-  unmapped_no_candidate: "bg-warn-bg text-warn-fg",
-  unmapped_rejected: "bg-warn-bg text-warn-fg",
-  not_stated: "bg-brand-soft text-ink-soft",
-  extraction_failed: "bg-critical-bg text-critical-fg",
+const pillClass: Record<StatusToneName, string> = {
+  brand: "bg-brand-tint text-brand",
+  "brand-mid": "bg-brand-tint text-brand",
+  warn: "bg-warn-bg text-warn-fg",
+  muted: "bg-brand-soft text-ink-soft",
+  critical: "bg-critical-bg text-critical-fg",
 }
 
 type StatusPillProps = Omit<StatusGlyphProps, "size"> & {
@@ -80,15 +81,15 @@ type StatusPillProps = Omit<StatusGlyphProps, "size"> & {
 }
 
 /** An annotation status as a colored chip: its mark and its name. */
-export const StatusPill = ({ status, label, size = "md" }: StatusPillProps) => (
+export const StatusPill = ({ mark, tone, label, size = "md" }: StatusPillProps) => (
   <span
     className={cn(
       "inline-flex items-center rounded-tag whitespace-nowrap",
       size === "md" ? "gap-1.5 px-2 py-0.5 text-fs-label" : "gap-1 px-1.5 py-px text-fs-micro",
-      pillClass[status] ?? "bg-brand-soft text-ink-soft",
+      pillClass[tone],
     )}
   >
-    <StatusMark status={status} />
+    <StatusMark mark={mark} />
     {label}
   </span>
 )

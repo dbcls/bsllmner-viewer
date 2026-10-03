@@ -1,8 +1,8 @@
-import { type KeyboardEvent, type ReactNode, type RefObject, useEffect, useId, useLayoutEffect, useRef, useState } from "react"
+import { type KeyboardEvent, type ReactNode, type RefObject, useEffect, useId, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 
 import { cn } from "./cn"
-import { type PanelPosition, panelPosition } from "./panel-position"
+import { useAnchoredPosition, useOutsidePointer } from "./panel-position"
 
 /** How long the pointer rests on a hover trigger before its panel opens, so that passing over many triggers opens none. */
 export const HOVER_OPEN_MS = 300
@@ -71,49 +71,22 @@ type PanelProps = {
  * for only when the panel opens. Escape and a click outside the anchor and the panel close it.
  */
 const Panel = ({ state, anchor, label, id, onClose, onKeyDown, panelRef, children }: PanelProps) => {
-  const [position, setPosition] = useState<PanelPosition | null>(null)
   const { open } = state
+  const { position } = useAnchoredPosition(open, anchor, panelRef, PANEL_PLACE, true)
 
-  // Once the panel is drawn, its size decides where it fits; the panel then follows its anchor.
-  useLayoutEffect(() => {
-    if (!open) return
-    const measure = () => {
-      if (anchor.current) {
-        setPosition(panelPosition(anchor.current, panelRef.current?.offsetHeight ?? 0, PANEL_PLACE, panelRef.current?.offsetWidth ?? 0))
-      }
-    }
-    measure()
-    window.addEventListener("scroll", measure, true)
-    window.addEventListener("resize", measure)
-    return () => {
-      window.removeEventListener("scroll", measure, true)
-      window.removeEventListener("resize", measure)
-    }
-  }, [open, anchor, panelRef])
+  useOutsidePointer(open, [anchor, panelRef], state.close)
 
   useEffect(() => {
     if (!open) return
-    const onPointerDown = (event: MouseEvent | TouchEvent) => {
-      const target = event.target as Node
-      if (!anchor.current?.contains(target) && !panelRef.current?.contains(target)) {
-        state.close()
-      }
-    }
     const onKey = (event: globalThis.KeyboardEvent) => {
       if (event.key === "Escape") {
         state.close()
         onClose()
       }
     }
-    document.addEventListener("mousedown", onPointerDown)
-    document.addEventListener("touchstart", onPointerDown)
     document.addEventListener("keydown", onKey)
-    return () => {
-      document.removeEventListener("mousedown", onPointerDown)
-      document.removeEventListener("touchstart", onPointerDown)
-      document.removeEventListener("keydown", onKey)
-    }
-  }, [open, anchor, panelRef, state, onClose])
+    return () => document.removeEventListener("keydown", onKey)
+  }, [open, state, onClose])
 
   return open
     ? createPortal(

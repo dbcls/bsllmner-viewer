@@ -1,39 +1,35 @@
-import { Fragment, type MouseEvent, type ReactNode } from "react"
+import { Fragment, type MouseEvent } from "react"
 import { Link, useNavigate } from "react-router"
 
 import { useDataset, useEntries } from "~/lib/api/queries"
 import type { AnnotationValue, EntryItem } from "~/lib/api/types"
 import { backLinkState } from "~/lib/back-link"
-import { fieldLabel, STATUS_ORDER, statusInfo } from "~/lib/labels"
+import { ddbjSearchHref, ncbiHref } from "~/lib/external-links"
+import { fieldLabel, hasStatusValue, statusInfo, VALUE_STATUSES } from "~/lib/labels"
 import type { TablePerPage } from "~/lib/workspace-state"
-import { Card, CardFooter, CardHeader, cn, ExternalLink, FrozenTd, FrozenTh, HelpHint, InlineLabel, Pager, StatusGlyph, StatusPill, TableScroller } from "~/ui"
+import { Card, CardFooter, CardHeader, cn, ExternalLink, FrozenTd, HelpHint, InlineLabel, Pager, StatusGlyph, StatusMeanings, StatusPill, TableScroller } from "~/ui"
 
 import { AssayTags } from "../assay-tags"
 import { PerPageChooser } from "../per-page-chooser"
 import { SkeletonTableRows } from "../skeleton-rows"
 import type { WorkspaceState } from "../state"
+import { TABLE_CELL, Th } from "../table"
 import { useTableTop } from "../use-table-top"
 
 /** The page of a BioSample. */
 const sampleHref = (accession: string): string => `/entries/${accession}`
 
 /** An annotation with an extracted value. A cell leaves a field without one (not stated, or extraction failed) empty. */
-const hasValue = (value: AnnotationValue): boolean => statusInfo(value.status).group !== "no_value"
+const hasValue = (value: AnnotationValue): boolean => hasStatusValue(value.status)
 
 /** The statuses that the cells mark, and so the legend names. */
-const CELL_STATUSES = STATUS_ORDER.filter((status) => statusInfo(status).group !== "no_value")
+const CELL_STATUSES = VALUE_STATUSES.map((code) => ({ code, ...statusInfo(code) }))
 
 /** One width for every annotation column, so that the columns line up; a longer value ends in an ellipsis. */
 const ANNOTATION_WIDTH = "w-36 min-w-36 max-w-36"
 
 /** The width of the first column, which stays put when the table scrolls sideways. It holds the longest accession. */
 const FROZEN_WIDTH = "w-36 min-w-36 max-w-36"
-
-/**
- * The rule is on the cells rather than the row: the table has separate borders, which the frozen column needs. The last row
- * has none, so that it does not double the line over the footer.
- */
-const TD = "border-b border-brand-soft px-2.5 py-1.5 group-last:border-b-0"
 
 type SamplesTabProps = {
   state: WorkspaceState
@@ -64,7 +60,7 @@ export const SamplesTab = ({ state, onPage, onPerPage, search }: SamplesTabProps
           <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
             <InlineLabel>Status</InlineLabel>
             {CELL_STATUSES.map((status) => (
-              <StatusPill key={status} status={status} label={statusInfo(status).label} size="sm" />
+              <StatusPill key={status.code} mark={status.mark} tone={status.tone} label={status.label} size="sm" />
             ))}
           </div>
           <HelpHint label="About the status marks">{STATUS_HELP}</HelpHint>
@@ -101,7 +97,7 @@ export const SamplesTab = ({ state, onPage, onPerPage, search }: SamplesTabProps
                 onAuxClick={(event) => event.button === 1 && openRow(event, row.identifier)}
                 className="group cursor-pointer hover:bg-brand-soft"
               >
-                <FrozenTd className={cn(TD, FROZEN_WIDTH, "truncate font-mono text-fs-label whitespace-nowrap")}>
+                <FrozenTd className={cn(TABLE_CELL, FROZEN_WIDTH, "truncate font-mono text-fs-label whitespace-nowrap")}>
                   <Link
                     to={sampleHref(row.identifier)}
                     state={backLinkState(search)}
@@ -112,26 +108,26 @@ export const SamplesTab = ({ state, onPage, onPerPage, search }: SamplesTabProps
                     {row.identifier}
                   </Link>
                 </FrozenTd>
-                <td className={cn(TD, "max-w-64 truncate")} title={row.title ?? ""}>
+                <td className={cn(TABLE_CELL, "max-w-64 truncate")} title={row.title ?? ""}>
                   {row.title}
                 </td>
-                <td className={cn(TD, "whitespace-nowrap text-ink-mid")}>{row.organism?.name}</td>
-                <td className={cn(TD, "whitespace-nowrap")}>
+                <td className={cn(TABLE_CELL, "whitespace-nowrap text-ink-mid")}>{row.organism?.name}</td>
+                <td className={cn(TABLE_CELL, "whitespace-nowrap")}>
                   <AssayTags assays={row.libraryStrategy} targetAssays={dataset.data?.targetAssays ?? []} />
                 </td>
-                <td className={cn(TD, "font-mono text-fs-label whitespace-nowrap")}>
+                <td className={cn(TABLE_CELL, "font-mono text-fs-label whitespace-nowrap")}>
                   <BioProjectLinks accessions={row.bioprojects} />
                 </td>
-                <td className={cn(TD, "font-mono text-fs-label whitespace-nowrap")}>{row.datePublished}</td>
+                <td className={cn(TABLE_CELL, "font-mono text-fs-label whitespace-nowrap")}>{row.datePublished}</td>
                 {fields.map((field) => {
                   const values = (row.annotations[field] ?? []).filter(hasValue)
                   return (
-                    <td key={field} className={cn(TD, ANNOTATION_WIDTH, "truncate whitespace-nowrap")} title={annotationTitle(field, values) || undefined}>
+                    <td key={field} className={cn(TABLE_CELL, ANNOTATION_WIDTH, "truncate whitespace-nowrap")} title={annotationTitle(field, values) || undefined}>
                       <AnnotationCell values={values} />
                     </td>
                   )
                 })}
-                <td className={cn(TD, "text-fs-label whitespace-nowrap")}>
+                <td className={cn(TABLE_CELL, "text-fs-label whitespace-nowrap")}>
                   <RowLinks row={row} />
                 </td>
               </tr>
@@ -152,32 +148,11 @@ export const SamplesTab = ({ state, onPage, onPerPage, search }: SamplesTabProps
 const LEAD_SKELETONS = ["w-24", "w-48", "w-24", "w-16", "w-20", "w-20"]
 
 const STATUS_HELP = (
-  <>
-    {CELL_STATUSES.map((status, index) => (
-      <span key={status} className={cn("block", index > 0 && "mt-1.5")}>
-        <StatusPill status={status} label={statusInfo(status).label} size="sm" /> {statusInfo(status).meaning}
-      </span>
-    ))}
-    <span className="mt-1.5 block">A value in quotes is the extracted text, for which no term was adopted.</span>
-    <span className="mt-1.5 block">An empty cell has no extracted value.</span>
-  </>
+  <StatusMeanings statuses={CELL_STATUSES}>
+    {"A value in quotes is the extracted text, for which no term was adopted."}
+    {"An empty cell has no extracted value."}
+  </StatusMeanings>
 )
-
-type ThProps = {
-  children: ReactNode
-  /** A fixed width for the column, whose header then ends in an ellipsis instead of widening it. */
-  width?: string
-  /** The column stays put when the table scrolls sideways. */
-  frozen?: boolean
-}
-
-const Th = ({ children, width, frozen = false }: ThProps) => {
-  const className = cn(
-    "border-b border-border-soft px-2.5 py-2 text-left text-fs-label font-semibold whitespace-nowrap text-ink-soft",
-    width && cn(width, "truncate"),
-  )
-  return frozen ? <FrozenTh className={className}>{children}</FrozenTh> : <th className={className}>{children}</th>
-}
 
 const AnnotationCell = ({ values }: { values: AnnotationValue[] }) => {
   if (values.length === 0) return null
@@ -189,7 +164,7 @@ const AnnotationCell = ({ values }: { values: AnnotationValue[] }) => {
         return (
           <span key={index} className={index > 0 ? "ml-1.5" : ""}>
             <span className="mr-1">
-              <StatusGlyph status={value.status} label={info.label} />
+              <StatusGlyph mark={info.mark} tone={info.tone} label={info.label} />
             </span>
             <span className={value.termId ? "text-ink" : "text-ink-soft"}>{text}</span>
           </span>
@@ -212,14 +187,14 @@ const BioProjectLinks = ({ accessions }: { accessions: string[] }) =>
   accessions.map((accession, index) => (
     <Fragment key={accession}>
       {index > 0 && ", "}
-      <ExternalLink href={`https://ddbj.nig.ac.jp/search/entry/bioproject/${accession}`}>{accession}</ExternalLink>
+      <ExternalLink href={ddbjSearchHref("bioproject", accession)}>{accession}</ExternalLink>
     </Fragment>
   ))
 
 /** The pages of the row's BioSample in DDBJ Search and NCBI. */
 const RowLinks = ({ row }: { row: EntryItem }) => (
   <span className="inline-flex gap-3">
-    <ExternalLink href={`https://ddbj.nig.ac.jp/search/entry/biosample/${row.identifier}`}>DDBJ</ExternalLink>
-    <ExternalLink href={`https://www.ncbi.nlm.nih.gov/biosample/${row.identifier}`}>NCBI</ExternalLink>
+    <ExternalLink href={ddbjSearchHref("biosample", row.identifier)}>DDBJ</ExternalLink>
+    <ExternalLink href={ncbiHref("biosample", row.identifier)}>NCBI</ExternalLink>
   </span>
 )

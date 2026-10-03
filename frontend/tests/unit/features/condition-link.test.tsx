@@ -1,9 +1,10 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { render, screen } from "@testing-library/react"
+import { screen } from "@testing-library/react"
 import { MemoryRouter } from "react-router"
 import { describe, expect, it, vi } from "vitest"
 
 import type * as Client from "~/lib/api/client"
+
+import { renderWithQuery } from "../query"
 
 type Clause = { field: string; value: string }
 
@@ -11,6 +12,7 @@ const state = vi.hoisted(() => ({ calls: 0, release: undefined as (() => void) |
 
 vi.mock("~/lib/api/client", async (importOriginal) => {
   const original = await importOriginal<typeof Client>()
+  const { ok } = await import("../query")
   const POST = async (_path: string, init: { body: { clauses: Clause[] } }) => {
     state.calls += 1
     const [clause] = init.body.clauses
@@ -21,7 +23,7 @@ vi.mock("~/lib/api/client", async (importOriginal) => {
       })
     }
     const data = { dsl: `${clause?.field}:${clause?.value}`, ast: {}, labels: {} }
-    return { data, response: new Response("{}") }
+    return ok(data)
   }
   return { ...original, api: { ...original.api, POST } }
 })
@@ -29,17 +31,14 @@ vi.mock("~/lib/api/client", async (importOriginal) => {
 import { ConditionLink } from "~/features/landing/condition-link"
 
 const renderLinks = (clauses: Clause[][]) => {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  render(
-    <QueryClientProvider client={client}>
-      <MemoryRouter>
-        {clauses.map((element, index) => (
-          <ConditionLink key={index} clauses={element} className="row">
-            {`element ${index}`}
-          </ConditionLink>
-        ))}
-      </MemoryRouter>
-    </QueryClientProvider>,
+  renderWithQuery(
+    <MemoryRouter>
+      {clauses.map((element, index) => (
+        <ConditionLink key={index} clauses={element} className="row">
+          {`element ${index}`}
+        </ConditionLink>
+      ))}
+    </MemoryRouter>,
   )
 }
 

@@ -3,28 +3,41 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
+from typing import Final, Literal
 
 type FieldKind = Literal["term", "status", "assay", "organism", "date", "bioproject"]
 type Operator = Literal["eq", "between"]
 
-STATUS_GROUPS: dict[str, tuple[str, ...]] = {
+type Status = Literal[
+    "mapped_exact",
+    "mapped_selected",
+    "unmapped_no_candidate",
+    "unmapped_rejected",
+    "not_stated",
+    "extraction_failed",
+]
+type GroupName = Literal["mapped", "unmapped", "no_value"]
+
+STATUS_GROUPS: dict[GroupName, tuple[Status, ...]] = {
     "mapped": ("mapped_exact", "mapped_selected"),
     "unmapped": ("unmapped_no_candidate", "unmapped_rejected"),
     "no_value": ("not_stated", "extraction_failed"),
 }
-STATUSES: tuple[str, ...] = tuple(s for group in STATUS_GROUPS.values() for s in group)
+STATUSES: tuple[Status, ...] = tuple(s for group in STATUS_GROUPS.values() for s in group)
+
+MAPPED_EXACT: Final[Status] = "mapped_exact"
+MAPPED_SELECTED: Final[Status] = "mapped_selected"
+MAPPED: Final[GroupName] = "mapped"
 
 STATUS_SUFFIX = "_status"
 
 
-def expand_status(value: str) -> tuple[str, ...]:
+def expand_status(value: str) -> tuple[Status, ...]:
     """Statuses matched by a status value: a group expands to the statuses under it."""
-    if value in STATUS_GROUPS:
-        return STATUS_GROUPS[value]
-    if value in STATUSES:
-        return (value,)
-    return ()
+    for group, statuses in STATUS_GROUPS.items():
+        if value == group:
+            return statuses
+    return tuple(status for status in STATUSES if status == value)
 
 
 @dataclass(frozen=True, slots=True)
@@ -69,9 +82,3 @@ class FieldSet:
 
     def names(self) -> tuple[str, ...]:
         return tuple(self._defs)
-
-    def dimensions(self) -> tuple[str, ...]:
-        """Fields usable as an aggregation dimension."""
-        return tuple(
-            name for name, d in self._defs.items() if d.kind in ("term", "status", "assay", "organism", "date")
-        )

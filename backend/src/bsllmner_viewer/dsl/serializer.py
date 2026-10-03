@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from bsllmner_viewer.dsl.ast import BoolOp, FieldClause, FreeText, Node, Range, ValueKind
-from bsllmner_viewer.dsl.lex import WORD_RE, needs_quote
+from bsllmner_viewer.dsl.lex import is_bare_word
 
 _AND = 3
 _OR = 2
@@ -37,7 +37,7 @@ def _value(kind: ValueKind, value: str | Range) -> str:
         return f"[{value.from_} TO {value.to}]"
     if not isinstance(value, str):
         raise TypeError("non-range value_kind requires str")
-    if kind == "phrase" or (kind == "word" and (needs_quote(value) or not WORD_RE.match(value))):
+    if kind == "phrase" or (kind == "word" and not is_bare_word(value)):
         return quote(value)
     return value
 
@@ -46,7 +46,7 @@ def _free_text(node: FreeText) -> str:
     if node.is_phrase:
         return quote(node.value)
     tokens = node.value.split(" ")
-    if " ".join(node.value.split()) == node.value and all(WORD_RE.match(t) and not needs_quote(t) for t in tokens):
+    if " ".join(node.value.split()) == node.value and all(is_bare_word(t) for t in tokens):
         return node.value
     return quote(node.value)
 

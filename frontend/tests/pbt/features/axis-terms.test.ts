@@ -1,7 +1,7 @@
 import { fc, test } from "@fast-check/vitest"
 import { describe, expect, it, vi } from "vitest"
 
-import { axisTermsText, pastedLines, resolvePasted, switchDimension } from "~/features/workspace/axis/axis-terms"
+import { axisTermsText, MAX_AXIS_TERMS, pastedLines, replaceTerms, resolvePasted, switchDimension, toggleTerm } from "~/features/workspace/axis/axis-terms"
 
 /** A term ID as the ontologies write them: a prefix, a colon, and a local ID. */
 const termId = fc.tuple(fc.stringMatching(/^[A-Za-z]{2,10}$/), fc.stringMatching(/^[A-Za-z0-9_]{1,10}$/)).map(([prefix, local]) => `${prefix}:${local}`)
@@ -84,3 +84,60 @@ describe("switchDimension", () => {
   })
 })
 
+describe("toggleTerm", () => {
+  test.prop([fc.uniqueArray(termId, { maxLength: 20 }), termId, fc.integer({ min: 1, max: 25 })])(
+    "takes a term that the axis has off, and adds a term that it lacks to the end only while the axis is under its limit",
+    (values, value, max) => {
+      const result = toggleTerm(values, value, { max, subject: "An axis" })
+      if (values.includes(value)) {
+        expect(result).toEqual({ terms: values.filter((v) => v !== value), alert: null })
+      } else if (values.length >= max) {
+        expect(result.terms).toEqual(values)
+        expect(result.alert).toBe(`An axis shows up to ${max} terms`)
+      } else {
+        expect(result).toEqual({ terms: [...values, value], alert: null })
+      }
+    },
+  )
+
+  test.prop([fc.uniqueArray(termId, { maxLength: 20 }), termId])("adds without a limit", (values, value) => {
+    expect(toggleTerm(values, value).terms.includes(value)).toBe(!values.includes(value))
+  })
+
+  it("does not add a term to an axis of the most terms that the api takes", () => {
+    const full = Array.from({ length: MAX_AXIS_TERMS }, (_, i) => `T:${i}`)
+    const result = toggleTerm(full, "T:new", { max: MAX_AXIS_TERMS, subject: "A heatmap axis" })
+    expect(result.terms).toEqual(full)
+    expect(result.alert).toBe(`A heatmap axis shows up to ${MAX_AXIS_TERMS} terms`)
+  })
+})
+
+describe("replaceTerms", () => {
+  test.prop([fc.array(termId, { maxLength: 40 }), fc.integer({ min: 1, max: 15 })])(
+    "gives the resolved terms in the pasted order, without repeats, and no more than the limit",
+    async (entries, max) => {
+      const result = await replaceTerms(entries, (list) => resolvePasted(list, true, never), { max, subject: "An axis" })
+      const unique = [...new Set(entries)]
+      if (unique.length === 0) {
+        expect(result.terms).toBeNull()
+        expect(result.alert).toBe("No terms recognised")
+        return
+      }
+      expect(result.terms).toEqual(unique.slice(0, max))
+      expect(result.terms?.length).toBeLessThanOrEqual(max)
+      expect(result.alert).toBe(unique.length > max ? `The first ${max} of ${unique.length} terms are shown` : `${unique.length} of ${entries.length} terms recognised`)
+    },
+  )
+
+  it("keeps every term when there is no limit", async () => {
+    const entries = Array.from({ length: 600 }, (_, i) => `T:${i}`)
+    expect((await replaceTerms(entries, (list) => resolvePasted(list, true, never))).terms).toEqual(entries)
+  })
+
+  it("uses the first 500 of a longer list and says so", async () => {
+    const entries = Array.from({ length: 501 }, (_, i) => `T:${i}`)
+    const result = await replaceTerms(entries, (list) => resolvePasted(list, true, never), { max: MAX_AXIS_TERMS, subject: "A heatmap axis" })
+    expect(result.terms).toEqual(entries.slice(0, MAX_AXIS_TERMS))
+    expect(result.alert).toBe("The first 500 of 501 terms are shown")
+  })
+})

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from hypothesis import given, settings
+from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 
-from bsllmner_viewer.dsl.ast import FieldClause, Node, leaves, normalize, structurally_equal
+from bsllmner_viewer.dsl.ast import BoolOp, FieldClause, Node, leaves, normalize, structurally_equal
 from bsllmner_viewer.dsl.transform import (
     conjuncts,
     contains_clause,
@@ -12,6 +12,7 @@ from bsllmner_viewer.dsl.transform import (
     named_values,
     narrow,
     select_element,
+    selected_clauses,
 )
 from tests.strategies import asts, clauses, flat_asts
 
@@ -87,6 +88,46 @@ def test_excluding_a_dimension_removes_every_named_value_of_it(ast: Node | None,
     combined = from_conjuncts([*conjuncts(ast), clause])
     assert combined is not None
     assert named_values(exclude_dimensions(normalize(combined), [clause.field]), clause.field) == []
+
+
+def _keys(ast: Node | None) -> set[tuple[str, str]]:
+    return {(c.field, str(c.value)) for c in selected_clauses(ast)}
+
+
+@settings(max_examples=300)
+@given(st.one_of(st.none(), asts), clauses)
+def test_toggling_a_selected_clause_removes_it_from_the_selected_clauses(ast: Node | None, extra: FieldClause) -> None:
+    base = from_conjuncts([*conjuncts(None if ast is None else normalize(ast)), extra, extra])
+    assert base is not None
+    base = normalize(base)
+    for chosen in selected_clauses(base):
+        result = select_element(base, [chosen])
+        assert (chosen.field, str(chosen.value)) not in _keys(result)
+        assert _keys(result) == _keys(base) - {(chosen.field, str(chosen.value))}
+
+
+@settings(max_examples=300)
+@given(st.one_of(st.none(), asts), clauses)
+def test_toggling_an_unselected_clause_adds_it_to_the_selected_clauses(ast: Node | None, clause: FieldClause) -> None:
+    base = None if ast is None else normalize(ast)
+    assume((clause.field, str(clause.value)) not in _keys(base))
+    assert (clause.field, str(clause.value)) in _keys(select_element(base, [clause]))
+
+
+@settings(max_examples=300)
+@given(st.one_of(st.none(), asts), clauses)
+def test_contains_clause_agrees_with_the_selected_clauses(ast: Node | None, clause: FieldClause) -> None:
+    base = None if ast is None else normalize(ast)
+    assert contains_clause(base, clause) == ((clause.field, str(clause.value)) in _keys(base))
+
+
+@settings(max_examples=200)
+@given(asts, clauses)
+def test_selected_clauses_are_clauses_of_the_condition_outside_any_not(ast: Node, clause: FieldClause) -> None:
+    negated = BoolOp(op="NOT", children=(clause,))
+    assert selected_clauses(negated) == []
+    base = normalize(ast)
+    assert all(c in leaves(base) for c in selected_clauses(base))
 
 
 def _clause_set(ast: Node | None) -> set[tuple[str, str]]:

@@ -2,7 +2,6 @@ import { type QueryClient, queryOptions, useMutation, useQuery } from "@tanstack
 
 import { api, unwrap } from "./client"
 import type {
-  AstNode,
   Clause,
   ConditionResponse,
   CrosstabResponse,
@@ -100,17 +99,29 @@ export const parsedConditionOptions = (condition: string | null) =>
  */
 export const cacheParsedCondition = (queryClient: QueryClient, result: ConditionResponse): void => {
   if (result.dsl === null || result.ast === null) return
-  const parsed: ParseResponse = { datasetVersion: result.datasetVersion, q: result.dsl, ast: result.ast, labels: result.labels }
+  const parsed: ParseResponse = {
+    datasetVersion: result.datasetVersion,
+    q: result.dsl,
+    ast: result.ast,
+    labels: result.labels,
+    selected: result.selected,
+    keyword: result.keyword,
+  }
   queryClient.setQueryData(parsedConditionOptions(result.dsl).queryKey, parsed)
 }
 
 export const useParsedCondition = (condition: string | null) => useQuery(parsedConditionOptions(condition))
 
-export type SelectMode = "toggle" | "narrow"
+type SelectMode = "toggle" | "narrow"
 
 /** Apply the clauses of an element to a condition: toggle them, or narrow the condition to the element. */
-export const selectElement = async (input: { q: string | null; clauses: Clause[]; mode?: SelectMode }): Promise<ConditionResponse> =>
-  unwrap(await api.POST("/api/dsl/select", { body: { q: input.q, clauses: input.clauses, mode: input.mode ?? "toggle" } }))
+const selectElement = async (input: { q: string | null; clauses: Clause[]; mode?: SelectMode; signal?: AbortSignal }): Promise<ConditionResponse> =>
+  unwrap(
+    await api.POST("/api/dsl/select", {
+      body: { q: input.q, clauses: input.clauses, mode: input.mode ?? "toggle" },
+      ...(input.signal ? { signal: input.signal } : {}),
+    }),
+  )
 
 export const useSelectElement = () => useMutation({ mutationFn: selectElement })
 
@@ -122,23 +133,16 @@ export const useSelectElement = () => useMutation({ mutationFn: selectElement })
 export const useClausesCondition = (clauses: Clause[], enabled = true) =>
   useQuery({
     queryKey: ["select", clauses],
-    queryFn: async ({ signal }): Promise<ConditionResponse> =>
-      unwrap(await api.POST("/api/dsl/select", { body: { q: null, clauses, mode: "toggle" }, signal })),
+    queryFn: ({ signal }): Promise<ConditionResponse> => selectElement({ q: null, clauses, signal }),
     staleTime: Infinity,
     enabled,
   })
 
 /** Replace the keywords of a condition with the keywords of text typed into a keyword box; empty text removes them. */
-export const setKeyword = async (input: { q: string | null; keyword: string }): Promise<ConditionResponse> =>
+const setKeyword = async (input: { q: string | null; keyword: string }): Promise<ConditionResponse> =>
   unwrap(await api.POST("/api/dsl/keyword", { body: { q: input.q, keyword: input.keyword } }))
 
 export const useSetKeyword = () => useMutation({ mutationFn: setKeyword })
-
-export const useSerialize = () =>
-  useMutation({
-    mutationFn: async (ast: AstNode): Promise<ConditionResponse> =>
-      unwrap(await api.POST("/api/dsl/serialize", { body: { ast: ast as unknown as Record<string, never> } })),
-  })
 
 export type DistributionParams = {
   field: string
@@ -149,24 +153,22 @@ export type DistributionParams = {
   limit?: number
 }
 
+/** The query string parameters of the request that a distribution makes. */
+export const distributionQuery = (params: DistributionParams) =>
+  defined({
+    field: params.field,
+    q: q(params.q),
+    unit: params.unit,
+    facetSelfExclude: params.selfExclusion,
+    elements: params.elements,
+    limit: params.limit,
+  })
+
 export const useDistribution = (params: DistributionParams, enabled = true) =>
   useQuery({
     queryKey: ["distribution", params],
     queryFn: async (): Promise<DistributionResponse> =>
-      unwrap(
-        await api.GET("/api/distribution", {
-          params: {
-            query: defined({
-              field: params.field,
-              q: q(params.q),
-              unit: params.unit,
-              facetSelfExclude: params.selfExclusion,
-              elements: params.elements,
-              limit: params.limit,
-            }),
-          },
-        }),
-      ),
+      unwrap(await api.GET("/api/distribution", { params: { query: distributionQuery(params) } })),
     enabled,
     placeholderData: (previous) => previous,
   })
@@ -182,26 +184,24 @@ export type CrosstabParams = {
   limit?: number
 }
 
+/** The query string parameters of the request that a crosstab makes. */
+export const crosstabQuery = (params: CrosstabParams) =>
+  defined({
+    row: params.row,
+    col: params.col,
+    q: q(params.q),
+    unit: params.unit,
+    facetSelfExclude: params.selfExclusion,
+    rowElements: params.rowElements,
+    colElements: params.colElements,
+    limit: params.limit,
+  })
+
 export const useCrosstab = (params: CrosstabParams, enabled = true) =>
   useQuery({
     queryKey: ["crosstab", params],
     queryFn: async (): Promise<CrosstabResponse> =>
-      unwrap(
-        await api.GET("/api/crosstab", {
-          params: {
-            query: defined({
-              row: params.row,
-              col: params.col,
-              q: q(params.q),
-              unit: params.unit,
-              facetSelfExclude: params.selfExclusion,
-              rowElements: params.rowElements,
-              colElements: params.colElements,
-              limit: params.limit,
-            }),
-          },
-        }),
-      ),
+      unwrap(await api.GET("/api/crosstab", { params: { query: crosstabQuery(params) } })),
     enabled,
     placeholderData: (previous) => previous,
   })
@@ -217,26 +217,23 @@ export type TrendParams = {
   yearTo?: number
 }
 
+/** The query string parameters of the request that a trend makes. */
+export const trendQuery = (params: TrendParams) =>
+  defined({
+    field: params.field,
+    q: q(params.q),
+    unit: params.unit,
+    facetSelfExclude: params.selfExclusion,
+    elements: params.elements,
+    limit: params.limit,
+    yearFrom: params.yearFrom,
+    yearTo: params.yearTo,
+  })
+
 export const useTrend = (params: TrendParams, enabled = true) =>
   useQuery({
     queryKey: ["trend", params],
-    queryFn: async (): Promise<TrendResponse> =>
-      unwrap(
-        await api.GET("/api/trend", {
-          params: {
-            query: defined({
-              field: params.field,
-              q: q(params.q),
-              unit: params.unit,
-              facetSelfExclude: params.selfExclusion,
-              elements: params.elements,
-              limit: params.limit,
-              yearFrom: params.yearFrom,
-              yearTo: params.yearTo,
-            }),
-          },
-        }),
-      ),
+    queryFn: async (): Promise<TrendResponse> => unwrap(await api.GET("/api/trend", { params: { query: trendQuery(params) } })),
     enabled,
     placeholderData: (previous) => previous,
   })
@@ -249,23 +246,21 @@ export type ProjectsParams = {
   perPage: number
 }
 
+/** The query string parameters of the request that a list of projects makes. */
+export const projectsQuery = (params: ProjectsParams) =>
+  defined({
+    q: q(params.q),
+    facetSelfExclude: params.selfExclusion,
+    sort: params.sort,
+    page: params.page,
+    perPage: params.perPage,
+  })
+
 export const useProjects = (params: ProjectsParams, enabled = true) =>
   useQuery({
     queryKey: ["projects", params],
     queryFn: async (): Promise<ProjectsResponse> =>
-      unwrap(
-        await api.GET("/api/projects", {
-          params: {
-            query: defined({
-              q: q(params.q),
-              facetSelfExclude: params.selfExclusion,
-              sort: params.sort,
-              page: params.page,
-              perPage: params.perPage,
-            }),
-          },
-        }),
-      ),
+      unwrap(await api.GET("/api/projects", { params: { query: projectsQuery(params) } })),
     enabled,
     placeholderData: (previous) => previous,
   })
@@ -276,18 +271,14 @@ export type EntriesParams = {
   perPage: number
 }
 
+/** The query string parameters of the request that a page of entries makes. */
+export const entriesQuery = (params: EntriesParams) => defined({ q: q(params.q), page: params.page, perPage: params.perPage })
+
 export const useEntries = (params: EntriesParams, enabled = true) =>
   useQuery({
     queryKey: ["entries", params],
     queryFn: async (): Promise<EntriesResponse> =>
-      unwrap(
-        await api.GET("/api/entries/{type}", {
-          params: {
-            path: { type: "biosample" },
-            query: defined({ q: q(params.q), page: params.page, perPage: params.perPage }),
-          },
-        }),
-      ),
+      unwrap(await api.GET("/api/entries/{type}", { params: { path: { type: "biosample" }, query: entriesQuery(params) } })),
     enabled,
     placeholderData: (previous) => previous,
   })
@@ -313,29 +304,56 @@ export type TermsParams = {
   field?: string
   query: string
   q: string | null
-  unit: Unit
+  unit?: Unit
   selfExclusion: boolean
   limit?: number
 }
 
+/** The terms whose labels match a text, counted in the population of the condition. */
+export const fetchTerms = async (params: TermsParams): Promise<TermsResponse> =>
+  unwrap(
+    await api.GET("/api/terms", {
+      params: {
+        query: defined({
+          field: params.field,
+          query: params.query,
+          q: q(params.q),
+          unit: params.unit,
+          facetSelfExclude: params.selfExclusion,
+          limit: params.limit,
+        }),
+      },
+    }),
+  )
+
+export type TermChildrenParams = {
+  field: string
+  termId: string
+  q: string | null
+  unit: Unit
+  selfExclusion: boolean
+}
+
+/** The child terms of a term of a field, counted in the population of the condition. */
+export const fetchTermChildren = async (params: TermChildrenParams) =>
+  unwrap(
+    await api.GET("/api/terms/children", {
+      params: {
+        query: defined({
+          field: params.field,
+          termId: params.termId,
+          q: q(params.q),
+          unit: params.unit,
+          facetSelfExclude: params.selfExclusion,
+        }),
+      },
+    }),
+  )
+
 export const useTerms = (params: TermsParams, enabled = true) =>
   useQuery({
     queryKey: ["terms", params],
-    queryFn: async (): Promise<TermsResponse> =>
-      unwrap(
-        await api.GET("/api/terms", {
-          params: {
-            query: defined({
-              field: params.field,
-              query: params.query,
-              q: q(params.q),
-              unit: params.unit,
-              facetSelfExclude: params.selfExclusion,
-              limit: params.limit,
-            }),
-          },
-        }),
-      ),
+    queryFn: (): Promise<TermsResponse> => fetchTerms(params),
     enabled,
     placeholderData: (previous) => previous,
   })

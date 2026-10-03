@@ -18,6 +18,8 @@ from hypothesis import strategies as st
 
 from bsllmner_viewer import __version__
 from bsllmner_viewer.api.app import API_VERSION, create_app
+from bsllmner_viewer.api.routers.export import _ACCESSION_SQL, _annotation_cell
+from bsllmner_viewer.api.schemas import AccessionType, AnnotationValue
 from bsllmner_viewer.store.version import read_version
 
 PROBLEM_PREFIX = "https://ddbj.nig.ac.jp/problems/"
@@ -76,7 +78,6 @@ class TestCamelCase:
             client.get("/api/terms", params={"query": "breast", "q": disease}),
             client.get("/api/terms/children", params={"field": "disease", "termId": "MONDO:0004992"}),
             client.get("/api/dsl/parse", params={"q": f"{disease} AND date_published:[2015-01-01 TO 2020-12-31]"}),
-            client.post("/api/dsl/serialize", json={"ast": {"field": "organism_id", "op": "eq", "value": "9606"}}),
             client.post("/api/dsl/select", json={"q": None, "clauses": [{"field": "cell_line", "value": "A"}]}),
         ]
         for response in responses:
@@ -106,17 +107,13 @@ class TestCamelCase:
         assert set(body["labels"]) == {"9606"}
 
     def test_free_text_ast_keeps_is_phrase(self, client: TestClient) -> None:
-        response = client.post(
-            "/api/dsl/serialize", json={"ast": {"op": "free_text", "value": "breast cancer", "is_phrase": True}}
-        )
+        response = client.get("/api/dsl/parse", params={"q": '"breast cancer"'})
         assert response.status_code == 200
-        assert response.json()["dsl"] == '"breast cancer"'
+        assert response.json()["q"] == '"breast cancer"'
         assert response.json()["ast"] == {"op": "free_text", "value": "breast cancer", "is_phrase": True}
 
-    def test_free_text_ast_without_a_letter_or_digit_is_invalid_value(self, client: TestClient) -> None:
-        response = client.post(
-            "/api/dsl/serialize", json={"ast": {"op": "free_text", "value": "--", "is_phrase": False}}
-        )
+    def test_free_text_without_a_letter_or_digit_is_invalid_value(self, client: TestClient) -> None:
+        response = client.get("/api/dsl/parse", params={"q": "--"})
         assert response.status_code == 400
         assert response.json()["type"] == PROBLEM_PREFIX + "invalid-value"
 
@@ -303,26 +300,6 @@ class TestProblems:
         "body",
         [
             {},
-            {"ast": None},
-            {"ast": "x"},
-            {"ast": []},
-            {"nope": 1},
-            {"ast": {"op": "XOR"}},
-            {"ast": {"op": "AND", "rules": []}},
-            {"ast": {"field": "disease", "op": "eq"}},
-        ],
-    )
-    def test_invalid_serialize_body_is_invalid_ast(self, client: TestClient, body: dict[str, Any]) -> None:
-        response = client.post("/api/dsl/serialize", json=body)
-        assert response.status_code == 400
-        assert response.headers["content-type"].startswith("application/problem+json")
-        assert response.json()["type"] == PROBLEM_PREFIX + "invalid-ast"
-        assert response.json()["title"] == "Bad Request"
-
-    @pytest.mark.parametrize(
-        "body",
-        [
-            {},
             {"clauses": []},
             {"clauses": [{"value": "x"}]},
             {"clauses": [{"field": "disease", "value": "x"}], "mode": "other"},
@@ -336,7 +313,7 @@ class TestProblems:
         assert response.json()["type"] == PROBLEM_PREFIX + "invalid-ast"
 
     def test_malformed_json_body_is_invalid_ast(self, client: TestClient) -> None:
-        response = client.post("/api/dsl/serialize", content=b"{not json", headers={"content-type": "application/json"})
+        response = client.post("/api/dsl/select", content=b"{not json", headers={"content-type": "application/json"})
         assert response.status_code == 400
         assert response.json()["type"] == PROBLEM_PREFIX + "invalid-ast"
 
@@ -460,7 +437,7 @@ class TestRequestId:
             client.get("/api/export/accessions/biosample"),
             client.get("/api/export/entries/biosample", params={"format": "ndjson"}),
             client.get("/api/openapi.json"),
-            client.post("/api/dsl/serialize", json={}),
+            client.post("/api/dsl/select", json={}),
         ):
             assert response.headers["x-request-id"], response.url
 
@@ -540,7 +517,6 @@ class TestOpenApi:
         ("GET", "/api/dataset"): "getDataset",
         ("GET", "/api/service-info"): "getServiceInfo",
         ("GET", "/api/dsl/parse"): "parseCondition",
-        ("POST", "/api/dsl/serialize"): "serializeCondition",
         ("POST", "/api/dsl/select"): "selectElement",
         ("POST", "/api/dsl/keyword"): "setKeyword",
         ("GET", "/api/entries/{type}"): "listEntries",
@@ -621,8 +597,34 @@ class TestOpenApi:
             for operation in item.values():
                 for parameter in operation.get("parameters", []):
                     assert "_" not in parameter["name"], (path, parameter["name"])
+        # The AST nodes keep the property names of the DDBJ Search API.
+        ast_schemas = {"AstBool", "AstEq", "AstBetween", "AstFreeText"}
         for name, schema in spec["components"]["schemas"].items():
-            assert all("_" not in prop for prop in schema.get("properties", {})), name
+            if name not in ast_schemas:
+                assert all("_" not in prop for prop in schema.get("properties", {})), name
+        assert set(spec["components"]["schemas"]["AstFreeText"]["properties"]) == {"op", "value", "is_phrase"}
+        assert set(spec["components"]["schemas"]["AstBetween"]["properties"]) == {"field", "op", "from", "to"}
+
+    def test_response_properties_with_a_fixed_set_of_values_are_enums(self, spec: dict[str, Any]) -> None:
+        schemas = spec["components"]["schemas"]
+
+        def values(schema: dict[str, Any]) -> set[str]:
+            if "$ref" in schema:
+                schema = schemas[schema["$ref"].rsplit("/", 1)[1]]
+            return set(schema["enum"]) if "enum" in schema else {schema["const"]}
+
+        assert values(schemas["ProjectsResponse"]["properties"]["sort"]) == {
+            "biosampleCount:desc",
+            "biosampleCount:asc",
+            "experimentCount:desc",
+            "experimentCount:asc",
+        }
+        assert values(schemas["DslFieldDescription"]["properties"]["operators"]["items"]) == {"eq", "between"}
+        assert "term" in values(schemas["DslFieldDescription"]["properties"]["kind"])
+        assert "mapped_exact" in values(schemas["AnnotationValue"]["properties"]["status"])
+        assert values(schemas["EntryAnnotation"]["properties"]["status"]) == values(
+            schemas["AnnotationValue"]["properties"]["status"]
+        )
 
     def test_type_parameters_list_the_entry_types(self, spec: dict[str, Any]) -> None:
         def values(path: str) -> list[str]:
@@ -678,6 +680,39 @@ class TestExport:
             "chipAtlas",
         ]
         assert header[10:] == ["cell_line", "disease", "tissue", "drug", "chip_antigen"]
+
+    def test_tsv_rows_have_as_many_cells_as_the_header_and_every_annotation_has_four_parts(
+        self, client: TestClient
+    ) -> None:
+        lines = client.get("/api/export/entries/biosample").text.splitlines()
+        width = len(lines[0].split("\t"))
+        annotations = 0
+        for line in lines[1:]:
+            cells = line.split("\t")
+            assert len(cells) == width
+            for cell in cells[10:]:
+                for annotation in filter(None, cell.split(";")):
+                    annotations += 1
+                    assert len(annotation.split("|")) == 4, annotation
+        assert annotations > 0
+
+    def test_tsv_annotation_without_a_term_has_empty_term_and_label_parts(self) -> None:
+        unmapped = AnnotationValue(value="HeLa", status="unmapped_no_candidate", term_id=None, label=None)
+        assert _annotation_cell(unmapped) == "HeLa|||unmapped_no_candidate"
+        not_stated = AnnotationValue(value=None, status="not_stated", term_id=None, label=None)
+        assert _annotation_cell(not_stated) == "|||not_stated"
+
+    def test_tsv_annotation_escapes_the_characters_that_delimit_a_cell(self) -> None:
+        cell = _annotation_cell(
+            AnnotationValue(value="a|b;c\td\ne%", status="mapped_exact", term_id="CL:1", label="x|y")
+        )
+        assert cell == "a%7Cb%3Bc%09d%0Ae%25|CL:1|x%7Cy|mapped_exact"
+        assert "\t" not in cell
+        assert "\n" not in cell
+        assert len(cell.split("|")) == 4
+
+    def test_accession_queries_exist_for_every_accession_type(self) -> None:
+        assert set(_ACCESSION_SQL) == set(AccessionType.__value__.__args__)
 
     def test_default_format_is_tsv(self, client: TestClient) -> None:
         assert client.get("/api/export/entries/biosample").headers["content-type"].startswith("text/tab-separated")

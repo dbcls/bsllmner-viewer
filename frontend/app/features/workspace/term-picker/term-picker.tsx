@@ -1,16 +1,11 @@
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 
 import { useTerms } from "~/lib/api/queries"
 import type { TermHit } from "~/lib/api/types"
-import { formatCount } from "~/lib/format"
 import { fieldLabel } from "~/lib/labels"
+import { ALL_FIELDS, SKELETON_TERMS, TERM_SEARCH_DEBOUNCE_MS, termFieldOptions, termHitRowProps, useResultListRef } from "~/lib/terms"
+import { useDebounced } from "~/lib/use-debounced"
 import { ACTION_ICON, busyClass, cn, Modal, Select, TermRow, TermRowSkeleton, TextInput } from "~/ui"
-
-/** The field choice that searches every annotation field. */
-export const ALL_FIELDS = "*"
-
-/** The rows that hold the place of the result before it arrives. */
-const SKELETON_TERMS = 8
 
 type PickerSearchProps = {
   /** The choices of the field Select, which may include `ALL_FIELDS`. */
@@ -37,12 +32,11 @@ export const PickerSearch = ({ fieldOptions, field, onField, fields, q, isSelect
   const [query, setQuery] = useState("")
   const everyField = field === ALL_FIELDS
   const searchable = everyField || fields.includes(field)
-  const terms = useTerms({ ...(everyField ? {} : { field }), query, q, unit: "biosample", selfExclusion: true, limit: 30 }, searchable)
-  // The results of another search start at the top, instead of where the previous results were scrolled to.
-  const list = useRef<HTMLDivElement | null>(null)
-  useEffect(() => {
-    if (list.current) list.current.scrollTop = 0
-  }, [terms.data?.query, terms.data?.field])
+  // An emptied search shows at once, as it does when the field changes.
+  const delayed = useDebounced(query.trim(), TERM_SEARCH_DEBOUNCE_MS)
+  const debounced = query.trim() === "" ? "" : delayed
+  const terms = useTerms({ ...(everyField ? {} : { field }), query: debounced, q, unit: "biosample", selfExclusion: true, limit: 30 }, searchable)
+  const list = useResultListRef(terms.data?.query, terms.data?.field)
   return (
     <>
       <div className="flex items-center gap-2 border-b border-border-soft px-6 pb-3">
@@ -81,12 +75,7 @@ export const PickerSearch = ({ fieldOptions, field, onField, fields, q, isSelect
             return (
               <TermRow
                 key={`${hit.field}:${hit.termId}`}
-                label={hit.label ?? hit.termId}
-                id={hit.termId}
-                count={formatCount(hit.count)}
-                {...(everyField ? { field: fieldLabel(hit.field) } : {})}
-                {...(hit.matchedSynonym ? { synonym: hit.matchedSynonym } : {})}
-                highlight={terms.data?.query ?? ""}
+                {...termHitRowProps(hit, everyField, terms.data?.query)}
                 {...(selected ? { note: selectedNote } : {})}
                 selected={selected}
                 onClick={() => onPick(hit)}
@@ -122,7 +111,7 @@ export const TermPicker = ({ open, onClose, fields, q, isSelected, onPick }: Ter
   return (
     <Modal open={open} onClose={onClose} title="Add an annotation term">
       <PickerSearch
-        fieldOptions={[{ value: ALL_FIELDS, label: "All fields" }, ...fields.map((f) => ({ value: f, label: fieldLabel(f) }))]}
+        fieldOptions={termFieldOptions(fields)}
         field={field}
         onField={setField}
         fields={fields}

@@ -11,7 +11,7 @@ from typing import Any, Literal
 import orjson
 from pydantic import BaseModel, ConfigDict
 
-from bsllmner_viewer.dsl.fields import STATUSES
+from bsllmner_viewer.dsl.fields import Status
 
 
 class RunMetadata(BaseModel):
@@ -28,7 +28,7 @@ class AnnotationRow:
     field: str
     value_index: int
     extracted_value: str | None
-    status: str
+    status: Status
     term_id: str | None
     term_label: str | None
 
@@ -121,21 +121,11 @@ def _value_row(
     )
     if picked is not None:
         selected = isinstance(timings.get(field), dict) and value in timings[field]
-        status = "mapped_selected" if selected else "mapped_exact"
+        mapped: Status = "mapped_selected" if selected else "mapped_exact"
         label = picked.get("label")
         return AnnotationRow(
-            field, index, value, status, str(picked["term_id"]), label if isinstance(label, str) else None
+            field, index, value, mapped, str(picked["term_id"]), label if isinstance(label, str) else None
         )
     has_candidate = bool((search.get(field) or {}).get(value)) or bool((text2term.get(field) or {}).get(value))
-    status = "unmapped_rejected" if has_candidate else "unmapped_no_candidate"
-    return AnnotationRow(field, index, value, status, None, None)
-
-
-assert set(STATUSES) == {
-    "not_stated",
-    "extraction_failed",
-    "unmapped_no_candidate",
-    "unmapped_rejected",
-    "mapped_exact",
-    "mapped_selected",
-}
+    unmapped: Status = "unmapped_rejected" if has_candidate else "unmapped_no_candidate"
+    return AnnotationRow(field, index, value, unmapped, None, None)

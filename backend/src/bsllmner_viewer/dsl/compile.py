@@ -40,17 +40,6 @@ def _node(node: Node, fields: FieldSet, alias: str) -> Predicate:
     return Predicate("(" + joiner.join(p.sql for p in parts) + ")", params)
 
 
-def like_pattern(value: str) -> str:
-    """A case-insensitive substring pattern for `LIKE ... ESCAPE '\\'` against normalized text."""
-    escaped = value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-    return f"%{normalize_text(escaped)}%"
-
-
-def normalize_text(value: str) -> str:
-    """Normalization applied to stored text and to substring conditions."""
-    return value.casefold()
-
-
 def _clause(clause: FieldClause, fields: FieldSet, alias: str) -> Predicate:
     field_def, op = resolve_operator(clause, fields)
     value = clause.value

@@ -1,5 +1,7 @@
 import { FrozenTd, Skeleton } from "~/ui"
 
+import { TABLE_CELL } from "./table"
+
 type SkeletonTableRowsProps = {
   /** The rows that a page of the table holds. */
   rows: number
@@ -16,11 +18,11 @@ export const SkeletonTableRows = ({ rows, columns, frozen = false }: SkeletonTab
       <tr key={index} aria-hidden="true" className="group">
         {columns.map((width, column) =>
           frozen && column === 0 ? (
-            <FrozenTd key={column} className={SKELETON_CELL}>
+            <FrozenTd key={column} className={TABLE_CELL}>
               <Skeleton className={width} />
             </FrozenTd>
           ) : (
-            <td key={column} className={SKELETON_CELL}>
+            <td key={column} className={TABLE_CELL}>
               <Skeleton className={width} />
             </td>
           ),
@@ -29,9 +31,3 @@ export const SkeletonTableRows = ({ rows, columns, frozen = false }: SkeletonTab
     ))}
   </>
 )
-
-/**
- * The rule is on the cells rather than the row, so that it is drawn in a table with separate borders as well. The last row
- * has none, so that it does not double the line over the footer.
- */
-const SKELETON_CELL = "border-b border-brand-soft px-2.5 py-1.5 group-last:border-b-0"

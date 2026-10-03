@@ -17,6 +17,9 @@ from fastapi.testclient import TestClient
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
+from tests.api_helpers import accessions, count
+from tests.strategies import UNITS
+
 Row = tuple[str, str]
 Predicate = Callable[[str, str], bool]
 
@@ -205,12 +208,7 @@ def _evaluate(corpus: Corpus, q: str, row_predicate: Predicate) -> dict[str, set
 
 
 def _fetch(client: TestClient, q: str) -> dict[str, set[str]]:
-    found = {}
-    for unit in ("biosample", "sra-experiment", "bioproject"):
-        response = client.get(f"/api/export/accessions/{unit}", params={"q": q})
-        assert response.status_code == 200, (q, response.text)
-        found[unit] = set(response.text.splitlines()[1:])
-    return found
+    return {unit: set(accessions(client, unit, q)) for unit in UNITS}
 
 
 def _combine(corpus: Corpus, form: str, a: Atom, b: Atom) -> tuple[str, Predicate]:
@@ -249,10 +247,8 @@ def test_keyword_counts_of_biosamples_and_experiments_equal_the_number_of_matchi
 ) -> None:
     a = data.draw(atoms(corpus))
     expected = _evaluate(corpus, a.text, atom(corpus, a.value, phrase=a.phrase))
-    total = client.get("/api/entries/biosample", params={"q": a.text}).json()["pagination"]["total"]
-    assert total == len(expected["biosample"]), a.text
-    experiments = client.get("/api/export/accessions/sra-experiment", params={"q": a.text}).text.splitlines()[1:]
-    assert len(experiments) == len(expected["sra-experiment"]), a.text
+    assert count(client, a.text) == len(expected["biosample"]), a.text
+    assert count(client, a.text, "sra-experiment") == len(expected["sra-experiment"]), a.text
 
 
 @pytest.mark.parametrize(

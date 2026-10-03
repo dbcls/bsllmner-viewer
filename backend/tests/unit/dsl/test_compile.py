@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from bsllmner_viewer.dsl.ast import FreeText
-from bsllmner_viewer.dsl.compile import compile_condition, like_pattern
+from bsllmner_viewer.dsl.compile import compile_condition
 from bsllmner_viewer.dsl.errors import DslError, ErrorType
 from bsllmner_viewer.dsl.fields import FieldSet
 from bsllmner_viewer.dsl.parser import parse
@@ -31,10 +31,6 @@ def test_compile_boolean_structure_and_parameter_order() -> None:
     term = "pn.biosample IN (SELECT biosample FROM annotation_closure WHERE field = ? AND ancestor = ?)"
     assert pred.sql == f"(NOT (pn.organism_id = ?) AND (pn.library_strategy = ? OR {term}))"
     assert pred.params == [9606, "a", "disease", "b"]
-
-
-def test_like_pattern_escapes_wildcards_and_casefolds() -> None:
-    assert like_pattern("50%_A\\") == "%50\\%\\_a\\\\%"
 
 
 def test_compile_date_range_and_bioproject() -> None:

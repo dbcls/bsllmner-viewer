@@ -22,7 +22,7 @@ BLANK_TYPE = "about:blank"
 MEDIA_TYPE = "application/problem+json"
 REQUEST_ID_HEADER = "X-Request-ID"
 
-_BODY_ERROR_PATHS = ("/api/dsl/serialize", "/api/dsl/select")
+_BODY_ERROR_PATHS = ("/api/dsl/select",)
 
 logger = logging.getLogger(__name__)
 

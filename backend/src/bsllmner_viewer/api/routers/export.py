@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from typing import Annotated, Literal
 
 import orjson
@@ -14,26 +14,26 @@ from bsllmner_viewer.api.deps import QParam, StoreDep, parse_condition
 from bsllmner_viewer.api.problems import NOT_FOUND_RESPONSE
 from bsllmner_viewer.api.queries import entries as rq
 from bsllmner_viewer.api.queries.core import population
-from bsllmner_viewer.api.schemas import AccessionType, EntryType
+from bsllmner_viewer.api.schemas import AccessionType, AnnotationValue, EntryItem, EntryType
 
 router = APIRouter(tags=["Export"])
 
 _BATCH = 1000
 
-TSV_COLUMNS = (
-    "identifier",
-    "type",
-    "experiments",
-    "title",
-    "organismIdentifier",
-    "organismName",
-    "libraryStrategy",
-    "bioprojects",
-    "datePublished",
-    "chipAtlas",
+TSV_COLUMNS: tuple[tuple[str, Callable[[EntryItem], str]], ...] = (
+    ("identifier", lambda item: item.identifier),
+    ("type", lambda item: item.type),
+    ("experiments", lambda item: ";".join(item.experiments)),
+    ("title", lambda item: item.title or ""),
+    ("organismIdentifier", lambda item: item.organism.identifier if item.organism else ""),
+    ("organismName", lambda item: (item.organism.name or "") if item.organism else ""),
+    ("libraryStrategy", lambda item: ";".join(item.library_strategy)),
+    ("bioprojects", lambda item: ";".join(item.bioprojects)),
+    ("datePublished", lambda item: item.date_published or ""),
+    ("chipAtlas", lambda item: ";".join(item.chip_atlas)),
 )
 
-_ACCESSION_SQL: dict[str, str] = {
+_ACCESSION_SQL: dict[AccessionType, str] = {
     "biosample": "SELECT DISTINCT p.biosample FROM pop p ORDER BY 1",
     "sra-experiment": "SELECT DISTINCT p.experiment FROM pop p ORDER BY 1",
     "sra-run": "SELECT DISTINCT s.accession FROM pop p JOIN sra_run s ON s.experiment = p.experiment ORDER BY 1",
@@ -90,7 +90,7 @@ def export_entries(
 
     def rows() -> Iterator[bytes]:
         if format == "tsv":
-            head = [*TSV_COLUMNS, *fields]
+            head = [*(name for name, _ in TSV_COLUMNS), *fields]
             yield ("\t".join(head) + "\n").encode()
         with store.cursor() as cur:
             page = 1
@@ -102,26 +102,10 @@ def export_entries(
                     if format == "ndjson":
                         yield orjson.dumps(item.model_dump(mode="json", by_alias=True)) + b"\n"
                     else:
-                        cells = [
-                            item.identifier,
-                            item.type,
-                            ";".join(item.experiments),
-                            item.title or "",
-                            item.organism.identifier if item.organism else "",
-                            (item.organism.name or "") if item.organism else "",
-                            ";".join(item.library_strategy),
-                            ";".join(item.bioprojects),
-                            item.date_published or "",
-                            ";".join(item.chip_atlas),
-                        ]
+                        cells = [_plain_cell(get(item)) for _, get in TSV_COLUMNS]
                         for f in fields:
-                            cells.append(
-                                ";".join(
-                                    _annotation_cell(a.value, a.term_id, a.label, a.status)
-                                    for a in item.annotations.get(f, [])
-                                )
-                            )
-                        yield ("\t".join(c.replace("\t", " ").replace("\n", " ") for c in cells) + "\n").encode()
+                            cells.append(";".join(_annotation_cell(a) for a in item.annotations.get(f, [])))
+                        yield ("\t".join(cells) + "\n").encode()
                 page += 1
 
     name = f"{type}-entries.{'tsv' if format == 'tsv' else 'ndjson'}"
@@ -129,12 +113,22 @@ def export_entries(
     return StreamingResponse(rows(), media_type=media, headers=_disposition(name))
 
 
-def _annotation_cell(value: str | None, term_id: str | None, label: str | None, status: str) -> str:
-    if term_id:
-        return f"{value}|{term_id}|{label or ''}|{status}"
-    if value:
-        return f"{value}||{status}"
-    return status
+def _plain_cell(value: str) -> str:
+    return value.replace("\t", " ").replace("\r", " ").replace("\n", " ")
+
+
+_PART_ESCAPES = {"%": "%25", "|": "%7C", ";": "%3B", "\t": "%09", "\r": "%0D", "\n": "%0A"}
+
+
+def _escape_part(value: str | None) -> str:
+    """The value with the characters that delimit a cell percent-encoded."""
+    return "".join(_PART_ESCAPES.get(ch, ch) for ch in value or "")
+
+
+def _annotation_cell(annotation: AnnotationValue) -> str:
+    """`value|termId|label|status`: four parts in this order, empty when missing."""
+    parts = (annotation.value, annotation.term_id, annotation.label, annotation.status)
+    return "|".join(_escape_part(part) for part in parts)
 
 
 def _disposition(filename: str) -> dict[str, str]:

@@ -1,9 +1,8 @@
 import { useMemo, useState } from "react"
 
-import { api, unwrap } from "~/lib/api/client"
-import { useCrosstab, useDataset } from "~/lib/api/queries"
+import { fetchTermChildren, useCrosstab, useDataset } from "~/lib/api/queries"
 import type { Cell, Clause, Element, TermElement, TermHit } from "~/lib/api/types"
-import { countScale, countScaleIsDark, logPosition, ratioScale, ratioScaleIsDark, token } from "~/lib/color"
+import { countScale, countScaleIsDark, logPosition, RATIO_STEPS, ratioScale, ratioScaleIsDark, token } from "~/lib/color"
 import { downloadPngMarkup, downloadSvgMarkup, downloadTsv } from "~/lib/export"
 import { formatCount, formatRatio } from "~/lib/format"
 import { fieldLabel, unitLabel } from "~/lib/labels"
@@ -11,7 +10,7 @@ import { MATRIX_PRESETS } from "~/lib/presets"
 import { ACTION_ICON, busyClass, Card, CardHeader, Clickable, cn, HelpHint, Icon, InlineLabel, LinkButton, Segmented, Select, Skeleton } from "~/ui"
 
 import { AxisControls } from "../axis/axis-controls"
-import { type AxisMemory, resolvePasted, switchDimension } from "../axis/axis-terms"
+import { type AxisMemory, MAX_AXIS_TERMS, replaceTerms, resolvePasted, switchDimension, toggleTerm } from "../axis/axis-terms"
 import { AxisTermsDialog } from "../axis/axis-terms-dialog"
 import { findTermId } from "../axis/find-term"
 import { expectedElements } from "../expected-elements"
@@ -20,15 +19,11 @@ import { type HeatmapColor, type Patch, type WorkspaceState } from "../state"
 import { TermIdHover } from "../term-id-hover"
 import type { Condition } from "../use-condition"
 import { ViewControls } from "../view-controls"
+import { crosstabAxes, crosstabDimensions, crosstabParams, HEATMAP_LIMIT } from "../view-requests"
 import { type MatrixCell, matrixSvg, matrixSvgSize } from "./matrix-svg"
 import { type Guide, nestedUnder, openChildren, rowGuides, treePlaces } from "./row-tree"
 
-const AXIS_DIMENSIONS = ["library_strategy", "organism_id", "date_published"]
-
 export type AxisSide = "row" | "col"
-
-/** The number of elements per axis when the view names none. */
-const LIMIT = 10
 
 type HeatmapTabProps = {
   state: WorkspaceState
@@ -51,9 +46,11 @@ export const HeatmapTab = ({ state, condition, update, onAlert }: HeatmapTabProp
   const dataset = useDataset()
   const fields = dataset.data?.fields.map((f) => f.name) ?? []
   // The term IDs follow the labels of the rows and of the columns that are annotation terms, when the charts show them.
-  const rowIds = state.termIds && fields.includes(state.row)
-  const colIds = state.termIds && fields.includes(state.col)
-  const dimensions = [...fields, ...AXIS_DIMENSIONS].map((d) => ({ value: d, label: fieldLabel(d) }))
+  // The axes are the URL's, except a dimension that the dataset lacks, which another dimension replaces.
+  const axes = crosstabAxes(state, dataset.data ? fields : null)
+  const rowIds = state.termIds && fields.includes(axes.row)
+  const colIds = state.termIds && fields.includes(axes.col)
+  const dimensions = crosstabDimensions(fields).map((d) => ({ value: d, label: fieldLabel(d) }))
   /**
    * What each axis showed on the dimensions that it left, so that coming back to a dimension shows the terms chosen there.
    * The URL holds only the dimensions on screen, so this lasts as long as the page.
@@ -61,19 +58,10 @@ export const HeatmapTab = ({ state, condition, update, onAlert }: HeatmapTabProp
   const [memory, setMemory] = useState<Record<AxisSide, AxisMemory>>({ row: {}, col: {} })
   /** The axis whose terms dialog is open. */
   const [termsSide, setTermsSide] = useState<AxisSide | null>(null)
-  const crosstab = useCrosstab({
-    row: state.row,
-    col: state.col,
-    q: state.q,
-    unit: state.unit,
-    selfExclusion: true,
-    ...(state.rowTerms ? { rowElements: state.rowTerms.join(",") } : {}),
-    ...(state.colTerms ? { colElements: state.colTerms.join(",") } : {}),
-    limit: LIMIT,
-  })
+  const crosstab = useCrosstab(crosstabParams(state, dataset.data ? fields : null))
   const data = crosstab.data
-  const pendingRows = data === undefined ? expectedElements(state.row, dataset.data, LIMIT, state.rowTerms) : null
-  const pendingCols = data === undefined ? expectedElements(state.col, dataset.data, LIMIT, state.colTerms) : null
+  const pendingRows = data === undefined ? expectedElements(axes.row, dataset.data, HEATMAP_LIMIT, axes.rowTerms) : null
+  const pendingCols = data === undefined ? expectedElements(axes.col, dataset.data, HEATMAP_LIMIT, axes.colTerms) : null
   const rows = useMemo(() => data?.rows ?? [], [data])
   const cols = useMemo(() => data?.cols ?? [], [data])
 
@@ -94,9 +82,9 @@ export const HeatmapTab = ({ state, condition, update, onAlert }: HeatmapTabProp
    * be those of the previous terms while the cross-tabulation of the new ones is on its way.
    */
   const values = (side: AxisSide): string[] =>
-    (side === "row" ? state.rowTerms : state.colTerms) ?? (side === "row" ? rows : cols).map((e) => e.value)
+    (side === "row" ? axes.rowTerms : axes.colTerms) ?? (side === "row" ? rows : cols).map((e) => e.value)
   const setValues = (side: AxisSide, next: string[] | null) => update(side === "row" ? { rowTerms: next } : { colTerms: next })
-  const dimensionOf = (side: AxisSide) => (side === "row" ? state.row : state.col)
+  const dimensionOf = (side: AxisSide) => (side === "row" ? axes.row : axes.col)
 
   /**
    * The tree of the rows, from the order of the rows in the URL and the parents that the api gives each of them, so that a
@@ -119,19 +107,13 @@ export const HeatmapTab = ({ state, condition, update, onAlert }: HeatmapTabProp
       return
     }
     // The children are counted in the population of the table, as `hasChildren` is, so that a chevron always opens some.
-    const result = unwrap(
-      await api.GET("/api/terms/children", {
-        params: {
-          query: {
-            field: dimensionOf("row"),
-            termId: value,
-            ...(data.populationQ ? { q: data.populationQ } : {}),
-            unit: state.unit,
-            facetSelfExclude: true,
-          },
-        },
-      }),
-    )
+    const result = await fetchTermChildren({
+      field: dimensionOf("row"),
+      termId: value,
+      q: data.populationQ,
+      unit: state.unit,
+      selfExclusion: true,
+    })
     const children = result.children.map((c) => c.value).filter((c) => c !== value)
     if (children.length === 0) {
       onAlert("No child terms with data")
@@ -145,16 +127,13 @@ export const HeatmapTab = ({ state, condition, update, onAlert }: HeatmapTabProp
     setValues("row", openChildren(current, value, children, subtree))
   }
 
+  const limit = { max: MAX_AXIS_TERMS, subject: "A heatmap axis" }
   /** Makes the pasted entries the terms of the axis, in their order. A label becomes the term whose label it is, or else the first term found. */
   const replace = async (side: AxisSide, entries: string[]) => {
     const dimension = dimensionOf(side)
-    const unique = await resolvePasted(entries, fields.includes(dimension), (label) => findTermId(dimension, label))
-    if (unique.length === 0) {
-      onAlert("No terms recognised")
-      return
-    }
-    setValues(side, unique)
-    onAlert(`${unique.length} of ${entries.length} terms recognised`)
+    const result = await replaceTerms(entries, (list) => resolvePasted(list, fields.includes(dimension), (label) => findTermId(dimension, label)), limit)
+    if (result.terms !== null) setValues(side, result.terms)
+    onAlert(result.alert)
   }
 
   /** Takes a term, and on the rows the rows that hang under it in the tree on screen, off the axis. */
@@ -166,12 +145,17 @@ export const HeatmapTab = ({ state, condition, update, onAlert }: HeatmapTabProp
 
   /** Adds a found term to the end of the axis, or takes it off when the axis has it. */
   const pick = (side: AxisSide, hit: TermHit) => {
-    if (values(side).includes(hit.termId)) remove(side, hit.termId)
-    else setValues(side, [...values(side), hit.termId])
+    if (values(side).includes(hit.termId)) {
+      remove(side, hit.termId)
+      return
+    }
+    const result = toggleTerm(values(side), hit.termId, limit)
+    if (result.alert !== null) onAlert(result.alert)
+    else setValues(side, result.terms)
   }
 
   const changeDimension = (side: AxisSide, dimension: string) => {
-    const current = { terms: side === "row" ? state.rowTerms : state.colTerms }
+    const current = { terms: side === "row" ? axes.rowTerms : axes.colTerms }
     const switched = switchDimension(memory[side], dimensionOf(side), dimension, current)
     setMemory((prev) => ({ ...prev, [side]: switched.memory }))
     update(side === "row" ? { row: dimension, rowTerms: switched.next.terms } : { col: dimension, colTerms: switched.next.terms })
@@ -233,12 +217,12 @@ export const HeatmapTab = ({ state, condition, update, onAlert }: HeatmapTabProp
     rowLabels: rows.map((r) => ({ value: r.value, label: r.label, ...(rowIds ? { id: r.value } : {}), total: r.count })),
     colLabels: cols.map((c) => ({ value: c.value, label: c.label, ...(colIds ? { id: c.value } : {}), total: c.count })),
     cells: exportCells(),
-    corner: { row: fieldLabel(state.row), col: fieldLabel(state.col) },
+    corner: { row: fieldLabel(axes.row), col: fieldLabel(axes.col) },
     total: data?.total ?? 0,
   })
   const exportTsv = () =>
     downloadTsv(
-      `${state.row}-x-${state.col}.tsv`,
+      `${axes.row}-x-${axes.col}.tsv`,
       ["row", "row_label", "col", "col_label", unit.toLowerCase(), "expected", "ratio", "residual", "classification"],
       (data?.cells ?? []).map((c) => [
         c.row,
@@ -252,11 +236,11 @@ export const HeatmapTab = ({ state, condition, update, onAlert }: HeatmapTabProp
         c.classification ?? "",
       ]),
     )
-  const exportSvg = () => downloadSvgMarkup(`${state.row}-x-${state.col}.svg`, matrixSvg(exportData()))
+  const exportSvg = () => downloadSvgMarkup(`${axes.row}-x-${axes.col}.svg`, matrixSvg(exportData()))
   const exportPng = () => {
     const data = exportData()
     const size = matrixSvgSize(data)
-    void downloadPngMarkup(`${state.row}-x-${state.col}.png`, matrixSvg(data), size.width, size.height)
+    void downloadPngMarkup(`${axes.row}-x-${axes.col}.png`, matrixSvg(data), size.width, size.height)
   }
 
   const gradient = `linear-gradient(90deg, ${token("--color-brand-soft")}, ${token("--color-brand-light")}, ${token("--color-brand")}, ${token("--color-brand-deeper")})`
@@ -292,7 +276,7 @@ export const HeatmapTab = ({ state, condition, update, onAlert }: HeatmapTabProp
                 onChange={(id) => {
                   const preset = MATRIX_PRESETS.find((p) => p.id === id)
                   if (!preset) return
-                  update({ row: preset.state.row ?? state.row, col: preset.state.col ?? state.col, rowTerms: null, colTerms: null, unit: preset.state.unit ?? state.unit })
+                  update({ row: preset.state.row ?? axes.row, col: preset.state.col ?? axes.col, rowTerms: null, colTerms: null, unit: preset.state.unit ?? state.unit })
                 }}
                 aria-label="Preset"
               />
@@ -313,7 +297,7 @@ export const HeatmapTab = ({ state, condition, update, onAlert }: HeatmapTabProp
             onClick={() => {
               // The columns do not open, so the rows that hung under others become flat columns.
               setMemory((prev) => ({ row: prev.col, col: prev.row }))
-              update({ row: state.col, col: state.row, rowTerms: state.colTerms, colTerms: state.rowTerms })
+              update({ row: axes.col, col: axes.row, rowTerms: axes.colTerms, colTerms: axes.rowTerms })
             }}
           >
             Swap axes
@@ -328,8 +312,8 @@ export const HeatmapTab = ({ state, condition, update, onAlert }: HeatmapTabProp
         {...axisProps(dialogSide)}
         selectedNote="✓ in axis"
         fields={fields}
-        explicit={(dialogSide === "row" ? state.rowTerms : state.colTerms) !== null}
-        limit={LIMIT}
+        explicit={(dialogSide === "row" ? axes.rowTerms : axes.colTerms) !== null}
+        limit={HEATMAP_LIMIT}
         q={state.q}
         onPick={(hit) => pick(dialogSide, hit)}
         onRemove={(value) => remove(dialogSide, value)}
@@ -351,8 +335,8 @@ export const HeatmapTab = ({ state, condition, update, onAlert }: HeatmapTabProp
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                    <Swatch className="border border-border-soft bg-surface" /> ≤ 0.5× <Swatch className="bg-brand-tint" /> &lt; 2×{" "}
-                    <Swatch className="bg-brand-light" /> ≥ 2× <Swatch className="bg-brand" /> ≥ 4×
+                    <Swatch className="border border-border-soft bg-surface" /> ≤ {RATIO_STEPS.low}× <Swatch className="bg-brand-tint" /> &lt;{" "}
+                    {RATIO_STEPS.mid}× <Swatch className="bg-brand-light" /> ≥ {RATIO_STEPS.mid}× <Swatch className="bg-brand" /> ≥ {RATIO_STEPS.high}×
                   </span>
                 )}
                 <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
@@ -363,9 +347,9 @@ export const HeatmapTab = ({ state, condition, update, onAlert }: HeatmapTabProp
               <HelpHint label="About the heatmap">
                 <span className="block">Expected: the count if the row and the column were unrelated (row total × column total ÷ total).</span>
                 <span className="mt-1.5 block">
-                  Ratio to expected: 2× is twice the expected count, 0.5× is half. Cells with fewer than 5 expected are not colored.
+                  Ratio to expected: {RATIO_STEPS.mid}× is twice the expected count, {RATIO_STEPS.low}× is half. Cells with fewer than {EXPECTED_MIN} expected are not colored.
                 </span>
-                <span className="mt-1.5 block">Gap: 0 where 5 or more are expected.</span>
+                <span className="mt-1.5 block">Gap: 0 where {EXPECTED_MIN} or more are expected.</span>
                 <span className="mt-1.5 block">A BioSample can be in several rows and columns, so the totals are not sums of the cells.</span>
               </HelpHint>
             </div>
@@ -379,8 +363,8 @@ export const HeatmapTab = ({ state, condition, update, onAlert }: HeatmapTabProp
               <tr>
                 <th className="sticky top-0 left-0 z-20 bg-surface px-2.5 py-1.5 text-left align-bottom text-fs-micro font-semibold whitespace-nowrap text-ink-soft">
                   <span className="inline-flex gap-6">
-                    <span>{fieldLabel(state.row)} ↓</span>
-                    <span>{fieldLabel(state.col)} →</span>
+                    <span>{fieldLabel(axes.row)} ↓</span>
+                    <span>{fieldLabel(axes.col)} →</span>
                   </span>
                 </th>
                 {cols.map((col) => (

@@ -10,10 +10,6 @@ import pytest
 from bsllmner_viewer.build.derive import _derive_searchable_text
 
 
-def _text_of(rows: list[tuple[str, str]]) -> dict[str, str]:
-    return dict(rows)
-
-
 def test_searchable_text_has_one_row_per_biosample_of_the_population(
     store_con: duckdb.DuckDBPyConnection,
 ) -> None:

@@ -9,6 +9,7 @@ import { workspaceSearch } from "~/lib/workspace-state"
 import { ACTION_ICON, Caption, Card, ExternalLink, Icon, PageHeading, SectionHeading, Skeleton, Tag } from "~/ui"
 
 import { ConditionLink } from "./condition-link"
+import { CountBar, countBarRowClass, CountBarSkeleton } from "./count-bar"
 import { TermSearch } from "./term-search"
 
 const STATISTICS_FIELDS = ["library_strategy", "organism_id"] as const
@@ -21,7 +22,7 @@ export const LandingPage = () => {
     <div className="mx-auto w-full max-w-content-max flex-1 px-page-gutter py-4">
       <div className="grid grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] items-start gap-4">
         <Card padding="lg">
-          <PageHeading rule="edge">bsllmner-viewer: Ontology-annotated BioSamples</PageHeading>
+          <PageHeading>bsllmner-viewer: Ontology-annotated BioSamples</PageHeading>
           <p className="mt-3 mb-8 max-w-2xl text-fs-body text-ink-mid text-pretty">
             Search BioSamples by the ontology terms that annotate them, and compare the results in tables and charts.{" "}
             <ExternalLink href={MK2_URL}>bsllmner-mk2</ExternalLink> reads the attributes of each BioSample with a large language model (LLM),
@@ -126,33 +127,10 @@ const FieldStatistics = ({ field }: { field: (typeof STATISTICS_FIELDS)[number] 
   return (
     <div className="mt-4 border-t border-border-soft pt-3.5">
       <div className="mb-1.5 font-semibold">{fieldLabel(field)}</div>
-      {dataset.data === undefined &&
-        Array.from({ length: limit }, (_, index) => (
-          <div key={index} aria-hidden="true" className="flex items-center gap-2 py-0.5">
-            <span className="min-w-0 flex-1">
-              <span className="block text-fs-body-sm">
-                <Skeleton className="w-24" />
-              </span>
-              <Skeleton kind="block" className="mt-0.5 h-1.5 w-full" />
-            </span>
-            <span className="flex w-17 shrink-0 justify-end text-fs-label">
-              <Skeleton className="w-14" />
-            </span>
-          </div>
-        ))}
+      {dataset.data === undefined && Array.from({ length: limit }, (_, index) => <CountBarSkeleton key={index} padding="sm" />)}
       {elements.map((element) => (
-        <ConditionLink
-          key={element.value}
-          clauses={element.clauses}
-          className="flex w-full cursor-pointer items-center gap-2 rounded-tag py-0.5 text-left hover:bg-brand-soft"
-        >
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-fs-body-sm">{element.label}</span>
-            <span className="mt-0.5 block h-1.5 overflow-hidden rounded-badge bg-brand-soft">
-              <span className="block h-full bg-brand-light" style={{ width: `${(element.count / max) * 100}%` }} />
-            </span>
-          </span>
-          <span className="w-17 shrink-0 text-right font-mono text-fs-label text-ink-mid">{formatCount(element.count)}</span>
+        <ConditionLink key={element.value} clauses={element.clauses} className={countBarRowClass("sm")}>
+          <CountBar label={element.label} count={formatCount(element.count)} ratio={element.count / max} />
         </ConditionLink>
       ))}
     </div>

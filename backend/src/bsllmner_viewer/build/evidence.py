@@ -8,16 +8,19 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from typing import Final
 
-EXACT = "exact"
-CASE_INSENSITIVE = "case_insensitive"
-NORMALIZED = "normalized"
-BAG_OF_WORDS = "bag_of_words"
-FUZZY = "fuzzy"
-ONTOLOGY_SYNONYM = "ontology_synonym"
-TEXT_STRATEGIES = (EXACT, CASE_INSENSITIVE, NORMALIZED, BAG_OF_WORDS, FUZZY)
+from bsllmner_viewer.store.metadata import EvidenceStrategy
+
+EXACT: Final[EvidenceStrategy] = "exact"
+CASE_INSENSITIVE: Final[EvidenceStrategy] = "case_insensitive"
+NORMALIZED: Final[EvidenceStrategy] = "normalized"
+BAG_OF_WORDS: Final[EvidenceStrategy] = "bag_of_words"
+FUZZY: Final[EvidenceStrategy] = "fuzzy"
+ONTOLOGY_SYNONYM: Final[EvidenceStrategy] = "ontology_synonym"
+TEXT_STRATEGIES: tuple[EvidenceStrategy, ...] = (EXACT, CASE_INSENSITIVE, NORMALIZED, BAG_OF_WORDS, FUZZY)
 """The strategies that search for the text of the value itself, in order."""
 
 SHORT_VALUE = 3
@@ -59,7 +62,7 @@ class Match:
 
 @dataclass(frozen=True, slots=True)
 class Traced:
-    strategy: str
+    strategy: EvidenceStrategy
     group: int
     """Position of the group of texts in which the value matched."""
     matches: list[Match]
@@ -339,7 +342,7 @@ def _fuzzy(query: Text, text: Text) -> list[Span]:
     return spans
 
 
-_FIND = {
+_FIND: dict[EvidenceStrategy, Callable[[Text, Text], list[Span]]] = {
     EXACT: _exact,
     CASE_INSENSITIVE: _case_insensitive,
     NORMALIZED: _normalized,
@@ -348,7 +351,7 @@ _FIND = {
 }
 
 
-def find(strategy: str, query: Text, text: Text) -> list[Span]:
+def find(strategy: EvidenceStrategy, query: Text, text: Text) -> list[Span]:
     """The spans of the text that match the query with one strategy, in order and without overlaps."""
     if not query.raw:
         return []

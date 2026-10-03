@@ -187,10 +187,10 @@ def test_trace_term_keeps_the_matches_of_every_name_without_overlaps() -> None:
     assert found == (0, [(0, "breast cancer"), (0, "mammary cancer")])
 
 
-def test_the_api_names_the_same_strategies_as_build() -> None:
+def test_the_strategy_type_names_every_strategy_of_build() -> None:
     from typing import get_args
 
-    from bsllmner_viewer.api.schemas import EvidenceStrategy
     from bsllmner_viewer.build.evidence import ONTOLOGY_SYNONYM, TEXT_STRATEGIES
+    from bsllmner_viewer.store.metadata import EvidenceStrategy
 
     assert get_args(EvidenceStrategy.__value__) == (*TEXT_STRATEGIES, ONTOLOGY_SYNONYM)

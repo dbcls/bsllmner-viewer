@@ -38,23 +38,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/dsl/serialize": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Serialize an AST into a condition string */
-        post: operations["serializeCondition"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/dsl/select": {
         parameters: {
             query?: never;
@@ -138,7 +121,7 @@ export interface paths {
         };
         /**
          * Counts per element of one dimension
-         * @description Elements default to the terms most often annotated directly, followed by the elements that the condition names, ordered by their count with descendants. For an annotation field the response also carries the status composition of the field, computed without the conjuncts on the field's term and status dimensions.
+         * @description Elements default to the terms most often annotated directly, followed by the elements that the condition names, ordered by their count with descendants. For a term dimension, each element also carries the counts of its `mapped_exact` and `mapped_selected` annotations, and `withoutTerm` is the count of the population without a term of the field.
          */
         get: operations["getDistribution"];
         put?: never;
@@ -319,12 +302,62 @@ export interface components {
         AnnotationValue: {
             /** Value */
             value: string | null;
-            /** Status */
-            status: string;
+            status: components["schemas"]["Status"];
             /** Termid */
             termId: string | null;
             /** Label */
             label: string | null;
+        };
+        /** AstBetween */
+        AstBetween: {
+            /** Field */
+            field: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "between";
+            /** From */
+            from: string;
+            /** To */
+            to: string;
+        };
+        /** AstBool */
+        AstBool: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "AND" | "NOT" | "OR";
+            /**
+             * Rules
+             * @description Operands. `NOT` has exactly one
+             */
+            rules: (components["schemas"]["AstBool"] | components["schemas"]["AstEq"] | components["schemas"]["AstBetween"] | components["schemas"]["AstFreeText"])[];
+        };
+        /** AstEq */
+        AstEq: {
+            /** Field */
+            field: string;
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "eq";
+            /** Value */
+            value: string;
+        };
+        /** AstFreeText */
+        AstFreeText: {
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            op: "free_text";
+            /** Value */
+            value: string;
+            /** Is Phrase */
+            is_phrase: boolean;
         };
         /** Cell */
         Cell: {
@@ -381,9 +414,7 @@ export interface components {
              */
             dsl: string | null;
             /** Ast */
-            ast: {
-                [key: string]: unknown;
-            } | null;
+            ast: (components["schemas"]["AstBool"] | components["schemas"]["AstEq"] | components["schemas"]["AstBetween"] | components["schemas"]["AstFreeText"]) | null;
             /**
              * Labels
              * @description Display labels of the term IDs and organism IDs used in the condition
@@ -391,6 +422,16 @@ export interface components {
             labels: {
                 [key: string]: string;
             };
+            /**
+             * Selected
+             * @description The clauses that `POST /api/dsl/select` treats as already present in `toggle` mode: the top-level clauses and the clauses of a top-level OR on one field, outside any NOT. When every clause of an element is in this list, selecting the element removes the clauses
+             */
+            selected: components["schemas"]["Clause-Output"][];
+            /**
+             * Keyword
+             * @description The text of a keyword box for the top-level keywords of the condition: the words, then the phrases in double quotes. `POST /api/dsl/keyword` reads it back as the same keywords
+             */
+            keyword: string;
         };
         /** CrosstabResponse */
         CrosstabResponse: {
@@ -479,7 +520,7 @@ export interface components {
              * @description Status groups and the statuses under them
              */
             statuses: {
-                [key: string]: string[];
+                [key: string]: components["schemas"]["Status"][];
             };
             totals: components["schemas"]["Totals"];
             /** Organisms */
@@ -539,10 +580,9 @@ export interface components {
         DslFieldDescription: {
             /** Name */
             name: string;
-            /** Kind */
-            kind: string;
+            kind: components["schemas"]["FieldKind"];
             /** Operators */
-            operators: string[];
+            operators: components["schemas"]["Operator"][];
         };
         /** Element */
         Element: {
@@ -571,8 +611,7 @@ export interface components {
             field: string;
             /** Value */
             value: string | null;
-            /** Status */
-            status: string;
+            status: components["schemas"]["Status"];
             /** Termid */
             termId: string | null;
             /** Label */
@@ -717,6 +756,10 @@ export interface components {
              */
             mappedBiosampleCount: number;
         };
+        /** @enum {string} */
+        FieldKind: "term" | "status" | "assay" | "organism" | "date" | "bioproject";
+        /** @enum {string} */
+        GroupName: "mapped" | "unmapped" | "no_value";
         /** KeywordRequest */
         KeywordRequest: {
             /** Q */
@@ -729,11 +772,7 @@ export interface components {
         };
         /** MetadataItem */
         MetadataItem: {
-            /**
-             * Kind
-             * @enum {string}
-             */
-            kind: "description" | "attribute" | "record";
+            kind: components["schemas"]["MetadataKind"];
             /**
              * Name
              * @description Name to show: a description name, an attribute name, or a short name of a path
@@ -747,6 +786,10 @@ export interface components {
              */
             harmonizedName: string | null;
         };
+        /** @enum {string} */
+        MetadataKind: "description" | "attribute" | "record";
+        /** @enum {string} */
+        Operator: "eq" | "between";
         /**
          * Organism
          * @description An organism as the NCBI Taxonomy ID and the name.
@@ -777,9 +820,7 @@ export interface components {
             /** Q */
             q: string;
             /** Ast */
-            ast: {
-                [key: string]: unknown;
-            };
+            ast: components["schemas"]["AstBool"] | components["schemas"]["AstEq"] | components["schemas"]["AstBetween"] | components["schemas"]["AstFreeText"];
             /**
              * Labels
              * @description Display labels of the term IDs and organism IDs used in the condition
@@ -787,6 +828,16 @@ export interface components {
             labels: {
                 [key: string]: string;
             };
+            /**
+             * Selected
+             * @description The clauses that `POST /api/dsl/select` treats as already present in `toggle` mode: the top-level clauses and the clauses of a top-level OR on one field, outside any NOT. When every clause of an element is in this list, selecting the element removes the clauses
+             */
+            selected: components["schemas"]["Clause-Output"][];
+            /**
+             * Keyword
+             * @description The text of a keyword box for the top-level keywords of the condition: the words, then the phrases in double quotes. `POST /api/dsl/keyword` reads it back as the same keywords
+             */
+            keyword: string;
         };
         /**
          * ProblemDetails
@@ -852,8 +903,7 @@ export interface components {
             populationQ: string | null;
             /** Facetselfexclude */
             facetSelfExclude: boolean;
-            /** Sort */
-            sort: string;
+            sort: components["schemas"]["ProjectSort"];
             pagination: components["schemas"]["Pagination"];
             /** Items */
             items: components["schemas"]["Project"][];
@@ -872,13 +922,6 @@ export interface components {
              */
             mode: "toggle" | "narrow";
         };
-        /** SerializeRequest */
-        SerializeRequest: {
-            /** Ast */
-            ast: {
-                [key: string]: unknown;
-            };
-        };
         /** ServiceInfoResponse */
         ServiceInfoResponse: {
             /** Name */
@@ -896,6 +939,8 @@ export interface components {
              */
             store: "ok" | "unavailable";
         };
+        /** @enum {string} */
+        Status: "mapped_exact" | "mapped_selected" | "unmapped_no_candidate" | "unmapped_rejected" | "not_stated" | "extraction_failed";
         /** TermChildrenResponse */
         TermChildrenResponse: {
             datasetVersion: components["schemas"]["DatasetVersionRef"];
@@ -1181,57 +1226,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ParseResponse"];
-                };
-            };
-            /** @description Bad Request */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
-                };
-            };
-            /** @description Unprocessable Entity */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
-                };
-            };
-            /** @description Internal Server Error */
-            500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
-                };
-            };
-        };
-    };
-    serializeCondition: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody: {
-            content: {
-                "application/json": components["schemas"]["SerializeRequest"];
-            };
-        };
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ConditionResponse"];
                 };
             };
             /** @description Bad Request */

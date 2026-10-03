@@ -1,5 +1,7 @@
+import { type RefObject, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
+
 /** The edge of the control that an open panel lines up with: the list of a Select starts at the left edge of the Select, and a menu ends at the right edge of its button. */
-export type PanelAlign = "left" | "right"
+type PanelAlign = "left" | "right"
 
 /**
  * Where an open panel sits, fixed to the viewport so that no clipping box hides it: under its control, or over it when
@@ -7,7 +9,7 @@ export type PanelAlign = "left" | "right"
  */
 export type PanelPosition = ({ left: number } | { right: number }) & ({ top: number } | { bottom: number }) & { minWidth?: number }
 
-type PanelOptions = {
+export type PanelOptions = {
   align: PanelAlign
   /** The panel is at least as wide as its control. */
   matchWidth: boolean
@@ -49,3 +51,63 @@ export const panelPositionIn = (
  */
 export const panelPosition = (anchor: HTMLElement, panelHeight: number, options: PanelOptions, panelWidth = 0): PanelPosition =>
   panelPositionIn(anchor.getBoundingClientRect(), { width: document.documentElement.clientWidth, height: window.innerHeight }, panelHeight, options, panelWidth)
+
+/**
+ * The position of a panel that follows its anchor while it is open. The position is measured when the panel opens and
+ * again whenever the page scrolls or the window resizes, from the size the panel has by then. `measure` sets the
+ * position at once, so that a caller can give a panel its first position before it is drawn. With `measureWidth`, the
+ * width of the drawn panel also decides where it fits.
+ */
+export const useAnchoredPosition = (
+  open: boolean,
+  anchorRef: RefObject<HTMLElement | null>,
+  panelRef: RefObject<HTMLElement | null>,
+  place: PanelOptions,
+  measureWidth = false,
+) => {
+  const [position, setPosition] = useState<PanelPosition | null>(null)
+
+  const measure = useCallback(() => {
+    if (!anchorRef.current) return
+    const panel = panelRef.current
+    setPosition(panelPosition(anchorRef.current, panel?.offsetHeight ?? 0, place, measureWidth ? (panel?.offsetWidth ?? 0) : 0))
+  }, [anchorRef, panelRef, place, measureWidth])
+
+  useLayoutEffect(() => {
+    if (!open) return
+    measure()
+    window.addEventListener("scroll", measure, true)
+    window.addEventListener("resize", measure)
+    return () => {
+      window.removeEventListener("scroll", measure, true)
+      window.removeEventListener("resize", measure)
+    }
+  }, [open, measure])
+
+  return { position, measure }
+}
+
+/**
+ * Calls `onOutside` when a mouse or touch press starts outside every element of `refs`, while `open` is true. The
+ * latest `refs` and `onOutside` are used, so a caller does not need to keep them stable.
+ */
+export const useOutsidePointer = (open: boolean, refs: readonly RefObject<HTMLElement | null>[], onOutside: () => void) => {
+  const latest = useRef({ refs, onOutside })
+  useLayoutEffect(() => {
+    latest.current = { refs, onOutside }
+  })
+
+  useEffect(() => {
+    if (!open) return
+    const onPointerDown = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as Node
+      if (!latest.current.refs.some((ref) => ref.current?.contains(target))) latest.current.onOutside()
+    }
+    document.addEventListener("mousedown", onPointerDown)
+    document.addEventListener("touchstart", onPointerDown)
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown)
+      document.removeEventListener("touchstart", onPointerDown)
+    }
+  }, [open])
+}

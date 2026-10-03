@@ -1,52 +1,35 @@
 import type { ReactNode } from "react"
 
-import { cn } from "./cn"
-
-/**
- * Where the brand rule of a heading sits. `start` puts it at the start of the line. `edge` puts it on the left edge of
- * the `padding="lg"` card the heading names, through the card's padding, and keeps the title in line with the card's content.
- */
-type HeadingRule = "start" | "edge"
-
-const RULE: Record<HeadingRule, string> = {
-  start: "pl-2.5",
-  edge: "-ml-6 pl-5",
-}
-
 type PageHeadingProps = {
   children: ReactNode
-  rule?: HeadingRule
 }
 
-/** The name of a page: a brand rule at the start of the line and the title in the text color. */
-export const PageHeading = ({ children, rule = "start" }: PageHeadingProps) => (
-  <h1 className={cn("border-l-4 border-brand text-fs-h1 leading-tight font-bold tracking-h1 text-ink", RULE[rule])}>{children}</h1>
+/**
+ * The name of a page: a brand rule and the title in the text color. The rule sits on the left edge of the `padding="lg"`
+ * card the heading names, through the card's padding, and keeps the title in line with the card's content.
+ */
+export const PageHeading = ({ children }: PageHeadingProps) => (
+  <h1 className="-ml-6 border-l-4 border-brand pl-5 text-fs-h1 leading-tight font-bold tracking-h1 text-ink">{children}</h1>
 )
 
 type SectionHeadingProps = {
   children: ReactNode
-  aside?: ReactNode
-  rule?: HeadingRule
 }
 
 /** The name of a part of a page: the brand rule beside a title in the text color. */
-export const SectionHeading = ({ children, aside, rule = "start" }: SectionHeadingProps) => (
-  <div className="flex items-baseline justify-between gap-3">
-    <h2 className={cn("border-l-4 border-brand text-fs-h2 leading-tight font-medium text-ink", RULE[rule])}>{children}</h2>
-    {aside}
-  </div>
+export const SectionHeading = ({ children }: SectionHeadingProps) => (
+  <h2 className="border-l-4 border-brand pl-2.5 text-fs-h2 leading-tight font-medium text-ink">{children}</h2>
 )
 
 type PaneHeadingProps = {
   children: ReactNode
-  spacing?: "none" | "top"
   /** A control at the right end of the line, such as a help button. */
   aside?: ReactNode
 }
 
 /** The name of a group in a side pane, at the size of the pane's own text, over a line that spans the pane. */
-export const PaneHeading = ({ children, spacing = "none", aside }: PaneHeadingProps) => (
-  <div className={cn("mb-1.5 flex items-center justify-between gap-2 border-b border-border-soft pb-1", spacing === "top" && "mt-5")}>
+export const PaneHeading = ({ children, aside }: PaneHeadingProps) => (
+  <div className="mt-5 mb-1.5 flex items-center justify-between gap-2 border-b border-border-soft pb-1">
     <h2 className="border-l-4 border-brand pl-2 text-fs-body leading-tight font-bold text-ink">{children}</h2>
     {aside}
   </div>

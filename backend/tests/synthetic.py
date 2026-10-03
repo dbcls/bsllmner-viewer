@@ -55,6 +55,26 @@ ONTOLOGIES: dict[str, list[tuple[str, str, list[str], list[str]]]] = {
     ],
 }
 
+LABELS = {term_id: label for terms in ONTOLOGIES.values() for term_id, label, _, _ in terms}
+SYNONYMS = {term_id: synonyms for terms in ONTOLOGIES.values() for term_id, _, synonyms, _ in terms}
+
+
+def term_tier(term_id: str, query: str) -> int:
+    """How a term matches a search query, from the synthetic labels and synonyms and not from an API response.
+
+    0 when the label or the ID is the query, 1 when a synonym is, 2 when the label or the ID contains it, else 3.
+    """
+    text = query.casefold()
+    label = LABELS[term_id].casefold()
+    if text in (label, term_id.casefold()):
+        return 0
+    if text in {s.casefold() for s in SYNONYMS[term_id]}:
+        return 1
+    if text in label or text in term_id.casefold():
+        return 2
+    return 3
+
+
 # The first synonym of each term that has one. Every seventh BioSample writes it in place of an extracted value with
 # the term, so that the value has evidence only through the names of its term, or through its own text with a strategy
 # after `exact` (`Hep G2` for `HepG2`).

@@ -3,33 +3,21 @@
 from __future__ import annotations
 
 import duckdb
-import orjson
 import pyarrow as pa
 
-from bsllmner_viewer.build.convert import metadata_groups
+from bsllmner_viewer.build.convert import EVIDENCE_SCHEMA, metadata_groups
 from bsllmner_viewer.build.evidence import Text, trace_term
 from bsllmner_viewer.build.inputs import Attribute
 from bsllmner_viewer.build.mk2_filter_keys import MK2_FILTER_KEYS
+from bsllmner_viewer.build.rows import insert_rows
 from bsllmner_viewer.dsl.fields import STATUS_GROUPS
-from bsllmner_viewer.store.metadata import ATTRIBUTE, description_items
+from bsllmner_viewer.store.metadata import ATTRIBUTE, MetadataKind, stored_attributes, stored_description
 from bsllmner_viewer.store.organisms import ORGANISM_NAMES
 from bsllmner_viewer.store.schema import drop_derived_tables
 
 _ATTRIBUTES = '[{"name": "VARCHAR", "value": "VARCHAR", "harmonized_name": "VARCHAR"}]'
 _FETCH_ROWS = 10_000
-_EVIDENCE_SCHEMA = pa.schema(
-    [
-        ("biosample", pa.string()),
-        ("field", pa.string()),
-        ("value_index", pa.int32()),
-        ("kind", pa.string()),
-        ("item", pa.int32()),
-        ("in_name", pa.bool_()),
-        ("span_start", pa.int32()),
-        ("span_end", pa.int32()),
-        ("strategy", pa.string()),
-    ]
-)
+_EVIDENCE_SCHEMA = pa.schema([("biosample", pa.string()), *list(EVIDENCE_SCHEMA)[2:]])
 
 
 def derive(con: duckdb.DuckDBPyConnection, target_assays: list[str]) -> None:
@@ -320,7 +308,7 @@ def _derive_evidence(con: duckdb.DuckDBPyConnection) -> None:
     )
     found: list[tuple[object, ...]] = []
     current: str | None = None
-    items: list[list[tuple[str, int, bool]]] = []
+    items: list[list[tuple[MetadataKind, int, bool]]] = []
     texts: list[list[Text]] = []
     while batch := con.fetchmany(_FETCH_ROWS):
         for biosample, field, value_index, names, title, description, attributes in batch:
@@ -334,19 +322,14 @@ def _derive_evidence(con: duckdb.DuckDBPyConnection) -> None:
                 kind, item, in_name = items[traced.group][match.text]
                 start, end = match.span.start, match.span.end
                 found.append((biosample, field, value_index, kind, item, in_name, start, end, traced.strategy))
-    names = _EVIDENCE_SCHEMA.names
-    columns = list(zip(*found, strict=True)) if found else [() for _ in names]
-    table = pa.table({name: list(c) for name, c in zip(names, columns, strict=True)}, schema=_EVIDENCE_SCHEMA)
-    con.register("term_evidence", table)
-    con.execute("INSERT INTO evidence SELECT * FROM term_evidence")
-    con.unregister("term_evidence")
+    insert_rows(con, "evidence", _EVIDENCE_SCHEMA, found)
 
 
 def _searched_before_the_record(
     title: str | None, description: str, attributes: str
-) -> tuple[list[list[tuple[str, int, bool]]], list[list[Text]]]:
-    described = description_items(title, ((str(d["name"]), str(d["value"])) for d in orjson.loads(description)))
-    parsed = [Attribute(str(a.get("name") or ""), str(a.get("value") or "")) for a in orjson.loads(attributes)]
+) -> tuple[list[list[tuple[MetadataKind, int, bool]]], list[list[Text]]]:
+    described = stored_description(title, description)
+    parsed = [Attribute(a.name, a.value) for a in stored_attributes(attributes)]
     return metadata_groups(described, parsed)
 
 

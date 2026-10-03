@@ -1,18 +1,21 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { act, fireEvent, render, screen } from "@testing-library/react"
+import { act, fireEvent, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 
 import type * as Client from "~/lib/api/client"
 
+import { renderWithQuery } from "../query"
+
 type TermsQuery = { query?: string; field?: string }
 
-const state = vi.hoisted(() => ({ releaseSlow: undefined as (() => void) | undefined }))
+const state = vi.hoisted(() => ({ releaseSlow: undefined as (() => void) | undefined, requests: [] as string[] }))
 
 vi.mock("~/lib/api/client", async (importOriginal) => {
   const original = await importOriginal<typeof Client>()
+  const { ok } = await import("../query")
   const GET = async (_path: string, init: { params: { query: TermsQuery } }) => {
     const query = init.params.query.query ?? ""
+    state.requests.push(query)
     const field = init.params.query.field ?? null
     // The search for "slow" answers only when the test releases it, as a slow network would.
     if (query === "slow") {
@@ -32,7 +35,7 @@ vi.mock("~/lib/api/client", async (importOriginal) => {
       clauses: [],
     }))
     const data = { field, query, populationQ: null, unit: "biosample", terms }
-    return { data, response: new Response("{}") }
+    return ok(data)
   }
   return { ...original, api: { ...original.api, GET } }
 })
@@ -40,11 +43,8 @@ vi.mock("~/lib/api/client", async (importOriginal) => {
 import { TermPicker } from "~/features/workspace/term-picker/term-picker"
 
 const renderPicker = () => {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  render(
-    <QueryClientProvider client={client}>
-      <TermPicker open onClose={vi.fn()} fields={["tissue", "disease"]} q={null} isSelected={() => false} onPick={vi.fn()} />
-    </QueryClientProvider>,
+  renderWithQuery(
+    <TermPicker open onClose={vi.fn()} fields={["tissue", "disease"]} q={null} isSelected={() => false} onPick={vi.fn()} />,
   )
   const list = screen.getByRole("dialog").querySelector<HTMLElement>(".max-h-picker-list")
   if (!list) throw new Error("no result list")
@@ -80,5 +80,29 @@ describe("TermPicker", () => {
     // The label is split where the query is marked, so it is found by the text of the whole label.
     await screen.findByText((_, element) => element?.textContent === "all slow 0")
     expect(list.scrollTop).toBe(0)
+  })
+
+  it("searches once with the trimmed text, 200 ms after typing stops", async () => {
+    const list = renderPicker()
+    await screen.findByText("all 0")
+    state.requests.length = 0
+    vi.useFakeTimers()
+    try {
+      const input = screen.getByRole("textbox", { name: "Search terms" })
+      for (const value of ["h", "hy", "hyp", " hyp "]) {
+        fireEvent.change(input, { target: { value } })
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(50)
+        })
+      }
+      expect(state.requests).toEqual([])
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(200)
+      })
+      expect(state.requests).toEqual(["hyp"])
+    } finally {
+      vi.useRealTimers()
+    }
+    expect(list).toBeInTheDocument()
   })
 })

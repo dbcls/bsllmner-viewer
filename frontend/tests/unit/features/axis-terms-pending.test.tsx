@@ -1,11 +1,12 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { render, screen, within } from "@testing-library/react"
+import { fireEvent, screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { useState } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import type * as Client from "~/lib/api/client"
 import { DEFAULTS, type Patch, type WorkspaceState } from "~/lib/workspace-state"
+
+import { renderWithQuery } from "../query"
 
 const net = vi.hoisted(() => ({ answered: new Set<string>() }))
 
@@ -14,17 +15,17 @@ const label = (value: string) => `label ${value}`
 
 vi.mock("~/lib/api/client", async (importOriginal) => {
   const original = await importOriginal<typeof Client>()
-  const ok = new Response("{}")
+  const { ok } = await import("../query")
   const GET = async (path: string, init?: { params?: { query?: Record<string, unknown> } }) => {
     const query = init?.params?.query ?? {}
     if (path === "/api/dataset") {
       const field = { name: "disease", multiValued: false, ontologies: ["MONDO"], mappedBiosampleCount: 0 }
       const data = { datasetVersion: VERSION, version: {}, targetAssays: ["RNA-Seq"], assays: [], fields: [field], dslFields: [], statuses: {}, totals: { biosample: 1, experiment: 1, bioproject: 1 }, organisms: [], ontologies: [] }
-      return { data, response: ok }
+      return ok(data)
     }
     if (path === "/api/terms") {
       const terms = ["T:9"].map((termId) => ({ field: "disease", termId, label: label(termId), ontology: "T", path: [], descendantCount: 0, count: 1, matchedSynonym: null, clauses: [] }))
-      return { data: { field: "disease", query: "", populationQ: null, unit: "biosample", terms }, response: ok }
+      return ok({ field: "disease", query: "", populationQ: null, unit: "biosample", terms })
     }
     // The first answer of a view arrives; every later one stays on its way, as on a slow network.
     if (net.answered.has(path)) await new Promise(() => undefined)
@@ -35,12 +36,12 @@ vi.mock("~/lib/api/client", async (importOriginal) => {
       const point = { year: 2020, count: 1, clauses: [] }
       const series = elements.map((value) => ({ value, label: label(value), clauses: [], points: [point] }))
       const data = { datasetVersion: VERSION, q: null, unit: "biosample", facetSelfExclude: true, years: [2020], firstYear: 2020, lastYear: 2020, total: [point], allEntries: [point], totalPopulationQ: null, field: "disease", populationQ: null, series }
-      return { data, response: ok }
+      return ok(data)
     }
     if (path === "/api/crosstab") {
       const rows = String(query["rowElements"]).split(",").map((value) => ({ ...element(value), countExact: 0, countSelected: 0, hasChildren: false, parents: [] }))
       const data = { datasetVersion: VERSION, q: null, populationQ: null, rowField: "disease", colField: "library_strategy", unit: "biosample", facetSelfExclude: true, total: 1, rows, cols: [element("RNA-Seq")], cells: [] }
-      return { data, response: ok }
+      return ok(data)
     }
     throw new Error(`unexpected request ${path}`)
   }
@@ -70,12 +71,7 @@ const FIVE = ["T:1", "T:2", "T:3", "T:4", "T:5"]
 const renderView = (View: View, initial: Partial<WorkspaceState>) => {
   const onUpdate = vi.fn<(patch: Patch) => void>()
   const onAlert = vi.fn<(message: string) => void>()
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  render(
-    <QueryClientProvider client={client}>
-      <Harness View={View} initial={{ ...DEFAULTS, ...initial }} onUpdate={onUpdate} onAlert={onAlert} />
-    </QueryClientProvider>,
-  )
+  renderWithQuery(<Harness View={View} initial={{ ...DEFAULTS, ...initial }} onUpdate={onUpdate} onAlert={onAlert} />)
   return { onUpdate, onAlert }
 }
 
@@ -117,5 +113,38 @@ describe("HeatmapTab while the cross-tabulation of the new terms is on its way",
     await user.click(await within(dialog).findByRole("button", { name: "Remove label T:1" }))
     await user.click(within(dialog).getByRole("button", { name: "Remove label T:2" }))
     expect(onUpdate).toHaveBeenLastCalledWith({ rowTerms: ["T:3", "T:4", "T:5"] })
+  })
+})
+
+describe("HeatmapTab with the most terms that the api takes on an axis", () => {
+  const FULL = Array.from({ length: 500 }, (_, index) => `F:${index}`)
+
+  it("does not add a found term to an axis of 500 terms and says so", async () => {
+    const user = userEvent.setup()
+    const { onUpdate, onAlert } = renderView(HeatmapTab, { tab: "heatmap", row: "disease", col: "library_strategy", rowTerms: FULL })
+    const dialog = await openTerms(user, "Rows")
+    await user.click(await within(dialog).findByRole("button", { name: /label T:9/ }))
+    expect(onAlert).toHaveBeenLastCalledWith("A heatmap axis shows up to 500 terms")
+    expect(onUpdate).not.toHaveBeenCalled()
+  })
+
+  it("takes a term off an axis of 500 terms", async () => {
+    const user = userEvent.setup()
+    const { onUpdate } = renderView(HeatmapTab, { tab: "heatmap", row: "disease", col: "library_strategy", rowTerms: FULL })
+    const dialog = await openTerms(user, "Rows")
+    await user.click(await within(dialog).findByRole("button", { name: "Remove label F:0" }))
+    expect(onUpdate).toHaveBeenLastCalledWith({ rowTerms: FULL.slice(1) })
+  })
+
+  it("uses the first 500 of a longer pasted list and says so", async () => {
+    const user = userEvent.setup()
+    const { onUpdate, onAlert } = renderView(HeatmapTab, { tab: "heatmap", row: "disease", col: "library_strategy", rowTerms: FIVE })
+    const dialog = await openTerms(user, "Rows")
+    await user.click(within(dialog).getByRole("radio", { name: "Paste list" }))
+    const pasted = Array.from({ length: 501 }, (_, index) => `P:${index}`)
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "Terms to set" }), { target: { value: pasted.join("\n") } })
+    await user.click(within(dialog).getByRole("button", { name: "Replace terms" }))
+    await vi.waitFor(() => expect(onAlert).toHaveBeenCalledWith("The first 500 of 501 terms are shown"))
+    expect(onUpdate).toHaveBeenLastCalledWith({ rowTerms: pasted.slice(0, 500) })
   })
 })

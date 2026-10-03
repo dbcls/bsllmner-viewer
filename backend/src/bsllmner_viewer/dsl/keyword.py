@@ -12,9 +12,11 @@ import re
 from dataclasses import dataclass
 from typing import Literal
 
-from bsllmner_viewer.dsl.ast import FreeText
+from bsllmner_viewer.dsl.ast import FreeText, Node
 from bsllmner_viewer.dsl.errors import DslError, ErrorType
-from bsllmner_viewer.dsl.lex import RESERVED, WORD_RE, needs_quote
+from bsllmner_viewer.dsl.lex import RESERVED, is_bare_word
+from bsllmner_viewer.dsl.serializer import quote
+from bsllmner_viewer.dsl.transform import conjuncts
 
 type AccessionKind = Literal["biosample", "experiment", "run", "bioproject"]
 
@@ -112,9 +114,20 @@ def typed_keywords(text: str) -> list[FreeText]:
             raise DslError(type=ErrorType.unexpected_token, detail=f"wildcards are not accepted in keywords: {word!r}")
         if word in RESERVED:
             word = word.lower()
-        if WORD_RE.match(word) and not needs_quote(word):
+        if is_bare_word(word):
             words.append(word)
         else:
             phrases.append(FreeText(value=word, is_phrase=True))
     keywords = ([FreeText(value=" ".join(words))] if words else []) + phrases
     return [keyword for keyword in keywords if word_matches(keyword)]
+
+
+def keyword_text(ast: Node | None) -> str:
+    """The text of a keyword box for the top-level keywords of a condition: the inverse of `typed_keywords`.
+
+    The words come first, as written, and the phrases follow, each in double quotes with `\\` and `"` escaped.
+    """
+    keywords = [c for c in conjuncts(ast) if isinstance(c, FreeText)]
+    words = [k.value for k in keywords if not k.is_phrase]
+    phrases = [quote(k.value) for k in keywords if k.is_phrase]
+    return " ".join([*words, *phrases])

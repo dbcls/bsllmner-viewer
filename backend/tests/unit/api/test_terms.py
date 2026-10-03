@@ -5,25 +5,14 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from tests.synthetic import ONTOLOGIES
+from tests.synthetic import SYNONYMS, term_tier
 
-SYNONYMS = {term_id: synonyms for terms in ONTOLOGIES.values() for term_id, _, synonyms, _ in terms}
 QUERIES = ["", "cancer", "breast", "mammary", "neoplasm", "muscle", "k562", "ad", "e", "MONDO", "carcinoma"]
 CONDITIONS = [{}, {"q": "library_strategy:RNA-Seq", "unit": "sra-experiment", "facetSelfExclude": "true"}]
 
 
 def _tier(hit: dict[str, Any], query: str) -> int:
-    """0 when the label or the ID is the query, 1 when a synonym is, 2 when the label or the ID contains it, else 3."""
-    text = query.casefold()
-    label = (hit["label"] or "").casefold()
-    term_id = hit["termId"].casefold()
-    if text in (label, term_id):
-        return 0
-    if text in {s.casefold() for s in SYNONYMS[hit["termId"]]}:
-        return 1
-    if text in label or text in term_id:
-        return 2
-    return 3
+    return term_tier(hit["termId"], query)
 
 
 def _hits(client: TestClient, query: str, **params: str) -> list[dict[str, Any]]:

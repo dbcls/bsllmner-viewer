@@ -50,70 +50,76 @@ def _same_clause(a: FieldClause, b: FieldClause) -> bool:
     return a.field == b.field and a.value == b.value
 
 
-def _is_positive_clause_group(node: Node, field: str) -> bool:
+def _group_field(node: Node) -> str | None:
+    """The field of a top-level clause, or of a top-level OR of clauses on one field, and None for any other node."""
     if isinstance(node, FieldClause):
-        return node.field == field
-    return (
-        isinstance(node, BoolOp)
-        and node.op == "OR"
-        and all(isinstance(c, FieldClause) and c.field == field for c in node.children)
-    )
+        return node.field
+    if isinstance(node, BoolOp) and node.op == "OR" and all(isinstance(c, FieldClause) for c in node.children):
+        fields = {c.field for c in node.children if isinstance(c, FieldClause)}
+        return next(iter(fields)) if len(fields) == 1 else None
+    return None
 
 
 def _group_clauses(node: Node) -> tuple[FieldClause, ...]:
-    if isinstance(node, FreeText):
-        return ()
     if isinstance(node, FieldClause):
         return (node,)
-    return tuple(c for c in node.children if isinstance(c, FieldClause))
+    if isinstance(node, BoolOp):
+        return tuple(c for c in node.children if isinstance(c, FieldClause))
+    return ()
 
 
 def _find_group(ast: Node | None, field: str) -> int:
     for index, conj in enumerate(conjuncts(ast)):
-        if _is_positive_clause_group(conj, field):
+        if _group_field(conj) == field:
             return index
     return -1
 
 
+def selected_clauses(ast: Node | None) -> list[FieldClause]:
+    """The clauses that selecting an element treats as present, in document order.
+
+    These are the top-level clauses and the clauses of a top-level OR on one field, outside any NOT.
+    """
+    return [c for conj in conjuncts(ast) if _group_field(conj) is not None for c in _group_clauses(conj)]
+
+
 def contains_clause(ast: Node | None, clause: FieldClause) -> bool:
-    """True when the clause is in the top-level clause group of its field."""
-    index = _find_group(ast, clause.field)
-    if index < 0:
-        return False
-    return any(_same_clause(c, clause) for c in _group_clauses(conjuncts(ast)[index]))
+    return any(_same_clause(c, clause) for c in selected_clauses(ast))
 
 
 def add_clause(ast: Node | None, clause: FieldClause) -> Node:
-    """Join with OR into the top-level clause group of the same field, or add a new conjunct with AND."""
+    """Join with OR into the first top-level clause group of the same field, or add a new conjunct with AND.
+
+    A clause that is already selected is not added again.
+    """
     items = list(conjuncts(ast))
+    if contains_clause(ast, clause):
+        return from_conjuncts(items)  # type: ignore[return-value]
     index = _find_group(ast, clause.field)
     if index < 0:
         items.append(clause)
     else:
-        group = _group_clauses(items[index])
-        if any(_same_clause(c, clause) for c in group):
-            return from_conjuncts(items)  # type: ignore[return-value]
-        items[index] = BoolOp(op="OR", children=(*group, clause))
+        items[index] = BoolOp(op="OR", children=(*_group_clauses(items[index]), clause))
     result = from_conjuncts(items)
     assert result is not None
     return result
 
 
 def remove_clause(ast: Node | None, clause: FieldClause) -> Node | None:
-    """Remove the clause from the top-level clause group of its field, dropping the conjunct if it becomes empty."""
-    items = list(conjuncts(ast))
-    index = _find_group(ast, clause.field)
-    if index < 0:
-        return ast
-    remaining = tuple(c for c in _group_clauses(items[index]) if not _same_clause(c, clause))
-    if len(remaining) == len(_group_clauses(items[index])):
-        return ast
-    if not remaining:
-        del items[index]
-    elif len(remaining) == 1:
-        items[index] = remaining[0]
-    else:
-        items[index] = BoolOp(op="OR", children=remaining)
+    """Remove the clause from every top-level clause group of its field, dropping a conjunct that becomes empty."""
+    items: list[Node] = []
+    for conj in conjuncts(ast):
+        if _group_field(conj) != clause.field:
+            items.append(conj)
+            continue
+        group = _group_clauses(conj)
+        remaining = tuple(c for c in group if not _same_clause(c, clause))
+        if len(remaining) == len(group):
+            items.append(conj)
+        elif len(remaining) == 1:
+            items.append(remaining[0])
+        elif remaining:
+            items.append(BoolOp(op="OR", children=remaining))
     return from_conjuncts(items)
 
 
@@ -139,12 +145,11 @@ def narrow(ast: Node | None, clauses: Iterable[FieldClause]) -> Node | None:
 
 
 def named_values(ast: Node | None, field: str) -> list[str]:
-    """Values of the top-level clauses and clause disjunctions on a field without NOT, in document order."""
+    """Values of the selected clauses on a field, in document order."""
     values: list[str] = []
-    for conj in conjuncts(ast):
-        if not _is_positive_clause_group(conj, field):
+    for clause in selected_clauses(ast):
+        if clause.field != field:
             continue
-        for clause in _group_clauses(conj):
-            if clause.value_kind in ("word", "phrase") and isinstance(clause.value, str) and clause.value not in values:
-                values.append(clause.value)
+        if clause.value_kind in ("word", "phrase") and isinstance(clause.value, str) and clause.value not in values:
+            values.append(clause.value)
     return values

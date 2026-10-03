@@ -9,6 +9,7 @@ import hashlib
 import logging
 import tempfile
 from collections.abc import Iterable, Iterator
+from itertools import islice
 from multiprocessing import Pool
 from pathlib import Path
 from typing import Any
@@ -27,6 +28,7 @@ from bsllmner_viewer.build.reference import (
     read_experiments,
     sql_literal,
 )
+from bsllmner_viewer.build.rows import insert_rows
 from bsllmner_viewer.build.selectresult import load_select_config
 from bsllmner_viewer.build.verify import Verification, verify
 from bsllmner_viewer.store.schema import RAW_TABLES, create_raw_tables
@@ -287,23 +289,8 @@ def _load_ontology_file(con: duckdb.DuckDBPyConnection, name: str, index: int, f
 def _insert_rows(
     con: duckdb.DuckDBPyConnection, table: str, schema: pa.Schema, rows: Iterator[tuple[Any, ...]]
 ) -> None:
-    chunk: list[tuple[Any, ...]] = []
-
-    def flush() -> None:
-        if not chunk:
-            return
-        columns = list(zip(*chunk, strict=True))
-        batch = pa.table({name: list(col) for name, col in zip(schema.names, columns, strict=True)}, schema=schema)
-        con.register("batch_rows", batch)
-        con.execute(f"INSERT INTO {table} SELECT * FROM batch_rows")
-        con.unregister("batch_rows")
-        chunk.clear()
-
-    for row in rows:
-        chunk.append(row)
-        if len(chunk) >= _CHUNK_ROWS:
-            flush()
-    flush()
+    while chunk := list(islice(rows, _CHUNK_ROWS)):
+        insert_rows(con, table, schema, chunk)
 
 
 def _finish(con: duckdb.DuckDBPyConnection, manifest: Manifest) -> Verification:

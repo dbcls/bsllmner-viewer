@@ -13,7 +13,7 @@ import pyarrow.parquet as pq
 from bsllmner_viewer.build.evidence import Text, Traced, trace
 from bsllmner_viewer.build.inputs import Attribute, InputDoc, plausible_publication_date, read_input
 from bsllmner_viewer.build.selectresult import AnnotationRow, RunMetadata, iter_entries, load_select_result
-from bsllmner_viewer.store.metadata import ATTRIBUTE, DESCRIPTION, RECORD, description_items
+from bsllmner_viewer.store.metadata import ATTRIBUTE, DESCRIPTION, RECORD, MetadataKind, description_items
 
 ENTRY_SCHEMA = pa.schema(
     [
@@ -95,7 +95,7 @@ class _Evidence:
 
 def metadata_groups(
     described: list[tuple[str, str]], attributes: list[Attribute]
-) -> tuple[list[list[tuple[str, int, bool]]], list[list[Text]]]:
+) -> tuple[list[list[tuple[MetadataKind, int, bool]]], list[list[Text]]]:
     """The groups of texts that are searched before the record, with the item of each text as (kind, position, in name):
     the description and the values of the attributes, then the names of the attributes."""
     values = [(DESCRIPTION, at, False) for at in range(len(described))]

@@ -2,8 +2,9 @@
 export const trendFields = (fields: string[]): string[] => [...fields, "library_strategy", "organism_id"]
 
 /**
- * The field whose elements the trend draws: the chosen field, or the first field of the dataset when the dataset does
- * not have the chosen one. Before the dataset is known, the chosen field is taken as it is.
+ * The dimension that a view draws: the chosen one, or the first of the dimensions that the dataset offers when it does
+ * not offer the chosen one, skipping `other`, the dimension of the other axis. Before the dataset is known (`offered` is
+ * null), the chosen dimension is taken as it is.
  */
-export const lineFieldOf = (chosen: string, fields: string[] | null): string =>
-  fields === null || trendFields(fields).includes(chosen) ? chosen : (trendFields(fields)[0] ?? chosen)
+export const offeredDimension = (chosen: string, offered: string[] | null, other?: string): string =>
+  offered === null || offered.includes(chosen) ? chosen : (offered.find((d) => d !== other) ?? chosen)

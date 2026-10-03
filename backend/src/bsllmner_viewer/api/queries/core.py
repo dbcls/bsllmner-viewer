@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+import duckdb
+
 from bsllmner_viewer.api.schemas import Unit
 from bsllmner_viewer.dsl.ast import Node
 from bsllmner_viewer.dsl.compile import compile_condition
@@ -30,6 +32,14 @@ def population(ast: Node | None, fields: FieldSet) -> Population:
         f"FROM population pn WHERE {predicate.sql}"
     )
     return Population(sql, tuple(predicate.params))
+
+
+def population_years(cur: duckdb.DuckDBPyConnection, pop: Population) -> list[int]:
+    """The sorted publication years present in the population."""
+    rows = cur.execute(
+        f"WITH {pop.cte()} SELECT DISTINCT p.year FROM pop p WHERE p.year IS NOT NULL ORDER BY 1", list(pop.params)
+    ).fetchall()
+    return [int(r[0]) for r in rows]
 
 
 def count_expr(unit: Unit, alias: str = "p", bp_alias: str = "bp") -> str:

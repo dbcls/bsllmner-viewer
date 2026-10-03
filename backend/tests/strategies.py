@@ -10,7 +10,8 @@ from bsllmner_viewer.dsl.ast import BoolOp, FieldClause, FreeText, Node, Range, 
 from bsllmner_viewer.dsl.fields import STATUS_GROUPS, STATUSES, FieldSet
 from bsllmner_viewer.dsl.keyword import word_matches
 from bsllmner_viewer.dsl.lex import needs_quote
-from bsllmner_viewer.dsl.transform import add_clause
+from bsllmner_viewer.dsl.transform import add_clause, replace_keywords
+from tests.synthetic import ANNOTATED, TARGET_ASSAYS
 
 ANNOTATION_FIELDS = ("cell_line", "disease", "tissue", "drug")
 FIELDS = FieldSet(ANNOTATION_FIELDS)
@@ -104,3 +105,37 @@ asts: st.SearchStrategy[Node] = st.recursive(st.one_of(clauses, text_clauses, ke
 
 # Conditions built by element selection alone: clause groups joined by AND, same-field clauses joined by OR.
 flat_asts: st.SearchStrategy[Node | None] = st.lists(clauses, max_size=6).map(lambda cs: reduce(add_clause, cs, None))
+
+
+UNITS = ("biosample", "sra-experiment", "bioproject")
+
+
+def _phrase_clause(field: str, value: str) -> FieldClause:
+    return FieldClause(field=field, value_kind="phrase", value=value)
+
+
+# Clauses on the values that the synthetic dataset has, so that conditions select some of its BioSamples.
+dataset_clauses = st.one_of(
+    *[st.sampled_from([_phrase_clause(f, t) for t, _ in terms]) for f, terms in ANNOTATED.items()],
+    st.sampled_from([_phrase_clause("library_strategy", a) for a in TARGET_ASSAYS]),
+    st.sampled_from([_phrase_clause("organism_id", "9606"), _phrase_clause("organism_id", "10090")]),
+    st.sampled_from(
+        [
+            _phrase_clause(f"{f}_status", s)
+            for f in ANNOTATED
+            for s in ("mapped", "unmapped", "no_value", "mapped_exact")
+        ]
+    ),
+    st.builds(
+        lambda y: FieldClause("date_published", "range", Range(f"{y}-01-01", f"{y + 3}-12-31")), st.integers(2010, 2022)
+    ),
+)
+dataset_keywords = st.lists(
+    st.sampled_from([FreeText("run1"), FreeText("cancer"), FreeText("breast cancer", True), FreeText("liver")]),
+    max_size=2,
+)
+conditions: st.SearchStrategy[Node | None] = st.builds(
+    lambda cs, ks: replace_keywords(reduce(add_clause, cs, None), ks),
+    st.lists(dataset_clauses, max_size=3),
+    dataset_keywords,
+)

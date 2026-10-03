@@ -59,7 +59,7 @@ const ErrorBoundaryContent = () => {
   return (
     <section className="mx-auto w-full max-w-content-max px-page-gutter py-8">
       <Card padding="lg">
-        <PageHeading rule="edge">{message}</PageHeading>
+        <PageHeading>{message}</PageHeading>
       </Card>
     </section>
   )

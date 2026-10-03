@@ -13,8 +13,8 @@ from bsllmner_viewer.dsl.keyword import word_matches
 MAX_DEPTH = 5
 MAX_NODES = 512
 
-_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-_DIGITS_RE = re.compile(r"^\d+$")
+_DATE_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}\Z")
+_DIGITS_RE = re.compile(r"^[0-9]+\Z")
 
 
 def validate(ast: Node, fields: FieldSet, *, max_depth: int = MAX_DEPTH, max_nodes: int = MAX_NODES) -> None:

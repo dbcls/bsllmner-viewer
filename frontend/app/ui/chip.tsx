@@ -10,7 +10,6 @@ type ChipProps = {
   name?: string
   kind?: "tint" | "soft"
   size?: "sm" | "md"
-  leading?: ReactNode
 }
 
 /**
@@ -18,7 +17,7 @@ type ChipProps = {
  * to the height of its capitals (`text-trim-cap`), so the capitals sit in the middle of the chip. The label keeps room
  * above and below for the descenders, which its overflow would otherwise clip.
  */
-export const Chip = ({ children, onRemove, name, kind = "tint", size = "md", leading }: ChipProps) => (
+export const Chip = ({ children, onRemove, name, kind = "tint", size = "md" }: ChipProps) => (
   <span
     className={cn(
       "inline-flex max-w-full items-center rounded-tag whitespace-nowrap text-ink",
@@ -27,7 +26,6 @@ export const Chip = ({ children, onRemove, name, kind = "tint", size = "md", lea
       !onRemove && "pr-2",
     )}
   >
-    {leading}
     <span className="truncate py-1 text-trim-cap">{children}</span>
     {onRemove && (
       <button

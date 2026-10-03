@@ -1,17 +1,18 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { renderHook, waitFor } from "@testing-library/react"
-import type { ReactNode } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import type * as Client from "~/lib/api/client"
+
+import { wrapper } from "../query"
 
 const pending = vi.hoisted(() => ({ resolve: undefined as ((body: unknown) => void) | undefined }))
 
 vi.mock("~/lib/api/client", async (importOriginal) => {
   const original = await importOriginal<typeof Client>()
+  const { ok } = await import("../query")
   const GET = () =>
     new Promise((resolve) => {
-      pending.resolve = (body) => resolve({ data: body, response: new Response("{}") })
+      pending.resolve = (body) => resolve(ok(body))
     })
   return { ...original, api: { GET } }
 })
@@ -26,10 +27,6 @@ const description = (name: string) => ({
   organisms: [],
   ontologies: [{ prefix: "MONDO", name: "MONDO" }],
 })
-
-const wrapper = ({ children }: { children: ReactNode }) => (
-  <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{children}</QueryClientProvider>
-)
 
 beforeEach(() => {
   localStorage.clear()

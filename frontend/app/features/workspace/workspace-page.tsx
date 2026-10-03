@@ -32,7 +32,6 @@ export const WorkspacePage = () => {
   const dataset = useDataset()
   const fields = dataset.data?.fields.map((f) => f.name) ?? []
   const [pickerOpen, setPickerOpen] = useState(false)
-  const [exportOpen, setExportOpen] = useState(false)
   const [apiOpen, setApiOpen] = useState(false)
   const [alert, setAlert] = useState<string | null>(null)
   const alertTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -65,9 +64,8 @@ export const WorkspacePage = () => {
         q={state.q}
         condition={condition}
         onShare={share}
-        onExport={() => setExportOpen((open) => !open)}
         onApi={() => setApiOpen(true)}
-        exportMenu={<ExportMenu open={exportOpen} onClose={() => setExportOpen(false)} q={state.q} totalEntries={entries.data?.pagination.total} />}
+        exportMenu={<ExportMenu q={state.q} totalEntries={entries.data?.pagination.total} />}
       />
       <div className="flex min-h-0 flex-1 items-stretch">
         <ConditionPanel q={state.q} condition={condition} onAddTerm={() => setPickerOpen(true)} />

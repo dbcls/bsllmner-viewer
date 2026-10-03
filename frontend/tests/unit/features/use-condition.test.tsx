@@ -1,9 +1,9 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { act, renderHook } from "@testing-library/react"
-import type { ReactNode } from "react"
+import { act, renderHook, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import type * as Client from "~/lib/api/client"
+
+import { newQueryClient, wrapper, wrapperFor } from "../query"
 
 type SelectBody = { q: string | null; clauses: Record<string, string>[]; mode: string }
 
@@ -12,6 +12,7 @@ const NEW_RANGE = { field: "date_published", from: "2018-01-01", to: "2019-12-31
 const Q = "date_published:[2015-01-01 TO 2016-12-31]"
 const HUMAN = { field: "organism_id", value: "9606" }
 const HUMAN_Q = "organism_id:9606"
+const HUMAN_Q_UNSELECTED = "organism_id:9606 OR organism_id:9606"
 
 const state = vi.hoisted(() => ({
   selects: [] as SelectBody[],
@@ -20,32 +21,35 @@ const state = vi.hoisted(() => ({
 
 vi.mock("~/lib/api/client", async (importOriginal) => {
   const original = await importOriginal<typeof Client>()
+  const { ok } = await import("../query")
   const GET = async (_path: string, init: { params: { query: { q: string } } }) => {
     // The parse answers only when the test releases it, as a slow network would.
     await new Promise<void>((resolve) => {
       state.releaseParse = resolve
     })
-    const ast = init.params.query.q === Q ? { field: "date_published", op: "between", from: OLD_RANGE.from, to: OLD_RANGE.to } : null
-    return { data: { q: init.params.query.q, ast, labels: {} }, response: new Response("{}") }
+    const q = init.params.query.q
+    if (q === HUMAN_Q_UNSELECTED) {
+      // The api does not name the clause as selected, whatever the AST looks like.
+      return ok({ q, ast: { field: HUMAN.field, op: "eq", value: HUMAN.value }, labels: {}, selected: [], keyword: "" })
+    }
+    const isOld = q === Q
+    const ast = isOld ? { field: "date_published", op: "between", from: OLD_RANGE.from, to: OLD_RANGE.to } : null
+    return ok({ q, ast, labels: {}, selected: isOld ? [OLD_RANGE] : [], keyword: "" })
   }
   const POST = async (_path: string, init: { body: SelectBody }) => {
     state.selects.push(init.body)
     if (init.body.clauses[0]?.["field"] === HUMAN.field) {
       const ast = { field: HUMAN.field, op: "eq", value: HUMAN.value }
-      return { data: { dsl: HUMAN_Q, ast, labels: { "9606": "Homo sapiens" } }, response: new Response("{}") }
+      return ok({ dsl: HUMAN_Q, ast, labels: { "9606": "Homo sapiens" }, selected: [HUMAN], keyword: "" })
     }
     const removed = init.body.clauses.some((c) => c["from"] === OLD_RANGE.from)
     const dsl = removed ? null : "date_published:[2018-01-01 TO 2019-12-31]"
-    return { data: { dsl, ast: null, labels: {} }, response: new Response("{}") }
+    return ok({ dsl, ast: null, labels: {}, selected: [], keyword: "" })
   }
   return { ...original, api: { GET, POST } }
 })
 
 import { useCondition } from "~/features/workspace/use-condition"
-
-const wrapper = ({ children }: { children: ReactNode }) => (
-  <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{children}</QueryClientProvider>
-)
 
 beforeEach(() => {
   state.selects.length = 0
@@ -92,8 +96,7 @@ describe("useCondition replaceField", () => {
 describe("useCondition toggle", () => {
   it("shows the changed condition as soon as q changes, before a parse of the new q answers", async () => {
     // One client for every render, so that the cache outlives the rerender.
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    const own = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    const own = wrapperFor(newQueryClient())
     let q: string | null = null
     const update = vi.fn((patch: { q?: string | null }) => {
       q = patch.q ?? null
@@ -125,8 +128,7 @@ describe("useCondition toggleNarrow", () => {
   })
 
   it("widens the condition back to the population when the condition has the element's clauses", async () => {
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    const own = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    const own = wrapperFor(newQueryClient())
     let q: string | null = null
     const update = vi.fn((patch: { q?: string | null }) => {
       q = patch.q ?? null
@@ -144,5 +146,22 @@ describe("useCondition toggleNarrow", () => {
 
     expect(state.selects).toHaveLength(1)
     expect(q).toBe(Q)
+  })
+})
+
+describe("useCondition isSelected", () => {
+  it("follows the selected clauses of the api, not the AST", async () => {
+    const { result } = renderHook(() => useCondition(HUMAN_Q_UNSELECTED, vi.fn()), { wrapper })
+    await act(async () => {
+      state.releaseParse?.()
+    })
+    await waitFor(() => expect(result.current.ast).not.toBeNull())
+
+    expect(result.current.isSelected([HUMAN])).toBe(false)
+  })
+
+  it("is false for no clauses", () => {
+    const { result } = renderHook(() => useCondition(null, vi.fn()), { wrapper })
+    expect(result.current.isSelected([])).toBe(false)
   })
 })

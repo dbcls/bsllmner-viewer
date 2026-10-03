@@ -10,10 +10,18 @@ from hypothesis import strategies as st
 from bsllmner_viewer.dsl.ast import BoolOp, FreeText, Node, normalize, structurally_equal
 from bsllmner_viewer.dsl.errors import DslError, ErrorType
 from bsllmner_viewer.dsl.fields import FieldSet
-from bsllmner_viewer.dsl.keyword import Accession, TextMatch, accession_kind, parts, typed_keywords, word_matches
+from bsllmner_viewer.dsl.keyword import (
+    Accession,
+    TextMatch,
+    accession_kind,
+    keyword_text,
+    parts,
+    typed_keywords,
+    word_matches,
+)
 from bsllmner_viewer.dsl.parser import parse
 from bsllmner_viewer.dsl.serializer import serialize
-from bsllmner_viewer.dsl.transform import conjuncts, replace_keywords
+from bsllmner_viewer.dsl.transform import conjuncts, from_conjuncts, replace_keywords
 from bsllmner_viewer.dsl.validator import validate
 from tests.strategies import asts
 
@@ -51,6 +59,21 @@ def test_typed_keywords_results_are_valid_keywords_that_survive_serialization(te
         combined: Node = keywords[0] if len(keywords) == 1 else BoolOp("AND", tuple(keywords))
         again = normalize(parse(serialize(combined)))
         assert structurally_equal(again, normalize(combined))
+
+
+@given(_no_wildcard)
+@example("\"CD4\\\\CD8\" 'x'")
+def test_keyword_text_is_read_back_as_the_same_keywords(text: str) -> None:
+    keywords = typed_keywords(text)
+    assert typed_keywords(keyword_text(from_conjuncts(keywords))) == keywords
+
+
+@given(asts)
+def test_keyword_text_keeps_every_word_of_the_top_level_keywords_of_any_condition(ast: Node) -> None:
+    ast = normalize(ast)
+    keywords = [c for c in conjuncts(ast) if isinstance(c, FreeText)]
+    read = typed_keywords(keyword_text(ast))
+    assert Counter(p for k in read for p in parts(k.value)) == Counter(p for k in keywords for p in parts(k.value))
 
 
 @given(_no_wildcard, st.sampled_from(["*", "?"]), st.text("ab1", min_size=1, max_size=4))

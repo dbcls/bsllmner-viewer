@@ -1,10 +1,10 @@
-import { type KeyboardEvent, useEffect, useId, useLayoutEffect, useRef, useState } from "react"
+import { type KeyboardEvent, useEffect, useId, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 
 import { BOX_FOCUS, BOX_SIZE, type BoxSize } from "./box"
 import { cn } from "./cn"
 import { ACTION_ICON, Icon } from "./icons"
-import { type PanelPosition,panelPosition } from "./panel-position"
+import { useAnchoredPosition, useOutsidePointer } from "./panel-position"
 
 export type SelectOption = { value: string; label: string }
 
@@ -38,9 +38,9 @@ export const Select = ({ options, value, onChange, size = "md", block, attached,
   const selected = items[selectedIndex]
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState(0)
-  const [position, setPosition] = useState<PanelPosition | null>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const listRef = useRef<HTMLUListElement>(null)
+  const { position, measure } = useAnchoredPosition(open, triggerRef, listRef, LIST_PLACE)
   const listId = useId()
   const optionId = (index: number) => `${listId}-option-${index}`
 
@@ -48,7 +48,7 @@ export const Select = ({ options, value, onChange, size = "md", block, attached,
     const trigger = triggerRef.current
     if (!trigger || items.length === 0) return
     setActive(Math.min(Math.max(index, 0), items.length - 1))
-    setPosition(panelPosition(trigger, 0, LIST_PLACE))
+    measure()
     setOpen(true)
   }
 
@@ -106,34 +106,7 @@ export const Select = ({ options, value, onChange, size = "md", block, attached,
     }
   }
 
-  // Once the list is drawn, its height decides whether it fits under the button; the list then follows the button.
-  useLayoutEffect(() => {
-    if (!open) return
-    const measure = () => {
-      if (triggerRef.current) setPosition(panelPosition(triggerRef.current, listRef.current?.offsetHeight ?? 0, LIST_PLACE))
-    }
-    measure()
-    window.addEventListener("scroll", measure, true)
-    window.addEventListener("resize", measure)
-    return () => {
-      window.removeEventListener("scroll", measure, true)
-      window.removeEventListener("resize", measure)
-    }
-  }, [open])
-
-  useEffect(() => {
-    if (!open) return
-    const onPointerDown = (event: MouseEvent | TouchEvent) => {
-      const target = event.target as Node
-      if (!triggerRef.current?.contains(target) && !listRef.current?.contains(target)) close()
-    }
-    document.addEventListener("mousedown", onPointerDown)
-    document.addEventListener("touchstart", onPointerDown)
-    return () => {
-      document.removeEventListener("mousedown", onPointerDown)
-      document.removeEventListener("touchstart", onPointerDown)
-    }
-  }, [open])
+  useOutsidePointer(open, [triggerRef, listRef], close)
 
   useEffect(() => {
     if (open) document.getElementById(optionId(active))?.scrollIntoView?.({ block: "nearest" })

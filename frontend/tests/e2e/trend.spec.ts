@@ -76,7 +76,7 @@ test.describe("trend", () => {
     await expect(main.locator("svg polyline")).toHaveCount(series.length + 1)
   })
 
-  test("All entries draws the whole dataset in the years of the condition next to it, and its points do not change the condition", async ({ page, request }) => {
+  test("All entries draws the whole dataset in the years of the condition next to it, and its points add their year to the condition like the points of the Condition line", async ({ page, request }) => {
     const disease = await topDisease(request)
     const q = await select(request, null, disease.clauses)
     const { allEntries, total } = await trend(request, { field: "disease", q })
@@ -90,11 +90,14 @@ test.describe("trend", () => {
     const points = main.locator('svg g[data-series="all"] circle')
     await expect(points).toHaveCount(allEntries.length)
     for (const [index, point] of allEntries.entries()) {
-      await expect(points.nth(index)).toHaveAttribute("aria-label", `All entries, ${point.year}: ${formatCount(point.count)} BioSamples`)
+      await expect(points.nth(index)).toHaveAttribute("aria-label", new RegExp(`^All entries, ${point.year}: ${formatCount(point.count)} BioSamples\\.`))
     }
     await expect(main.locator('svg g[data-series="condition"] circle')).toHaveCount(total.length)
+    const first = allEntries[0]
+    if (!first) throw new Error("the trend has no year")
+    const widened = await select(request, q, first.clauses)
     await points.first().dispatchEvent("click")
-    await expectQ(page, q)
+    await expectQ(page, widened)
   })
 
   test("the years limit the points to the chosen range as the api returns them, and the first and last years take the limit off", async ({ page, request }) => {

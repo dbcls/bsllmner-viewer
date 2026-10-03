@@ -7,9 +7,15 @@ from typing import Any, NamedTuple
 import duckdb
 
 from bsllmner_viewer.api.queries.core import Population
-from bsllmner_viewer.dsl.compile import like_pattern
 
 MAX_PATH = 8
+
+
+def like_pattern(value: str) -> str:
+    """A substring pattern for `LIKE lower(?) ESCAPE '\\'`. Only the escape happens here: the stored text and the
+    pattern are both lowered by the database, so that they fold characters the same way."""
+    escaped = value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
 
 
 class Candidate(NamedTuple):
@@ -102,15 +108,16 @@ def _matched(
     cur: duckdb.DuckDBPyConnection, names: list[str], pop: Population | None, text: str, limit: int
 ) -> list[tuple[Any, ...]]:
     marks = ", ".join("?" for _ in names)
-    exact = text.casefold()
     pattern = like_pattern(text)
-    tier = """CASE WHEN lower(t.label) = ? OR lower(t.term_id) = ? THEN 0
+    tier = """CASE WHEN lower(t.label) = lower(?) OR lower(t.term_id) = lower(?) THEN 0
                    WHEN EXISTS (
-                       SELECT 1 FROM term_synonym y WHERE y.term_id = t.term_id AND lower(y.synonym) = ?
+                       SELECT 1 FROM term_synonym y WHERE y.term_id = t.term_id AND lower(y.synonym) = lower(?)
                    ) THEN 1
-                   WHEN lower(t.label) LIKE ? ESCAPE '\\' OR lower(t.term_id) LIKE ? ESCAPE '\\' THEN 2
+                   WHEN lower(t.label) LIKE lower(?) ESCAPE '\\' OR lower(t.term_id) LIKE lower(?) ESCAPE '\\' THEN 2
                    ELSE 3 END"""
-    matched = f"SELECT DISTINCT field, term_id FROM term_search WHERE field IN ({marks}) AND text LIKE ? ESCAPE '\\'"
+    matched = (
+        f"SELECT DISTINCT field, term_id FROM term_search WHERE field IN ({marks}) AND text LIKE lower(?) ESCAPE '\\'"
+    )
     if pop is None:
         return cur.execute(
             f"""
@@ -120,7 +127,7 @@ def _matched(
             JOIN term t ON t.term_id = s.term_id JOIN field f ON f.name = s.field
             ORDER BY tier, n DESC, c.n_direct DESC, c.n_biosample DESC, t.term_id, f.position LIMIT ?
             """,
-            [*names, pattern, exact, exact, exact, pattern, pattern, limit],
+            [*names, pattern, text, text, text, pattern, pattern, limit],
         ).fetchall()
     return cur.execute(
         f"""
@@ -137,7 +144,7 @@ def _matched(
         JOIN term t ON t.term_id = s.term_id JOIN field f ON f.name = s.field
         ORDER BY tier, n DESC, c.n_direct DESC, c.n_biosample DESC, t.term_id, f.position LIMIT ?
         """,
-        [*pop.params, *names, pattern, exact, exact, exact, pattern, pattern, limit],
+        [*pop.params, *names, pattern, text, text, text, pattern, pattern, limit],
     ).fetchall()
 
 
@@ -149,7 +156,7 @@ def _matched_synonyms(cur: duckdb.DuckDBPyConnection, term_ids: list[str], patte
     rows = cur.execute(
         f"""
         SELECT term_id, synonym FROM term_synonym
-        WHERE term_id IN ({marks}) AND lower(synonym) LIKE ? ESCAPE '\\'
+        WHERE term_id IN ({marks}) AND lower(synonym) LIKE lower(?) ESCAPE '\\'
         ORDER BY term_id, length(synonym), synonym
         """,
         [*term_ids, pattern],

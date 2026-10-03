@@ -13,31 +13,31 @@ from bsllmner_viewer.api.deps import FacetSelfExcludeParam, QParam, StoreDep, pa
 from bsllmner_viewer.api.problems import ApiError
 from bsllmner_viewer.api.queries import aggregate
 from bsllmner_viewer.api.queries.core import Population, population
-from bsllmner_viewer.api.queries.dimensions import clauses_for, default_elements, dimension, labels_for
+from bsllmner_viewer.api.queries.dimensions import (
+    NAMED_BY_CONDITION,
+    clauses_for,
+    default_elements,
+    dimension,
+    labels_for,
+)
 from bsllmner_viewer.api.schemas import (
     Cell,
     CrosstabResponse,
     DistributionResponse,
-    Element,
-    TermElement,
     TrendPoint,
     TrendResponse,
     TrendSeries,
     Unit,
 )
 from bsllmner_viewer.dsl.ast import BoolOp, Node, and_, clause
-from bsllmner_viewer.dsl.fields import STATUS_SUFFIX, FieldDef
+from bsllmner_viewer.dsl.fields import MAPPED, STATUS_SUFFIX, FieldDef
 from bsllmner_viewer.dsl.transform import named_values
-from bsllmner_viewer.store.organisms import ORGANISM_NAMES
 
 router = APIRouter(tags=["Aggregations"])
 
 UnitParam = Annotated[Unit, Query(description="Counting unit")]
 LimitParam = Annotated[int, Query(ge=1, le=200, description="Number of elements when they are not named")]
 MAX_ELEMENTS = 500
-
-
-NAMED_BY_CONDITION: frozenset[str] = frozenset({"term", "assay", "organism"})
 
 
 def _elements(
@@ -54,20 +54,10 @@ def _elements(
         raise ApiError("too-many-elements", 400, f"at most {MAX_ELEMENTS} elements per dimension")
     if elements:
         return elements
-    chosen = default_elements(cur, dim, pop.cte(), pop.params, limit)
+    chosen = default_elements(cur, dim, pop, limit)
     if dim.kind in NAMED_BY_CONDITION:
         chosen.extend(value for value in named_values(ast, dim.name) if value not in chosen)
     return chosen
-
-
-def _organisms(store: StoreDep) -> dict[int, str | None]:
-    cached = getattr(store, "_organism_names", None)
-    if cached is None:
-        with store.cursor() as cur:
-            rows = cur.execute(ORGANISM_NAMES).fetchall()
-        cached = {int(o): n for o, n in rows}
-        store._organism_names = cached  # type: ignore[attr-defined]
-    return cached
 
 
 @router.get(
@@ -77,8 +67,9 @@ def _organisms(store: StoreDep) -> dict[int, str | None]:
     summary="Counts per element of one dimension",
     description=(
         "Elements default to the terms most often annotated directly, followed by the elements that the condition "
-        "names, ordered by their count with descendants. For an annotation field the response also carries the "
-        "status composition of the field, computed without the conjuncts on the field's term and status dimensions."
+        "names, ordered by their count with descendants. For a term dimension, each element also carries the counts of "
+        "its `mapped_exact` and `mapped_selected` annotations, and `withoutTerm` is the count of the population "
+        "without a term of the field."
     ),
 )
 def get_distribution(
@@ -100,36 +91,13 @@ def get_distribution(
         chosen = _elements(cur, dim, elements, ast, pop, limit)
         total = aggregate.population_total(cur, pop, unit)
         counts = aggregate.element_counts(cur, pop, dim, chosen, unit)
-        if not split_csv(elements) and dim.kind in ("term", "assay", "organism"):
+        if not split_csv(elements) and dim.kind in NAMED_BY_CONDITION:
             chosen = sorted(chosen, key=lambda e: (-counts.get(e, 0), e))
-        labels = labels_for(cur, dim, chosen, _organisms(store))
-        out: list[TermElement | Element] = []
-        if dim.kind == "term":
-            statuses = aggregate.term_status_counts(cur, pop, dim, chosen, unit)
-            children = aggregate.has_children(cur, pop, dim, chosen, unit)
-            parents = aggregate.parents_within(cur, chosen)
-            for e in chosen:
-                exact, selected = statuses.get(e, (0, 0))
-                out.append(
-                    TermElement(
-                        value=e,
-                        label=labels.get(e, e),
-                        clauses=clauses_for(dim, e),
-                        count=counts.get(e, 0),
-                        count_exact=exact,
-                        count_selected=selected,
-                        has_children=children.get(e, False),
-                        parents=parents.get(e, []),
-                    )
-                )
-        else:
-            out = [
-                Element(value=e, label=labels.get(e, e), clauses=clauses_for(dim, e), count=counts.get(e, 0))
-                for e in chosen
-            ]
+        labels = labels_for(cur, dim, chosen, store.organism_names)
+        out = aggregate.axis_elements(cur, pop, dim, chosen, unit, labels, counts)
         without_term: int | None = None
         if dim.kind == "term" and dim.annotation_field:
-            not_mapped = BoolOp("NOT", (clause(dim.annotation_field + STATUS_SUFFIX, "mapped"),))
+            not_mapped = BoolOp("NOT", (clause(dim.annotation_field + STATUS_SUFFIX, MAPPED),))
             without_ast = not_mapped if pop_ast is None else and_(pop_ast, not_mapped)
             without_term = aggregate.population_total(cur, population(without_ast, store.field_set), unit)
     return DistributionResponse(
@@ -178,10 +146,10 @@ def get_crosstab(
         rows_chosen = _elements(cur, row_dim, row_elements, ast, pop, limit)
         cols_chosen = _elements(cur, col_dim, col_elements, ast, pop, limit)
         result = aggregate.crosstab(cur, pop, row_dim, rows_chosen, col_dim, cols_chosen, unit)
-        row_labels = labels_for(cur, row_dim, rows_chosen, _organisms(store))
-        col_labels = labels_for(cur, col_dim, cols_chosen, _organisms(store))
-        row_elements_out = _axis_elements(cur, pop, row_dim, rows_chosen, unit, row_labels, result.row_counts)
-        col_elements_out = _axis_elements(cur, pop, col_dim, cols_chosen, unit, col_labels, result.col_counts)
+        row_labels = labels_for(cur, row_dim, rows_chosen, store.organism_names)
+        col_labels = labels_for(cur, col_dim, cols_chosen, store.organism_names)
+        row_elements_out = aggregate.axis_elements(cur, pop, row_dim, rows_chosen, unit, row_labels, result.row_counts)
+        col_elements_out = aggregate.axis_elements(cur, pop, col_dim, cols_chosen, unit, col_labels, result.col_counts)
     cells: list[Cell] = []
     for r in rows_chosen:
         for c in cols_chosen:
@@ -214,42 +182,6 @@ def get_crosstab(
         cols=col_elements_out,
         cells=cells,
     )
-
-
-def _axis_elements(
-    cur: duckdb.DuckDBPyConnection,
-    pop: Population,
-    dim: FieldDef,
-    chosen: list[str],
-    unit: Unit,
-    labels: dict[str, str],
-    counts: dict[str, int],
-) -> list[TermElement | Element]:
-    """Axis elements; term dimensions carry status counts, whether child terms have counts, and parents on the axis."""
-    if dim.kind != "term":
-        return [
-            Element(value=e, label=labels.get(e, e), clauses=clauses_for(dim, e), count=counts.get(e, 0))
-            for e in chosen
-        ]
-    statuses = aggregate.term_status_counts(cur, pop, dim, chosen, unit)
-    children = aggregate.has_children(cur, pop, dim, chosen, unit)
-    parents = aggregate.parents_within(cur, chosen)
-    out: list[TermElement | Element] = []
-    for e in chosen:
-        exact, selected = statuses.get(e, (0, 0))
-        out.append(
-            TermElement(
-                value=e,
-                label=labels.get(e, e),
-                clauses=clauses_for(dim, e),
-                count=counts.get(e, 0),
-                count_exact=exact,
-                count_selected=selected,
-                has_children=children.get(e, False),
-                parents=parents.get(e, []),
-            )
-        )
-    return out
 
 
 def _year_span(years: Iterable[int]) -> list[int]:
@@ -309,7 +241,7 @@ def get_trend(
             span = _year_span([*span, *series_years])
         years = [y for y in span if (year_from is None or y >= year_from) and (year_to is None or y <= year_to)]
         if dim is not None:
-            labels = labels_for(cur, dim, chosen, _organisms(store))
+            labels = labels_for(cur, dim, chosen, store.organism_names)
             series = [
                 TrendSeries(
                     value=e,

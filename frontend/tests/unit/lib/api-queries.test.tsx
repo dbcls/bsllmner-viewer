@@ -1,9 +1,9 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { renderHook, waitFor } from "@testing-library/react"
-import type { ReactNode } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import type * as Client from "~/lib/api/client"
+
+import { wrapper } from "../query"
 
 type Call = { path: string; query: Record<string, unknown>; pathParams: Record<string, unknown> }
 
@@ -11,15 +11,18 @@ const calls = vi.hoisted(() => [] as Call[])
 
 vi.mock("~/lib/api/client", async (importOriginal) => {
   const original = await importOriginal<typeof Client>()
+  const { ok } = await import("../query")
   const GET = async (path: string, init: { params?: { query?: Record<string, unknown>; path?: Record<string, unknown> } }) => {
     calls.push({ path, query: init.params?.query ?? {}, pathParams: init.params?.path ?? {} })
-    return { data: {}, response: new Response("{}") }
+    return ok({})
   }
   return { ...original, api: { GET } }
 })
 
 import { exportAccessionsUrl, exportEntriesUrl } from "~/lib/api/client"
 import {
+  fetchTermChildren,
+  fetchTerms,
   useCrosstab,
   useDistribution,
   useEntries,
@@ -27,10 +30,6 @@ import {
   useTerms,
   useTrend,
 } from "~/lib/api/queries"
-
-const wrapper = ({ children }: { children: ReactNode }) => (
-  <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{children}</QueryClientProvider>
-)
 
 const lastCall = async (): Promise<Call> => {
   await waitFor(() => expect(calls.length).toBe(1))
@@ -95,6 +94,23 @@ describe("useEntries", () => {
     expect(url.pathParams["type"]).toBe("biosample")
     expect(url.query["perPage"]).toBe(25)
     expect(url.query["page"]).toBe(3)
+  })
+})
+
+describe("fetchTerms and fetchTermChildren", () => {
+  it("fetchTerms requests the terms of a field with camelCase self-exclusion and without an unset condition or unit", async () => {
+    await fetchTerms({ field: "disease", query: "liver", q: null, selfExclusion: true, limit: 5 })
+    expect(calls[0]).toMatchObject({ path: "/api/terms", query: { field: "disease", query: "liver", facetSelfExclude: true, limit: 5 } })
+    expect("q" in (calls[0] as Call).query).toBe(false)
+    expect("unit" in (calls[0] as Call).query).toBe(false)
+  })
+
+  it("fetchTermChildren requests the children of a term in the population of the condition", async () => {
+    await fetchTermChildren({ field: "disease", termId: "MONDO:1", q: "a:b", unit: "bioproject", selfExclusion: true })
+    expect(calls[0]).toMatchObject({
+      path: "/api/terms/children",
+      query: { field: "disease", termId: "MONDO:1", q: "a:b", unit: "bioproject", facetSelfExclude: true },
+    })
   })
 })
 

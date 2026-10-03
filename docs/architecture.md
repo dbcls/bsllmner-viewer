@@ -41,7 +41,7 @@ The reverse also holds: the api has no condition or operation that the UI does n
 
 ### Only the api interprets the condition DSL
 
-Parsing, serialization, and evaluation of the condition DSL live in the api. The frontend holds a condition as an AST and uses the api's parse and serialize operations to convert between the AST and the URL string, so a URL cannot mean different things in the UI and in the API.
+Parsing, serialization, and evaluation of the condition DSL live in the api. The frontend holds a condition as the URL string `q`. It reads the AST, the labels, the selected clauses, and the text of the keyword box from the api's parse operation, and it changes the condition only through the api's select and keyword operations. A URL cannot mean different things in the UI and in the API.
 
 ### A published store is never modified
 

@@ -15,9 +15,9 @@ export const pageRangeText = (total: number, page = 1, perPage = TABLE_PER_PAGE)
   return `${formatCount(from)}–${formatCount(Math.min(page * perPage, total))} / ${formatCount(total)}`
 }
 
-export const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 
-export const paramOf = (page: Page, name: string): string | null => new URL(page.url()).searchParams.get(name)
+const paramOf = (page: Page, name: string): string | null => new URL(page.url()).searchParams.get(name)
 
 /** The condition string carried by the current URL. */
 export const qOf = (page: Page): string | null => paramOf(page, "q")
@@ -68,7 +68,7 @@ export const cellButton = (page: Page, row: string, col: string): Locator =>
   page.getByRole("button", { name: new RegExp(`^${escapeRegExp(row)} × ${escapeRegExp(col)}:`) })
 
 /** The controls of one axis of a chart view: its name, its dimension, and the button that opens its terms. */
-export const axisControls = (page: Page, side: "Rows" | "Columns" | "Lines"): Locator => page.getByRole("group", { name: side })
+const axisControls = (page: Page, side: "Rows" | "Columns" | "Lines"): Locator => page.getByRole("group", { name: side })
 
 /** The button of an axis of a chart view that shows the number of its terms and opens them. */
 export const axisTermsButton = (page: Page, side: "Rows" | "Columns" | "Lines"): Locator => axisControls(page, side).getByRole("button", { name: /^\d+ terms?$/ })

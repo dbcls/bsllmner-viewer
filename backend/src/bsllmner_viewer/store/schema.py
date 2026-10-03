@@ -152,9 +152,3 @@ def create_raw_tables(con: duckdb.DuckDBPyConnection) -> None:
 def drop_derived_tables(con: duckdb.DuckDBPyConnection) -> None:
     for table in DERIVED_TABLES:
         con.execute(f"DROP TABLE IF EXISTS {table}")
-
-
-def copy_raw_tables(con: duckdb.DuckDBPyConnection, source_alias: str) -> None:
-    """Copy every raw table from an attached store into the connection's default database."""
-    for table in RAW_TABLES:
-        con.execute(f"INSERT INTO {table} SELECT * FROM {source_alias}.{table}")

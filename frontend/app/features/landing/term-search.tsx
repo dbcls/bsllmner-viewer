@@ -1,24 +1,14 @@
-import { useEffect, useRef, useState } from "react"
+import { useState } from "react"
 
 import { useDataset, useTerms } from "~/lib/api/queries"
 import { formatCount } from "~/lib/format"
 import { fieldLabel } from "~/lib/labels"
-import { ACTION_ICON, busyClass, Button, Card, CardHeader, Clickable, cn, Select, Skeleton, termRowClass, TermRowContent, TermRowSkeleton, TextInput } from "~/ui"
+import { ALL_FIELDS, SKELETON_TERMS, TERM_SEARCH_DEBOUNCE_MS, termFieldOptions, termHitRowProps, useResultListRef } from "~/lib/terms"
+import { useDebounced } from "~/lib/use-debounced"
+import { ACTION_ICON, busyClass, Button, Card, CardHeader, Clickable, cn, Select, termRowClass, TermRowContent, TermRowSkeleton, TextInput } from "~/ui"
 
 import { ConditionLink } from "./condition-link"
-
-/** The field choice that searches every annotation field. */
-const ALL_FIELDS = "*"
-const DEBOUNCE_MS = 200
-
-const useDebounced = (value: string, delay: number): string => {
-  const [debounced, setDebounced] = useState(value)
-  useEffect(() => {
-    const timer = setTimeout(() => setDebounced(value), delay)
-    return () => clearTimeout(timer)
-  }, [value, delay])
-  return debounced
-}
+import { CountBar, countBarRowClass, CountBarSkeleton } from "./count-bar"
 
 /** The name of the result list: the terms of one field or of every field, and the text they match. */
 const resultTitle = (field: string | null, query: string): string => {
@@ -34,19 +24,14 @@ export const TermSearch = () => {
   const total = dataset.data?.totals.biosample ?? 0
   const [field, setField] = useState(ALL_FIELDS)
   const [query, setQuery] = useState("")
-  const debounced = useDebounced(query.trim(), DEBOUNCE_MS)
+  const debounced = useDebounced(query.trim(), TERM_SEARCH_DEBOUNCE_MS)
   const everyField = field === ALL_FIELDS
   const active = query.trim() !== "" || !everyField
   const terms = useTerms(
     { ...(everyField ? {} : { field }), query: debounced, q: null, unit: "biosample", selfExclusion: true, limit: 20 },
     active,
   )
-  const options = [{ value: ALL_FIELDS, label: "All fields" }, ...fields.map((f) => ({ value: f, label: fieldLabel(f) }))]
-  // The results of another search start at the top, instead of where the previous results were scrolled to.
-  const list = useRef<HTMLDivElement | null>(null)
-  useEffect(() => {
-    if (list.current) list.current.scrollTop = 0
-  }, [terms.data?.query, terms.data?.field])
+  const list = useResultListRef(terms.data?.query, terms.data?.field)
 
   const clear = () => {
     setField(ALL_FIELDS)
@@ -56,7 +41,7 @@ export const TermSearch = () => {
   return (
     <div>
       <div className="flex gap-2">
-        <Select options={options} value={field} onChange={setField} aria-label="Field" />
+        <Select options={termFieldOptions(fields)} value={field} onChange={setField} aria-label="Field" />
         <TextInput
           value={query}
           onChange={setQuery}
@@ -88,14 +73,7 @@ export const TermSearch = () => {
                   enabled={!terms.isPlaceholderData}
                   className={termRowClass()}
                 >
-                  <TermRowContent
-                    label={hit.label ?? hit.termId}
-                    id={hit.termId}
-                    count={formatCount(hit.count)}
-                    {...(everyField ? { field: fieldLabel(hit.field) } : {})}
-                    {...(hit.matchedSynonym ? { synonym: hit.matchedSynonym } : {})}
-                    highlight={terms.data?.query ?? ""}
-                  />
+                  <TermRowContent {...termHitRowProps(hit, everyField, terms.data?.query)} />
                 </ConditionLink>
               ))}
               {terms.data && terms.data.terms.length === 0 && (
@@ -109,7 +87,7 @@ export const TermSearch = () => {
           <Card padding="sm">
             <div className="mb-1.5 font-semibold">Annotation terms</div>
             <div className="grid grid-cols-3 gap-x-5">
-              {dataset.data === undefined && Array.from({ length: SKELETON_FIELDS }, (_, index) => <FieldRowSkeleton key={index} />)}
+              {dataset.data === undefined && Array.from({ length: SKELETON_FIELDS }, (_, index) => <CountBarSkeleton key={index} padding="md" />)}
               {fieldCounts.map(({ name, mappedBiosampleCount }) => (
                 <FieldRow key={name} field={name} mapped={mappedBiosampleCount} total={total} onSelect={() => setField(name)} />
               ))}
@@ -121,8 +99,6 @@ export const TermSearch = () => {
   )
 }
 
-/** The rows that hold the place of the result before it arrives. */
-const SKELETON_TERMS = 8
 /** The field rows drawn before the description of the dataset arrives, on the first visit only. */
 const SKELETON_FIELDS = 6
 
@@ -135,32 +111,7 @@ type FieldRowProps = {
 }
 
 const FieldRow = ({ field, mapped, total, onSelect }: FieldRowProps) => (
-  <Clickable
-    onClick={onSelect}
-    aria-label={`Browse ${fieldLabel(field)} terms`}
-    className="flex w-full cursor-pointer items-center gap-2 rounded-tag py-1 text-left hover:bg-brand-soft"
-  >
-    <span className="min-w-0 flex-1">
-      <span className="block truncate text-fs-body-sm">{fieldLabel(field)}</span>
-      <span className="mt-0.5 block h-1.5 overflow-hidden rounded-badge bg-brand-soft">
-        <span className="block h-full bg-brand-light" style={{ width: `${total > 0 ? (mapped / total) * 100 : 0}%` }} />
-      </span>
-    </span>
-    <span className="w-17 shrink-0 text-right font-mono text-fs-label text-ink-mid">{formatCount(mapped)}</span>
+  <Clickable onClick={onSelect} aria-label={`Browse ${fieldLabel(field)} terms`} className={countBarRowClass("md")}>
+    <CountBar label={fieldLabel(field)} count={formatCount(mapped)} ratio={total > 0 ? mapped / total : 0} />
   </Clickable>
-)
-
-/** A field row before the description of the dataset arrives, on the first visit only. */
-const FieldRowSkeleton = () => (
-  <div aria-hidden="true" className="flex items-center gap-2 py-1">
-    <span className="min-w-0 flex-1">
-      <span className="block text-fs-body-sm">
-        <Skeleton className="w-24" />
-      </span>
-      <Skeleton kind="block" className="mt-0.5 h-1.5 w-full" />
-    </span>
-    <span className="flex w-17 shrink-0 justify-end text-fs-label">
-      <Skeleton className="w-12" />
-    </span>
-  </div>
 )

@@ -3,7 +3,7 @@ import { useSearchParams } from "react-router"
 
 import { type Patch, readState, type WorkspaceState, writeState } from "~/lib/workspace-state"
 
-export { DEFAULTS, type HeatmapColor, type Patch, type Tab, TABS, workspaceSearch,type WorkspaceState } from "~/lib/workspace-state"
+export { type HeatmapColor, type Patch, type Tab, TAB_LABELS, TABS, workspaceSearch,type WorkspaceState } from "~/lib/workspace-state"
 
 /** The workspace state read from the URL, and an updater that writes a patch back to it. */
 export const useWorkspaceState = (): [WorkspaceState, (patch: Patch) => void] => {

@@ -2,18 +2,16 @@
 
 from __future__ import annotations
 
-from typing import Annotated
-
 import orjson
-from fastapi import APIRouter, Query
+from fastapi import APIRouter
 
 from bsllmner_viewer.api.common import q_of, version_ref
-from bsllmner_viewer.api.deps import QParam, StoreDep, parse_condition
+from bsllmner_viewer.api.deps import PageParam, PerPageParam, QParam, StoreDep, parse_condition
 from bsllmner_viewer.api.problems import NOT_FOUND_RESPONSE, ApiError
 from bsllmner_viewer.api.queries import entries as rq
 from bsllmner_viewer.api.queries.core import population
 from bsllmner_viewer.api.queries.dimensions import clauses_for, dimension
-from bsllmner_viewer.api.queries.entries import attributes_of, organism_of
+from bsllmner_viewer.api.queries.entries import organism_of
 from bsllmner_viewer.api.record_names import record_name
 from bsllmner_viewer.api.schemas import (
     EntriesResponse,
@@ -27,7 +25,7 @@ from bsllmner_viewer.api.schemas import (
     Pagination,
 )
 from bsllmner_viewer.build.mk2_filter_keys import MK2_FILTER_KEYS
-from bsllmner_viewer.store.metadata import ATTRIBUTE, DESCRIPTION, RECORD, description_items
+from bsllmner_viewer.store.metadata import ATTRIBUTE, DESCRIPTION, RECORD, stored_attributes, stored_description
 
 router = APIRouter(tags=["Entries"])
 
@@ -43,8 +41,8 @@ def list_entries(
     store: StoreDep,
     type: EntryType,
     q: QParam = None,
-    page: Annotated[int, Query(ge=1)] = 1,
-    per_page: Annotated[int, Query(alias="perPage", ge=1, le=100)] = 25,
+    page: PageParam = 1,
+    per_page: PerPageParam = 25,
 ) -> EntriesResponse:
     ast = parse_condition(store, q)
     pop = population(ast, store.field_set)
@@ -56,7 +54,7 @@ def list_entries(
         dataset_version=version_ref(store),
         q=q_of(ast),
         type=type,
-        pagination=Pagination(page=page, per_page=per_page, total=total, has_next=page * per_page < total),
+        pagination=Pagination.of(page, per_page, total),
         items=rows,
     )
 
@@ -105,9 +103,9 @@ def get_entry(store: StoreDep, accession: str) -> EntryResponse:
             "LEFT JOIN bioproject b ON b.accession = bb.bioproject WHERE bb.biosample = ? ORDER BY bb.bioproject",
             [accession],
         ).fetchall()
-    described = description_items(row[1], ((str(d["name"]), str(d["value"])) for d in orjson.loads(row[7])))
+    described = stored_description(row[1], row[7])
     record = orjson.loads(row[8])
-    attributes = attributes_of(row[5])
+    attributes = stored_attributes(row[5])
     items = [
         *(MetadataItem(kind=DESCRIPTION, name=name, value=value, harmonized_name=None) for name, value in described),
         *(
@@ -117,15 +115,15 @@ def get_entry(store: StoreDep, accession: str) -> EntryResponse:
         *(
             MetadataItem(
                 kind=ATTRIBUTE,
-                name=str(a.get("name")),
-                value=str(a.get("value")),
-                harmonized_name=a.get("harmonized_name"),
+                name=a.name,
+                value=a.value,
+                harmonized_name=a.harmonized_name,
             )
             for a in attributes
         ),
     ]
     # Evidence identifies an item by its kind and its position among the items of that kind.
-    offset = {DESCRIPTION: 0, RECORD: len(described), ATTRIBUTE: len(described) + len(record)}
+    offset: dict[str, int] = {DESCRIPTION: 0, RECORD: len(described), ATTRIBUTE: len(described) + len(record)}
     found: dict[tuple[str, int], list[tuple[int, bool, int, int, str]]] = {}
     for field, value_index, kind, item, in_name, start, end, strategy in evidence_rows:
         found.setdefault((str(field), int(value_index)), []).append(

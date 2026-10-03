@@ -7,10 +7,10 @@ from typing import Annotated
 from fastapi import APIRouter, Query
 
 from bsllmner_viewer.api.common import aggregation_population, q_of, version_ref
-from bsllmner_viewer.api.deps import FacetSelfExcludeParam, QParam, StoreDep, parse_condition
+from bsllmner_viewer.api.deps import FacetSelfExcludeParam, PageParam, PerPageParam, QParam, StoreDep, parse_condition
 from bsllmner_viewer.api.queries import projects as pq
 from bsllmner_viewer.api.queries.core import population
-from bsllmner_viewer.api.schemas import Clause, Pagination, Project, ProjectsResponse
+from bsllmner_viewer.api.schemas import Clause, Pagination, Project, ProjectSort, ProjectsResponse
 
 router = APIRouter(tags=["Projects"])
 
@@ -25,9 +25,9 @@ def get_projects(
     store: StoreDep,
     q: QParam = None,
     facet_self_exclude: FacetSelfExcludeParam = False,
-    sort: Annotated[pq.ProjectSort, Query()] = "biosampleCount:desc",
-    page: Annotated[int, Query(ge=1)] = 1,
-    per_page: Annotated[int, Query(alias="perPage", ge=1, le=100)] = 25,
+    sort: Annotated[ProjectSort, Query()] = "biosampleCount:desc",
+    page: PageParam = 1,
+    per_page: PerPageParam = 25,
 ) -> ProjectsResponse:
     ast = parse_condition(store, q)
     pop_ast = aggregation_population(ast, ["bioproject"], facet_self_exclude)
@@ -41,7 +41,7 @@ def get_projects(
         population_q=q_of(pop_ast),
         facet_self_exclude=facet_self_exclude,
         sort=sort,
-        pagination=Pagination(page=page, per_page=per_page, total=total, has_next=page * per_page < total),
+        pagination=Pagination.of(page, per_page, total),
         items=[
             Project(
                 identifier=a,

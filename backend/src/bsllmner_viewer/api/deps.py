@@ -29,6 +29,9 @@ FacetSelfExcludeParam = Annotated[
     ),
 ]
 
+PageParam = Annotated[int, Query(ge=1)]
+PerPageParam = Annotated[int, Query(alias="perPage", ge=1, le=100)]
+
 QParam = Annotated[
     str | None,
     Query(

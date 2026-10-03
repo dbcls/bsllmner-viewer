@@ -9,7 +9,7 @@ import { fieldLabel, organismLabel, unitLabel } from "~/lib/labels"
 import { busyClass, Card, CardHeader, cn, InlineLabel, Select, Skeleton, Toggle } from "~/ui"
 
 import { AxisControls } from "../axis/axis-controls"
-import { resolvePasted } from "../axis/axis-terms"
+import { replaceTerms, resolvePasted, toggleTerm } from "../axis/axis-terms"
 import { AxisTermsDialog } from "../axis/axis-terms-dialog"
 import { findTermId } from "../axis/find-term"
 import { expectedElements } from "../expected-elements"
@@ -18,7 +18,8 @@ import type { Patch, WorkspaceState } from "../state"
 import { TermIdHover } from "../term-id-hover"
 import type { Condition } from "../use-condition"
 import { ViewControls } from "../view-controls"
-import { lineFieldOf, trendFields } from "./field"
+import { TREND_LIMIT, trendLineField, trendParams } from "../view-requests"
+import { trendFields } from "./field"
 import { gridLines, PLOT, showYearLabel, xForIndex, yForValue, yMax } from "./scale"
 import { yearChoices } from "./years"
 
@@ -31,7 +32,7 @@ const DATA_LABEL_GAP = 5
 
 const SERIES_COLORS = ["--color-series-1", "--color-series-2", "--color-series-3", "--color-series-4", "--color-series-5"]
 /** The number of lines of the elements: the top elements when the user chose none, and the most that the user can choose, one per color. */
-const LIMIT = SERIES_COLORS.length
+const LIMIT = TREND_LIMIT
 
 type TrendTabProps = {
   state: WorkspaceState
@@ -45,25 +46,24 @@ type TrendPoint = TrendSeries["points"][number]
 /** One drawn point of a line, with its place on the plot. */
 type Placed = { point: TrendPoint; x: number; y: number; r: number }
 
+const onKey = (action: () => void) => (event: KeyboardEvent) => {
+  if (event.key !== "Enter" && event.key !== " ") return
+  event.preventDefault()
+  action()
+}
+
+const polylinePoints = (placed: Placed[]): string => placed.map(({ x, y }) => `${x},${y}`).join(" ")
+
 /** Counts per BioSample publication year: the condition, and one line per element of one dimension. */
 export const TrendTab = ({ state, condition, update, onAlert }: TrendTabProps) => {
   const svgRef = useRef<SVGSVGElement>(null)
   const [termsOpen, setTermsOpen] = useState(false)
   const dataset = useDataset()
   const fields = dataset.data?.fields.map((f) => f.name) ?? []
-  const split = lineFieldOf(state.trendField, dataset.data ? fields : null)
+  const split = trendLineField(state, dataset.data ? fields : null)
   const dimensions = trendFields(fields).map((f) => ({ value: f, label: fieldLabel(f) }))
 
-  const trend = useTrend({
-    field: split,
-    q: state.q,
-    unit: state.unit,
-    selfExclusion: true,
-    ...(state.trendTerms ? { elements: state.trendTerms.join(",") } : {}),
-    limit: LIMIT,
-    ...(state.trendFrom !== null ? { yearFrom: state.trendFrom } : {}),
-    ...(state.trendTo !== null ? { yearTo: state.trendTo } : {}),
-  })
+  const trend = useTrend(trendParams(state, dataset.data ? fields : null))
   const data = trend.data
   const years = data?.years ?? []
   const series = data?.series ?? []
@@ -89,30 +89,21 @@ export const TrendTab = ({ state, condition, update, onAlert }: TrendTabProps) =
   const narrowPoint = (clauses: Clause[]) => {
     if (data) void condition.toggleNarrow(data.populationQ, clauses)
   }
-  const onKey = (action: () => void) => (event: KeyboardEvent) => {
-    if (event.key !== "Enter" && event.key !== " ") return
-    event.preventDefault()
-    action()
-  }
-
   // The terms that the URL names, when the user chose them: the lines on screen can still be those of the previous
   // terms while the trend of the new ones is on its way.
   const values = state.trendTerms ?? series.map((s) => s.value)
   const setTerms = (next: string[] | null) => update({ trendTerms: next })
+  const limit = { max: LIMIT, subject: "A trend" }
   const pick = (hit: TermHit) => {
-    if (values.includes(hit.termId)) setTerms(values.filter((v) => v !== hit.termId))
-    else if (values.length >= LIMIT) onAlert(`A trend shows up to ${LIMIT} terms`)
-    else setTerms([...values, hit.termId])
+    const result = toggleTerm(values, hit.termId, limit)
+    if (result.alert !== null) onAlert(result.alert)
+    else setTerms(result.terms)
   }
   /** Makes the first pasted entries, up to the most lines a trend shows, the terms of the lines. */
   const replace = async (entries: string[]) => {
-    const unique = await resolvePasted(entries, fields.includes(split), (label) => findTermId(split, label))
-    if (unique.length === 0) {
-      onAlert("No terms recognised")
-      return
-    }
-    setTerms(unique.slice(0, LIMIT))
-    onAlert(unique.length > LIMIT ? `The first ${LIMIT} of ${unique.length} terms are shown` : `${unique.length} of ${entries.length} terms recognised`)
+    const result = await replaceTerms(entries, (list) => resolvePasted(list, fields.includes(split), (label) => findTermId(split, label)), limit)
+    if (result.terms !== null) setTerms(result.terms)
+    onAlert(result.alert)
   }
   const changeDimension = (dimension: string) => update({ trendField: dimension, trendTerms: null })
 
@@ -137,7 +128,7 @@ export const TrendTab = ({ state, condition, update, onAlert }: TrendTabProps) =
     points.map((point, index) => ({ point, x: xForIndex(index, years.length), y: yForValue(point.count, max), r: radius(point) }))
   const seriesPlaces = series.map((s) => place(s.points, (point) => (point.count > 0 && condition.isSelected(point.clauses) ? 6 : 4)))
   const totalPlaces = place(total, (point) => (condition.isSelected(point.clauses) ? 6.5 : 4.5))
-  const allPlaces = place(all, () => 3.5)
+  const allPlaces = place(all, (point) => (condition.isSelected(point.clauses) ? 5 : 3.5))
 
   return (
     <div>
@@ -249,67 +240,48 @@ export const TrendTab = ({ state, condition, update, onAlert }: TrendTabProps) =
                 const label = seriesLabel(s.value, s.label)
                 return (
                   <g key={s.value} data-series={s.value}>
-                    <polyline points={placed.map(({ x, y }) => `${x},${y}`).join(" ")} fill="none" stroke={color} strokeWidth={2} />
-                    {placed.map(({ point, x, y, r }) => {
-                      if (point.count === 0) {
-                        return <circle key={point.year} cx={x} cy={y} r={r} fill={token("--color-surface")} stroke={color} strokeWidth={2} role="img" aria-label={pointName(label, point)} />
-                      }
-                      const selected = condition.isSelected(point.clauses)
-                      return (
-                        <circle
-                          key={point.year}
-                          cx={x}
-                          cy={y}
-                          r={r}
-                          fill={selected ? token("--color-selection") : token("--color-surface")}
-                          stroke={color}
-                          strokeWidth={2}
-                          className="cursor-pointer"
-                          role="button"
-                          tabIndex={0}
-                          aria-pressed={selected}
-                          aria-label={`${pointName(label, point)}. Narrow the condition to this point`}
-                          onClick={() => narrowPoint(point.clauses)}
-                          onKeyDown={onKey(() => narrowPoint(point.clauses))}
-                        />
-                      )
-                    })}
+                    <polyline points={polylinePoints(placed)} fill="none" stroke={color} strokeWidth={2} />
+                    <PointMarks
+                      placed={placed}
+                      color={color}
+                      width={2}
+                      name={(point) => pointName(label, point)}
+                      selected={(point) => point.count > 0 && condition.isSelected(point.clauses)}
+                      pressable={(point) => point.count > 0}
+                      onPress={(point) => narrowPoint(point.clauses)}
+                      hint="Narrow the condition to this point"
+                    />
                   </g>
                 )
               })}
-              {/* The line of the whole dataset is a reference to compare with, so its points do not change the condition. */}
               {state.trendAll && (
                 <g data-series="all">
-                  <polyline points={allPlaces.map(({ x, y }) => `${x},${y}`).join(" ")} fill="none" stroke={allColor} strokeWidth={2} />
-                  {allPlaces.map(({ point, x, y, r }) => (
-                    <circle key={point.year} cx={x} cy={y} r={r} fill={token("--color-surface")} stroke={allColor} strokeWidth={2} role="img" aria-label={pointName(allLabel, point)} />
-                  ))}
+                  <polyline points={polylinePoints(allPlaces)} fill="none" stroke={allColor} strokeWidth={2} />
+                  <PointMarks
+                    placed={allPlaces}
+                    color={allColor}
+                    width={2}
+                    name={(point) => pointName(allLabel, point)}
+                    selected={(point) => condition.isSelected(point.clauses)}
+                    pressable={() => true}
+                    onPress={(point) => void condition.toggle(point.clauses)}
+                    hint="Toggle this year in the condition"
+                  />
                 </g>
               )}
               {drawTotal && (
                 <g data-series="condition">
-                  <polyline points={totalPlaces.map(({ x, y }) => `${x},${y}`).join(" ")} fill="none" stroke={totalColor} strokeWidth={3} />
-                  {totalPlaces.map(({ point, x, y, r }) => {
-                    const selected = condition.isSelected(point.clauses)
-                    return (
-                      <circle
-                        key={point.year}
-                        cx={x}
-                        cy={y}
-                        r={r}
-                        fill={selected ? token("--color-selection") : token("--color-surface")}
-                        stroke={totalColor}
-                        strokeWidth={3}
-                        className="cursor-pointer"
-                        role="button"
-                        tabIndex={0}
-                        aria-pressed={selected}
-                        aria-label={`${pointName(totalLabel, point)}. Toggle this year in the condition`}
-                        onClick={() => void condition.toggle(point.clauses)}
-                        onKeyDown={onKey(() => void condition.toggle(point.clauses))}
-                      />
-                    )
-                  })}
+                  <polyline points={polylinePoints(totalPlaces)} fill="none" stroke={totalColor} strokeWidth={3} />
+                  <PointMarks
+                    placed={totalPlaces}
+                    color={totalColor}
+                    width={3}
+                    name={(point) => pointName(totalLabel, point)}
+                    selected={(point) => condition.isSelected(point.clauses)}
+                    pressable={() => true}
+                    onPress={(point) => void condition.toggle(point.clauses)}
+                    hint="Toggle this year in the condition"
+                  />
                 </g>
               )}
               {/*
@@ -352,6 +324,47 @@ export const TrendTab = ({ state, condition, update, onAlert }: TrendTabProps) =
     </div>
   )
 }
+
+type PointMarksProps = {
+  placed: Placed[]
+  color: string
+  width: number
+  /** The accessible name of a point, without what pressing it does. */
+  name: (point: TrendPoint) => string
+  selected: (point: TrendPoint) => boolean
+  /** Whether pressing the point does anything; a point that is not pressable is a plain mark. */
+  pressable: (point: TrendPoint) => boolean
+  onPress: (point: TrendPoint) => void
+  /** What pressing a point does, after its name. */
+  hint: string
+}
+
+/** The points of one line: a button each when pressing does something, and a plain mark otherwise. */
+const PointMarks = ({ placed, color, width, name, selected, pressable, onPress, hint }: PointMarksProps) =>
+  placed.map(({ point, x, y, r }) => {
+    if (!pressable(point)) {
+      return <circle key={point.year} cx={x} cy={y} r={r} fill={token("--color-surface")} stroke={color} strokeWidth={width} role="img" aria-label={name(point)} />
+    }
+    const on = selected(point)
+    return (
+      <circle
+        key={point.year}
+        cx={x}
+        cy={y}
+        r={r}
+        fill={on ? token("--color-selection") : token("--color-surface")}
+        stroke={color}
+        strokeWidth={width}
+        className="cursor-pointer"
+        role="button"
+        tabIndex={0}
+        aria-pressed={on}
+        aria-label={`${name(point)}. ${hint}`}
+        onClick={() => onPress(point)}
+        onKeyDown={onKey(() => onPress(point))}
+      />
+    )
+  })
 
 type YearControlsProps = {
   /** The first and the last year with a match: undefined while they are on their way, null when nothing matches. */

@@ -1,6 +1,10 @@
 /** Client-side downloads: TSV tables, SVG markup, and PNG renderings of SVG elements. */
 
-export const download = (name: string, content: Blob): void => {
+/** Text for the content or an attribute value of an SVG element. */
+export const escapeXml = (text: string): string =>
+  text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;")
+
+const download = (name: string, content: Blob): void => {
   const url = URL.createObjectURL(content)
   const link = document.createElement("a")
   link.href = url

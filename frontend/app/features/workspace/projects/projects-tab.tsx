@@ -1,7 +1,6 @@
-import type { ReactNode } from "react"
-
 import { useDataset, useProjects } from "~/lib/api/queries"
 import type { Project, ProjectSort } from "~/lib/api/types"
+import { ddbjSearchHref, ncbiHref } from "~/lib/external-links"
 import { formatCount } from "~/lib/format"
 import type { TablePerPage } from "~/lib/workspace-state"
 import { ACTION_ICON, Button, Card, CardFooter, CardHeader, cn, ExternalLink, Pager, SortChooser, type SortDirection, type SortKey, TableScroller } from "~/ui"
@@ -10,6 +9,7 @@ import { AssayTags } from "../assay-tags"
 import { PerPageChooser } from "../per-page-chooser"
 import { SkeletonTableRows } from "../skeleton-rows"
 import type { WorkspaceState } from "../state"
+import { TABLE_CELL, Th } from "../table"
 import type { Condition } from "../use-condition"
 import { useTableTop } from "../use-table-top"
 
@@ -81,23 +81,6 @@ export const ProjectsTab = ({ state, condition, onPage, onSort, onPerPage }: Pro
   )
 }
 
-const Th = ({ children, align = "left" }: { children: ReactNode; align?: "left" | "right" }) => (
-  <th
-    className={cn(
-      "border-b border-border-soft px-2.5 py-2 text-fs-label font-semibold whitespace-nowrap text-ink-soft",
-      align === "right" ? "text-right" : "text-left",
-    )}
-  >
-    {children}
-  </th>
-)
-
-/**
- * The rule is on the cells rather than the row, as in the Samples table. The last row has none, so that it does not double
- * the line over the footer.
- */
-const TD = "border-b border-brand-soft px-2.5 py-1.5 group-last:border-b-0"
-
 type ProjectRowProps = {
   project: Project
   condition: Condition
@@ -108,19 +91,19 @@ const ProjectRow = ({ project, condition, targetAssays }: ProjectRowProps) => {
   const selected = condition.isSelected(project.clauses)
   return (
     <tr className={cn("group", selected && "bg-brand-soft")}>
-      <td className={cn(TD, "font-mono text-fs-label whitespace-nowrap")}>{project.identifier}</td>
-      <td className={cn(TD, "w-full max-w-0 truncate")} title={project.title ?? ""}>
+      <td className={cn(TABLE_CELL, "font-mono text-fs-label whitespace-nowrap")}>{project.identifier}</td>
+      <td className={cn(TABLE_CELL, "w-full max-w-0 truncate")} title={project.title ?? ""}>
         {project.title}
       </td>
-      <td className={cn(TD, "text-right font-mono text-fs-label")}>{formatCount(project.biosampleCount)}</td>
-      <td className={cn(TD, "text-right font-mono text-fs-label")}>{formatCount(project.experimentCount)}</td>
-      <td className={cn(TD, "whitespace-nowrap")}>
+      <td className={cn(TABLE_CELL, "text-right font-mono text-fs-label")}>{formatCount(project.biosampleCount)}</td>
+      <td className={cn(TABLE_CELL, "text-right font-mono text-fs-label")}>{formatCount(project.experimentCount)}</td>
+      <td className={cn(TABLE_CELL, "whitespace-nowrap")}>
         <AssayTags assays={project.assays} targetAssays={targetAssays} />
       </td>
-      <td className={cn(TD, "text-fs-label whitespace-nowrap")}>
+      <td className={cn(TABLE_CELL, "text-fs-label whitespace-nowrap")}>
         <ProjectLinks identifier={project.identifier} />
       </td>
-      <td className={cn(TD, "whitespace-nowrap")}>
+      <td className={cn(TABLE_CELL, "whitespace-nowrap")}>
         {/*
           One width for both labels, so the columns do not move when a project is added or removed. The negative margin
           keeps the button, a little taller than a line of text, from making the row taller than a row of the Samples table.
@@ -146,7 +129,7 @@ const ConditionButton = ({ project, selected, onToggle }: { project: Project; se
 
 const ProjectLinks = ({ identifier }: { identifier: string }) => (
   <span className="inline-flex gap-3">
-    <ExternalLink href={`https://ddbj.nig.ac.jp/search/entry/bioproject/${identifier}`}>DDBJ</ExternalLink>
-    <ExternalLink href={`https://www.ncbi.nlm.nih.gov/bioproject/${identifier}`}>NCBI</ExternalLink>
+    <ExternalLink href={ddbjSearchHref("bioproject", identifier)}>DDBJ</ExternalLink>
+    <ExternalLink href={ncbiHref("bioproject", identifier)}>NCBI</ExternalLink>
   </span>
 )

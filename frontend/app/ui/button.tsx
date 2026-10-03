@@ -3,8 +3,8 @@ import type { ButtonHTMLAttributes, ReactNode } from "react"
 import { cn } from "./cn"
 import { Icon, type IconName } from "./icons"
 
-type ButtonKind = "primary" | "outline" | "secondary" | "quiet" | "ghost" | "inverse"
-type ButtonSize = "2xs" | "xs" | "sm" | "md"
+type ButtonKind = "primary" | "outline" | "secondary" | "quiet" | "inverse"
+type ButtonSize = "2xs" | "xs" | "sm"
 
 type ButtonProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "className"> & {
   kind?: ButtonKind
@@ -25,7 +25,6 @@ const kindClass: Record<ButtonKind, string> = {
   secondary: "font-semibold bg-surface text-ink border border-border-soft hover:bg-brand-soft",
   /** An action repeated on every row of a table: lighter than `secondary`, so that a column of them does not outweigh the data. */
   quiet: "font-medium bg-surface text-ink-mid border border-border-soft hover:bg-brand-soft hover:text-ink",
-  ghost: "font-semibold bg-transparent text-brand-deep border border-transparent hover:bg-brand-soft",
   inverse: "font-semibold bg-ink text-brand-soft border border-ink-mid hover:bg-ink-mid",
 }
 
@@ -35,7 +34,6 @@ const sizeClass: Record<ButtonSize, string> = {
   "2xs": "h-5 px-2 text-fs-label",
   xs: "h-6 px-2.5 text-fs-body-sm",
   sm: "h-7 px-3 text-fs-body-sm",
-  md: "h-8 px-4 text-fs-body",
 }
 
 /**
@@ -52,7 +50,7 @@ export const buttonClass = (kind: ButtonKind, size: ButtonSize, block = false): 
 
 export const Button = ({
   kind = "primary",
-  size = "md",
+  size = "sm",
   icon,
   trailingIcon,
   block,

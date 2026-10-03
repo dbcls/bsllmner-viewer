@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal, NotRequired, TypedDict
+from typing import Annotated, Any, Literal, NotRequired, TypedDict, Union
 
 from pydantic import BaseModel, ConfigDict, Field, SerializerFunctionWrapHandler, model_serializer
 from pydantic.alias_generators import to_camel
+
+from bsllmner_viewer.dsl.fields import FieldKind, GroupName, Operator, Status
+from bsllmner_viewer.store.metadata import EvidenceStrategy, MetadataKind
 
 ClauseJson = TypedDict(
     "ClauseJson", {"field": str, "value": NotRequired[str], "from": NotRequired[str], "to": NotRequired[str]}
@@ -14,7 +17,12 @@ ClauseJson = TypedDict(
 type Unit = Literal["biosample", "sra-experiment", "bioproject"]
 type EntryType = Literal["biosample"]
 type AccessionType = Literal["biosample", "sra-experiment", "sra-run", "bioproject"]
-type EvidenceStrategy = Literal["exact", "case_insensitive", "normalized", "bag_of_words", "fuzzy", "ontology_synonym"]
+type ProjectSort = Literal[
+    "biosampleCount:desc",
+    "biosampleCount:asc",
+    "experimentCount:desc",
+    "experimentCount:asc",
+]
 
 
 class ApiModel(BaseModel):
@@ -46,6 +54,40 @@ class Clause(ApiModel):
         return {k: v for k, v in data.items() if v is not None}  # type: ignore[return-value]
 
 
+class AstModel(BaseModel):
+    """Base of the AST nodes. The property names are those of the DDBJ Search API, so they stay snake_case."""
+
+    model_config = ConfigDict(extra="forbid", validate_by_name=True, serialize_by_alias=True)
+
+
+class AstBool(AstModel):
+    op: Literal["AND", "OR", "NOT"]
+    rules: list[AstNode] = Field(min_length=1, description="Operands. `NOT` has exactly one")
+
+
+class AstEq(AstModel):
+    field: str
+    op: Literal["eq"]
+    value: str
+
+
+class AstBetween(AstModel):
+    field: str
+    op: Literal["between"]
+    from_: str = Field(alias="from")
+    to: str
+
+
+class AstFreeText(AstModel):
+    op: Literal["free_text"]
+    value: str
+    is_phrase: bool
+
+
+AstNode = Annotated[Union[AstBool, AstEq, AstBetween, AstFreeText], Field(discriminator="op")]  # noqa: UP007
+AstBool.model_rebuild()
+
+
 class FieldDescription(ApiModel):
     name: str
     multi_valued: bool
@@ -65,8 +107,8 @@ class DatasetAssay(ApiModel):
 
 class DslFieldDescription(ApiModel):
     name: str
-    kind: str
-    operators: list[str]
+    kind: FieldKind
+    operators: list[Operator]
 
 
 class Totals(ApiModel):
@@ -82,7 +124,7 @@ class DatasetResponse(ApiModel):
     assays: list[DatasetAssay] = Field(description="Target assays in descending order of their BioSamples")
     fields: list[FieldDescription]
     dsl_fields: list[DslFieldDescription]
-    statuses: dict[str, list[str]] = Field(description="Status groups and the statuses under them")
+    statuses: dict[GroupName, list[Status]] = Field(description="Status groups and the statuses under them")
     totals: Totals
     organisms: list[DatasetOrganism]
     ontologies: list[DatasetOntology] = Field(description="Names of the prefixes of the terms of the dataset")
@@ -99,15 +141,24 @@ class DatasetOrganism(Organism):
     biosample_count: int
 
 
+_SELECTED_DESCRIPTION = (
+    "The clauses that `POST /api/dsl/select` treats as already present in `toggle` mode: the top-level clauses and "
+    "the clauses of a top-level OR on one field, outside any NOT. When every clause of an element is in this list, "
+    "selecting the element removes the clauses"
+)
+_KEYWORD_DESCRIPTION = (
+    "The text of a keyword box for the top-level keywords of the condition: the words, then the phrases in double "
+    "quotes. `POST /api/dsl/keyword` reads it back as the same keywords"
+)
+
+
 class ParseResponse(ApiModel):
     dataset_version: DatasetVersionRef
     q: str
-    ast: dict[str, Any]
+    ast: AstNode
     labels: dict[str, str] = Field(description="Display labels of the term IDs and organism IDs used in the condition")
-
-
-class SerializeRequest(ApiModel):
-    ast: dict[str, Any]
+    selected: list[Clause] = Field(description=_SELECTED_DESCRIPTION)
+    keyword: str = Field(description=_KEYWORD_DESCRIPTION)
 
 
 class SelectRequest(ApiModel):
@@ -135,8 +186,10 @@ class KeywordRequest(ApiModel):
 class ConditionResponse(ApiModel):
     dataset_version: DatasetVersionRef
     dsl: str | None = Field(description="The condition string")
-    ast: dict[str, Any] | None
+    ast: AstNode | None
     labels: dict[str, str] = Field(description="Display labels of the term IDs and organism IDs used in the condition")
+    selected: list[Clause] = Field(description=_SELECTED_DESCRIPTION)
+    keyword: str = Field(description=_KEYWORD_DESCRIPTION)
 
 
 class Element(ApiModel):
@@ -236,6 +289,10 @@ class Pagination(ApiModel):
     total: int
     has_next: bool
 
+    @classmethod
+    def of(cls, page: int, per_page: int, total: int) -> Pagination:
+        return cls(page=page, per_page=per_page, total=total, has_next=page * per_page < total)
+
 
 class Project(ApiModel):
     identifier: str = Field(description="BioProject accession")
@@ -251,14 +308,14 @@ class ProjectsResponse(ApiModel):
     q: str | None
     population_q: str | None
     facet_self_exclude: bool
-    sort: str
+    sort: ProjectSort
     pagination: Pagination
     items: list[Project]
 
 
 class AnnotationValue(ApiModel):
     value: str | None
-    status: str
+    status: Status
     term_id: str | None
     label: str | None
 
@@ -296,7 +353,7 @@ class Evidence(ApiModel):
 class EntryAnnotation(ApiModel):
     field: str
     value: str | None
-    status: str
+    status: Status
     term_id: str | None
     label: str | None
     clauses: list[Clause] = Field(description="The clause on the field and the term; empty without a term")
@@ -317,7 +374,7 @@ class EntryBioProject(ApiModel):
 
 
 class MetadataItem(ApiModel):
-    kind: Literal["description", "attribute", "record"]
+    kind: MetadataKind
     name: str = Field(description="Name to show: a description name, an attribute name, or a short name of a path")
     value: str
     harmonized_name: str | None = Field(description="Harmonized name of an attribute; null for the other kinds")

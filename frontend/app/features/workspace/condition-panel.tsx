@@ -4,11 +4,11 @@ import { useDataset, useDistribution } from "~/lib/api/queries"
 import type { Clause } from "~/lib/api/types"
 import { type DateRange, enteredRange, isoDate, RECENT_YEARS, recentRange, recentYearsOf } from "~/lib/date-range"
 import { formatCount } from "~/lib/format"
-import { fieldLabel, GROUP_LABELS, organismLabel, type StatusGroup } from "~/lib/labels"
+import { fieldLabel, fieldOfStatusField, GROUP_LABELS, organismLabel, statusFieldOf,type StatusGroup } from "~/lib/labels"
 import { ACTION_ICON, Button, Caption, CheckboxRow, Clickable, cn, FieldChip, HelpHint, PaneHeading, Select, Skeleton, TextInput } from "~/ui"
 
 import { AssayTag } from "./assay-tags"
-import { clauseLabel, clausesOfField, keywordText, selectedClauses } from "./ast"
+import { clauseLabel, clausesOfField } from "./ast"
 import type { Condition } from "./use-condition"
 
 type ConditionPanelProps = {
@@ -29,11 +29,24 @@ const ORGANISM_MIN_SHARE = 0.01
 export const ConditionPanel = ({ q, condition, onAddTerm }: ConditionPanelProps) => {
   const dataset = useDataset()
   const fields = dataset.data?.fields ?? []
-  const assays = useDistribution({ field: "library_strategy", q, unit: "biosample", selfExclusion: true, limit: 20 })
-  const organismCounts = useDistribution({ field: "organism_id", q, unit: "biosample", selfExclusion: true, limit: 20 })
-  const selected = selectedClauses(condition.ast)
+  const targetAssays = dataset.data?.targetAssays ?? []
+  const datasetTotal = dataset.data?.totals.biosample ?? 0
+  const organisms = (dataset.data?.organisms ?? [])
+    .filter((organism) => organism.biosampleCount >= datasetTotal * ORGANISM_MIN_SHARE)
+    .sort((a, b) => b.biosampleCount - a.biosampleCount)
+  // The counts are asked for the listed values by name, so that a value outside the most frequent ones under the condition is counted too.
+  const ready = dataset.data !== undefined
+  const assays = useDistribution(
+    { field: "library_strategy", q, unit: "biosample", selfExclusion: true, elements: targetAssays.join(",") },
+    ready && targetAssays.length > 0,
+  )
+  const organismCounts = useDistribution(
+    { field: "organism_id", q, unit: "biosample", selfExclusion: true, elements: organisms.map((organism) => organism.identifier).join(",") },
+    ready && organisms.length > 0,
+  )
+  const selected = condition.selected
 
-  const statusFields = selected.filter((clause) => clause.field.endsWith("_status")).map((clause) => clause.field.slice(0, -"_status".length))
+  const statusFields = selected.flatMap((clause) => fieldOfStatusField(clause.field) ?? [])
   const firstStatusField = statusFields[0]
   const [chosenStatusField, setStatusField] = useState(firstStatusField)
   useEffect(() => {
@@ -45,22 +58,16 @@ export const ConditionPanel = ({ q, condition, onAddTerm }: ConditionPanelProps)
   const fieldOptions = fields.map((f) => ({ value: f.name, label: fieldLabel(f.name) }))
   // Without a status condition, the status buttons are on the first field of the dataset.
   const statusField = chosenStatusField ?? fields[0]?.name
-  const targetAssays = dataset.data?.targetAssays ?? []
   const assayCounts = countsOf(assays.data?.elements)
-  const datasetOrganisms = dataset.data?.organisms ?? []
-  const datasetTotal = datasetOrganisms.reduce((total, organism) => total + organism.biosampleCount, 0)
-  const organisms = datasetOrganisms
-    .filter((organism) => organism.biosampleCount >= datasetTotal * ORGANISM_MIN_SHARE)
-    .sort((a, b) => b.biosampleCount - a.biosampleCount)
   const organismCount = countsOf(organismCounts.data?.elements)
 
   // The terms of the condition, in the order of the dataset's fields.
-  const terms = fields.flatMap((field) => clausesOfField(condition.ast, field.name))
+  const terms = fields.flatMap((field) => clausesOfField(selected, field.name))
 
   return (
     <aside className="w-sidebar shrink-0 border-r border-border-soft bg-surface px-4 pt-3.5 pb-6 text-fs-body-sm">
       <KeywordSearch condition={condition} />
-      <PaneHeading spacing="top">Annotation terms</PaneHeading>
+      <PaneHeading>Annotation terms</PaneHeading>
       <Section>
         <Button kind="outline" size="sm" icon={ACTION_ICON.add} onClick={onAddTerm}>
           Add term
@@ -78,7 +85,7 @@ export const ConditionPanel = ({ q, condition, onAddTerm }: ConditionPanelProps)
           </div>
         )}
       </Section>
-      <PaneHeading spacing="top">Assay</PaneHeading>
+      <PaneHeading>Assay</PaneHeading>
       <Section>
         {dataset.data === undefined && <SkeletonRows count={ASSAY_ROWS} className="py-1" />}
         {targetAssays.map((assay) => {
@@ -94,7 +101,7 @@ export const ConditionPanel = ({ q, condition, onAddTerm }: ConditionPanelProps)
           )
         })}
       </Section>
-      <PaneHeading spacing="top">Organism</PaneHeading>
+      <PaneHeading>Organism</PaneHeading>
       <Section>
         {dataset.data === undefined && <SkeletonRows count={ORGANISM_ROWS} className="py-1" />}
         {organisms.map((organism) => {
@@ -110,18 +117,18 @@ export const ConditionPanel = ({ q, condition, onAddTerm }: ConditionPanelProps)
           )
         })}
       </Section>
-      <PaneHeading spacing="top">Publication date</PaneHeading>
+      <PaneHeading>Publication date</PaneHeading>
       <Section>
         <PublicationDate condition={condition} />
       </Section>
-      <PaneHeading spacing="top" aside={<HelpHint label="About annotation status" side="top">{STATUS_HELP}</HelpHint>}>
+      <PaneHeading aside={<HelpHint label="About annotation status" side="top">{STATUS_HELP}</HelpHint>}>
         Annotation status
       </PaneHeading>
       <Section>
         <Select options={fieldOptions} value={statusField ?? ""} onChange={setStatusField} size="sm" block aria-label="Status field" />
         <div className="mt-1.5 flex gap-1">
           {(Object.keys(GROUP_LABELS) as StatusGroup[]).map((group) => {
-            const clause: Clause | null = statusField === undefined ? null : { field: `${statusField}_status`, value: group }
+            const clause: Clause | null = statusField === undefined ? null : { field: statusFieldOf(statusField), value: group }
             const on = clause !== null && condition.isSelected([clause])
             return (
               <Choice key={group} on={on} onClick={() => clause && void condition.toggle([clause])}>
@@ -210,7 +217,7 @@ const KEYWORD_TYPING_MS = 500
  * keywords of the condition.
  */
 const KeywordSearch = ({ condition }: { condition: Condition }) => {
-  const current = keywordText(condition.ast)
+  const current = condition.keywordText
   const [text, setText] = useState(current)
   const [focused, setFocused] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -274,7 +281,7 @@ const DATE_FIELD = "date_published"
  */
 const PublicationDate = ({ condition }: { condition: Condition }) => {
   const today = isoDate(new Date())
-  const ranges = clausesOfField(condition.ast, DATE_FIELD).filter((clause) => clause.from !== undefined && clause.to !== undefined)
+  const ranges = clausesOfField(condition.selected, DATE_FIELD).filter((clause) => clause.from !== undefined && clause.to !== undefined)
   const only = ranges.length === 1 ? ranges[0] : undefined
   const range: DateRange | null = only?.from !== undefined && only.to !== undefined ? { from: only.from, to: only.to } : null
   const recent = range ? recentYearsOf(range, today) : null

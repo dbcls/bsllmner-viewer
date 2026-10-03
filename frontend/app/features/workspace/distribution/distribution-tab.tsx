@@ -12,20 +12,9 @@ import type { WorkspaceState } from "../state"
 import { TermIdHover } from "../term-id-hover"
 import type { Condition } from "../use-condition"
 import { ViewControls } from "../view-controls"
-import { type BarDatum, barsSvg } from "./bars-svg"
+import { DISTRIBUTION_LIMIT, distributionFields, distributionParams } from "../view-requests"
+import { type BarDatum, barsSvg, barsSvgSize } from "./bars-svg"
 
-const FIELD_ORDER = [
-  "disease",
-  "cell_line",
-  "tissue",
-  "cell_type",
-  "drug",
-  "chip_antigen",
-  "knockout_gene",
-  "knockdown_gene",
-  "overexpressed_gene",
-]
-const LIMIT = 10
 /** The annotation cards drawn as skeletons before the description of the dataset arrives, on the first visit only. */
 const FIELD_CARDS = 6
 
@@ -40,8 +29,7 @@ type DistributionTabProps = {
 export const DistributionTab = ({ state, condition, onUnit, onTermIds }: DistributionTabProps) => {
   const dataset = useDataset()
   const fields = dataset.data?.fields ?? []
-  const names = new Set(fields.map((f) => f.name))
-  const ordered = [...FIELD_ORDER.filter((f) => names.has(f)), ...fields.map((f) => f.name).filter((f) => !FIELD_ORDER.includes(f))]
+  const ordered = distributionFields(fields.map((f) => f.name))
   const known = dataset.data?.ontologies ?? []
   const ontologies = new Map(fields.map((f) => [f.name, f.ontologies.map((prefix) => ontologyName(prefix, known)).join(" / ")]))
   return (
@@ -59,7 +47,7 @@ export const DistributionTab = ({ state, condition, onUnit, onTermIds }: Distrib
             <Card key={index} padding="sm">
               <Skeleton className="w-32" />
               <div className="mt-2">
-                <SkeletonBars count={LIMIT} />
+                <SkeletonBars count={DISTRIBUTION_LIMIT} />
               </div>
               <SkeletonWithoutTerm />
             </Card>
@@ -88,14 +76,8 @@ type CardProps = {
 }
 
 const DistributionCard = ({ field, ontology, dataset, state, condition }: CardProps) => {
-  const distribution = useDistribution({
-    field,
-    q: state.q,
-    unit: state.unit,
-    selfExclusion: true,
-    limit: LIMIT,
-  })
-  const ownCondition = clausesOfField(condition.ast, field).length > 0
+  const distribution = useDistribution(distributionParams(state, field))
+  const ownCondition = clausesOfField(condition.selected, field).length > 0
   const data = distribution.data
   const elements = data?.elements ?? []
   const max = Math.max(1, ...elements.map((e) => e.count))
@@ -117,7 +99,8 @@ const DistributionCard = ({ field, ontology, dataset, state, condition }: CardPr
   const exportSvg = () => downloadSvgMarkup(`${exportName}.svg`, barsSvg(fieldLabel(field), unit, collect()))
   const exportPng = () => {
     const rows = collect()
-    void downloadPngMarkup(`${exportName}.png`, barsSvg(fieldLabel(field), unit, rows), 480, 40 + rows.length * 30)
+    const { width, height } = barsSvgSize(rows)
+    void downloadPngMarkup(`${exportName}.png`, barsSvg(fieldLabel(field), unit, rows), width, height)
   }
 
   return (
@@ -130,7 +113,7 @@ const DistributionCard = ({ field, ontology, dataset, state, condition }: CardPr
         <FigureExport figure={`${fieldLabel(field)} distribution`} onTsv={exportTsv} onSvg={exportSvg} onPng={exportPng} />
       </div>
       <div className="mt-2 flex-1">
-        {data === undefined && <SkeletonBars count={expectedElements(field, dataset, LIMIT)} />}
+        {data === undefined && <SkeletonBars count={expectedElements(field, dataset, DISTRIBUTION_LIMIT)} />}
         {elements.map((element) => (
           <ElementRow key={element.value} element={element} max={max} ownCondition={ownCondition} condition={condition} showId={state.termIds} />
         ))}

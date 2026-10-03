@@ -5,10 +5,15 @@ from __future__ import annotations
 import re
 from typing import Final
 
-WORD_RE: Final[re.Pattern[str]] = re.compile(r"^[^\s:()\[\]\"{}^~*?\/]+$")
-DATE_RE: Final[re.Pattern[str]] = re.compile(r"^\d{4}-\d{2}-\d{2}$")
-WILDCARD_RE: Final[re.Pattern[str]] = re.compile(r"^[A-Za-z0-9_\-.]*[*?][A-Za-z0-9_\-.]*$")
+WORD_RE: Final[re.Pattern[str]] = re.compile(r"^[^\s:()\[\]\"{}^~*?\/]+\Z")
+DATE_RE: Final[re.Pattern[str]] = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}\Z")
+WILDCARD_RE: Final[re.Pattern[str]] = re.compile(r"^[A-Za-z0-9_\-.]*[*?][A-Za-z0-9_\-.]*\Z")
 RESERVED: Final[frozenset[str]] = frozenset({"AND", "OR", "NOT"})
+
+
+def is_bare_word(value: str) -> bool:
+    """True when the value can be written without quotes and is read back as the same word."""
+    return WORD_RE.match(value) is not None and not needs_quote(value)
 
 
 def needs_quote(value: str) -> bool:

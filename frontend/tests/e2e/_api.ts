@@ -4,9 +4,9 @@ export type Unit = "biosample" | "sra-experiment" | "bioproject"
 
 export type Clause = { field: string; value?: string; from?: string; to?: string }
 
-export type Element = { value: string; label: string; clauses: Clause[]; count: number }
+type Element = { value: string; label: string; clauses: Clause[]; count: number }
 
-export type TermElement = Element & { countExact: number; countSelected: number; hasChildren: boolean; parents: string[] }
+type TermElement = Element & { countExact: number; countSelected: number; hasChildren: boolean; parents: string[] }
 
 export type Distribution = { q: string | null; populationQ: string | null; total: number; elements: TermElement[]; withoutTerm: number | null }
 
@@ -19,7 +19,7 @@ export type Crosstab = {
   cells: { row: string; col: string; count: number; ratio: number | null; residual: number | null; classification: string | null }[]
 }
 
-export type TrendPoint = { year: number; count: number; clauses: Clause[] }
+type TrendPoint = { year: number; count: number; clauses: Clause[] }
 
 export type Trend = {
   populationQ: string | null
@@ -140,15 +140,15 @@ export const smallProjects = async (request: APIRequestContext): Promise<Project
   return small
 }
 
-export type EntryItem = { identifier: string; title: string | null; bioprojects: string[] }
+type EntryItem = { identifier: string; title: string | null; bioprojects: string[] }
 
-export type EntryList = { pagination: { page: number; perPage: number; total: number }; items: EntryItem[] }
+type EntryList = { pagination: { page: number; perPage: number; total: number }; items: EntryItem[] }
 
 /** One page of the BioSample entries of a condition. The condition always narrows the list. */
 export const entries = (request: APIRequestContext, q: string, perPage = 20): Promise<EntryList> =>
   get(request, "/api/entries/biosample", { q, perPage })
 
-export type Entry = {
+type Entry = {
   identifier: string
   title: string | null
   organism: { name: string } | null
@@ -157,7 +157,7 @@ export type Entry = {
 
 export const entry = (request: APIRequestContext, accession: string): Promise<Entry> => get(request, `/api/entries/biosample/${accession}`)
 
-export type ProjectList = {
+type ProjectList = {
   pagination: { total: number }
   items: { identifier: string; title: string | null; biosampleCount: number; experimentCount: number; clauses: Clause[] }[]
 }

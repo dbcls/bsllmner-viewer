@@ -61,15 +61,18 @@ export const countScale = (t: number): string => {
 /** Whether text on a count-scale background should be white. */
 export const countScaleIsDark = (t: number): boolean => t > 0.55
 
+/** The ratios to the expected count at which the color of `ratioScale` changes. */
+export const RATIO_STEPS = { low: 0.5, mid: 2, high: 4 }
+
 /**
  * Scale for the ratio of a count to its expected count, in the brand purple: the higher the ratio, the darker the cell,
  * as on the count scale. Half or less of the expected count is not colored, so that the cells below it read as holes in
  * the table. The steps are at half, twice, and four times; a cell without a ratio is not colored.
  */
 export const ratioScale = (ratio: number | null): string => {
-  if (ratio === null || ratio <= 0.5) return token("--color-surface")
-  if (ratio < 2) return token("--color-brand-tint")
-  return ratio >= 4 ? token("--color-brand") : token("--color-brand-light")
+  if (ratio === null || ratio <= RATIO_STEPS.low) return token("--color-surface")
+  if (ratio < RATIO_STEPS.mid) return token("--color-brand-tint")
+  return ratio >= RATIO_STEPS.high ? token("--color-brand") : token("--color-brand-light")
 }
 
-export const ratioScaleIsDark = (ratio: number | null): boolean => ratio !== null && ratio >= 4
+export const ratioScaleIsDark = (ratio: number | null): boolean => ratio !== null && ratio >= RATIO_STEPS.high

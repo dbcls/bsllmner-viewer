@@ -1,6 +1,6 @@
 import type { AstNode, Clause } from "~/lib/api/types"
 import { rangeLabel } from "~/lib/date-range"
-import { fieldLabel, organismLabel, statusLabel } from "~/lib/labels"
+import { fieldLabel, fieldOfStatusField, organismLabel, statusLabel } from "~/lib/labels"
 
 export type Leaf = Extract<AstNode, { field: string }>
 
@@ -14,12 +14,6 @@ export const isKeyword = (node: AstNode): node is Keyword => node.op === "free_t
 
 /** A keyword as it is typed: a phrase in double quotes, words as they are. */
 export const keywordLabel = (node: Keyword): string => (node.is_phrase ? `"${node.value.replaceAll('"', '\\"')}"` : node.value)
-
-/** The keywords of a condition as text for a keyword box: its top-level keywords, words first and then phrases. */
-export const keywordText = (ast: AstNode | null): string => {
-  const keywords = conjuncts(ast).filter(isKeyword)
-  return [...keywords.filter((k) => !k.is_phrase), ...keywords.filter((k) => k.is_phrase)].map(keywordLabel).join(" ")
-}
 
 /** Top-level conjuncts of a condition. */
 export const conjuncts = (ast: AstNode | null): AstNode[] => {
@@ -41,45 +35,38 @@ export const leafToClause = (leaf: Leaf): Clause =>
 export const sameClause = (a: Clause, b: Clause): boolean =>
   a.field === b.field && a.value === b.value && a.from === b.from && a.to === b.to
 
-/**
- * The clauses a condition names as selected: its top-level clauses and its top-level disjunctions of clauses on one field.
- * Clauses under NOT and clauses in a disjunction over several fields are not selections of their field.
- */
-export const selectedClauses = (ast: AstNode | null): Clause[] =>
-  conditionGroups(ast).flatMap((group) => (group.kind === "clauses" ? group.clauses : []))
-
-/** Whether every clause of an element is selected in the condition. */
-export const hasClauses = (ast: AstNode | null, clauses: Clause[]): boolean => {
-  const present = selectedClauses(ast)
-  return clauses.length > 0 && clauses.every((c) => present.some((p) => sameClause(p, c)))
-}
-
-/** The selected clauses on a field. */
-export const clausesOfField = (ast: AstNode | null, field: string): Clause[] => selectedClauses(ast).filter((clause) => clause.field === field)
+/** The clauses of a field among the selected clauses. */
+export const clausesOfField = (selected: Clause[], field: string): Clause[] => selected.filter((clause) => clause.field === field)
 
 export type ConditionGroup =
   | { kind: "keyword"; text: string }
   | { kind: "clauses"; field: string; clauses: Clause[] }
   | { kind: "expression"; node: AstNode }
 
-/** Groups shown by the visual condition: the top-level keywords in one row first, then one row per other top-level conjunct. */
-export const conditionGroups = (ast: AstNode | null): ConditionGroup[] => {
-  const text = keywordText(ast)
-  const keyword: ConditionGroup[] = text ? [{ kind: "keyword", text }] : []
-  return [...keyword, ...conjuncts(ast).filter((node) => !isKeyword(node)).map(nonKeywordGroup)]
+/**
+ * Rows shown by the visual condition: the keywords in one row first, then one row per other top-level conjunct. A
+ * conjunct is a row of chips only when its clauses are all selected, because a chip removes its clause by toggling it.
+ */
+export const conditionGroups = (ast: AstNode | null, selected: Clause[], keyword: string): ConditionGroup[] => {
+  const keywordRow: ConditionGroup[] = keyword ? [{ kind: "keyword", text: keyword }] : []
+  return [...keywordRow, ...conjuncts(ast).filter((node) => !isKeyword(node)).map((node) => nonKeywordGroup(node, selected))]
 }
 
-/** A top-level clause, a disjunction of clauses on one field, or any other expression. */
-const nonKeywordGroup = (node: AstNode): ConditionGroup => {
-  if (isLeaf(node)) return { kind: "clauses", field: node.field, clauses: [leafToClause(node)] }
-  if (isBool(node) && node.op === "OR" && node.rules.every(isLeaf)) {
-    const rules = node.rules.filter(isLeaf)
-    const field = rules[0]?.field
-    if (field !== undefined && rules.every((r) => r.field === field)) {
-      return { kind: "clauses", field, clauses: rules.map(leafToClause) }
-    }
-  }
-  return { kind: "expression", node }
+/** A top-level clause or a disjunction of clauses on one field, when all of them are selected, or any other expression. */
+const nonKeywordGroup = (node: AstNode, selected: Clause[]): ConditionGroup => {
+  const expression: ConditionGroup = { kind: "expression", node }
+  const clauses = isLeaf(node) ? [leafToClause(node)] : sameFieldDisjunction(node)
+  const field = clauses?.[0]?.field
+  if (clauses === null || field === undefined) return expression
+  return clauses.every((clause) => selected.some((s) => sameClause(s, clause))) ? { kind: "clauses", field, clauses } : expression
+}
+
+/** The clauses of a disjunction of clauses on one field, or null for any other node. */
+const sameFieldDisjunction = (node: AstNode): Clause[] | null => {
+  if (!isBool(node) || node.op !== "OR" || !node.rules.every(isLeaf)) return null
+  const clauses = node.rules.filter(isLeaf).map(leafToClause)
+  const field = clauses[0]?.field
+  return clauses.every((clause) => clause.field === field) ? clauses : null
 }
 
 /** A readable rendering of a part of a condition, with field names and term labels in place of identifiers. */
@@ -103,7 +90,7 @@ export const describeAst = (node: AstNode, labels: Record<string, string>, paren
 export const clauseLabel = (clause: Clause, labels: Record<string, string>): string => {
   if (clause.from !== undefined && clause.to !== undefined) return rangeLabel({ from: clause.from, to: clause.to })
   const value = clause.value ?? ""
-  if (clause.field.endsWith("_status")) return statusLabel(value)
+  if (fieldOfStatusField(clause.field) !== null) return statusLabel(value)
   if (clause.field === "organism_id") return organismLabel(value, labels[value])
   return labels[value] ?? value
 }

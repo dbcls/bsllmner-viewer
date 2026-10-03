@@ -18,29 +18,21 @@
   --color-brand-light:  #A987C5;
   --color-brand-tint:   #E7DDF4;
   --color-brand-soft:   #F4F2FA;
-  --color-brand-softer: #F8F4FB;
 
   --color-ink:        #1A1726;
   --color-ink-mid:    #3F3B4F;
   --color-ink-soft:   #6E6A7B;
   --color-ink-softer: #9C99A6;
 
-  --color-red:   #B73B2C;
   --color-focus: #FFCC33;
 
   --color-surface:        #FFFFFF;
   --color-surface-subtle: #FAFAFC;
   --color-border-soft:    #DAD6E0;
-  --color-border-strong:  #1A1726;
 
-  --color-highlight-bg: #FFF1B8;
 
   --color-warn-bg:     #FCF7E3;
   --color-warn-fg:     #705800;
-  --color-warn-border: #E3C65F;
-  --color-ok-bg:       #F1F8F3;
-  --color-ok-fg:       #1F5430;
-  --color-ok-border:   #BFD9C7;
   --color-critical-bg:     #FCE8E5;
   --color-critical-fg:     #B73B2C;
   --color-critical-border: #F0BBB2;
@@ -53,7 +45,6 @@
   /* Annotation status: mapped is the brand purple pair, unmapped goldenrod, no value grey. */
   --color-brand-mid:      #7F58A4;  /* LLM-selected glyph and small text (AA on white) */
   --color-brand-deeper:   #3A1F52;  /* darkest step of the count scale */
-  --color-brand-faint:    #F0EAF7;  /* bar segment of an unselected element */
   --color-unmapped:       #C9A227;
   --color-unmapped-mid:   #D9B84A;
   --color-unmapped-light: #E7C77A;
@@ -87,22 +78,15 @@
   /* === Type scale (integer px only) ====================================== */
   --text-fs-h1:      28px;
   --text-fs-h2:      18px;
-  --text-fs-h3:      14px;
   --text-fs-body:    14px;
   --text-fs-body-sm: 13px;
   --text-fs-label:   12px;
-  --text-fs-meta:    12px;
   --text-fs-micro:   11px;
   --text-fs-badge:   10px;
   --text-fs-brand:   18px;  /* the wordmark in the header */
-  --text-fs-total:   24px;
 
   /* === Tracking =========================================================== */
   --tracking-h1:     -0.015em;
-  --tracking-h3:      0.01em;
-  --tracking-mono:    0.02em;
-  --tracking-label:   0.06em;
-  --tracking-eyebrow: 0.1em;
   --tracking-brand:   0.03em;  /* the wordmark in the header */
 
   /* === Leading ============================================================ */
@@ -111,11 +95,6 @@
   --leading-relaxed: 1.6;
 
   /* === Spacing ============================================================= */
-  --spacing-section-sm:    16px;
-  --spacing-section-mid:   24px;
-  --spacing-section-block: 28px;
-  --spacing-section-md:    32px;
-  --spacing-section-lg:    48px;
   --spacing-page-gutter:   40px;
   --spacing-content-max: 1280px;
   --spacing-chart-max:    1100px;
@@ -148,7 +127,6 @@
   --radius-pill: 9999px;
 
   /* === Z-index ============================================================= */
-  --z-index-sticky:  10;
   --z-index-popover: 50;
   --z-index-modal:   50;
   --z-index-tooltip: 60;

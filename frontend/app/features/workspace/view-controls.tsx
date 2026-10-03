@@ -1,6 +1,8 @@
 import type { ReactNode } from "react"
 
 import type { Unit } from "~/lib/api/types"
+import { unitLabel } from "~/lib/labels"
+import { UNITS } from "~/lib/workspace-state"
 import { Card, HelpHint, InlineLabel, Segmented, Toggle } from "~/ui"
 
 type ViewControlsProps = {
@@ -31,11 +33,7 @@ export const ViewControls = ({ unit, onUnit, termIds, onTermIds, help, controls,
             <InlineLabel>Count</InlineLabel>
             <Segmented
               ariaLabel="Counting unit"
-              options={[
-                { value: "biosample", label: "BioSamples" },
-                { value: "sra-experiment", label: "SRA Experiments" },
-                { value: "bioproject", label: "BioProjects" },
-              ]}
+              options={UNITS.map((value) => ({ value, label: unitLabel(value) }))}
               value={unit}
               onChange={onUnit}
             />

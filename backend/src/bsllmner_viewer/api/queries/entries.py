@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 import duckdb
-import orjson
 
 from bsllmner_viewer.api.queries.core import Population
 from bsllmner_viewer.api.schemas import AnnotationValue, EntryItem, Organism
@@ -92,8 +89,3 @@ def entry_rows(
 
 def organism_of(organism_id: int | None, name: str | None) -> Organism | None:
     return None if organism_id is None else Organism(identifier=str(organism_id), name=name)
-
-
-def attributes_of(raw: Any) -> list[dict[str, Any]]:
-    data = orjson.loads(raw) if isinstance(raw, str | bytes) else raw
-    return list(data) if isinstance(data, list) else []

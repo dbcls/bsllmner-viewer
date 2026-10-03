@@ -173,7 +173,7 @@ test.describe("workspace navigation", () => {
     const leaves = (node: Leaf): Leaf[] => (node.rules ? node.rules.flatMap(leaves) : [node])
     await page.goto("/")
     // The links of the list under the heading of the questions.
-    const questions = page.getByRole("heading", { name: "Example questions" }).locator("xpath=../../following-sibling::div[1]").getByRole("link")
+    const questions = page.getByRole("heading", { name: "Example questions" }).locator("xpath=../following-sibling::div[1]").getByRole("link")
     await expect(questions.first()).toBeVisible()
     for (const question of await questions.all()) {
       const q = new URL((await question.getAttribute("href")) ?? "", page.url()).searchParams.get("q")

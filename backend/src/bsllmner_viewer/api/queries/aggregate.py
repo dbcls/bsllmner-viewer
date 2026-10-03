@@ -7,10 +7,10 @@ from dataclasses import dataclass
 
 import duckdb
 
-from bsllmner_viewer.api.queries.core import Population, bp_join, count_expr
-from bsllmner_viewer.api.queries.dimensions import Membership, membership
-from bsllmner_viewer.api.schemas import Unit
-from bsllmner_viewer.dsl.fields import FieldDef
+from bsllmner_viewer.api.queries.core import Population, bp_join, count_expr, population_years
+from bsllmner_viewer.api.queries.dimensions import Membership, clauses_for, membership
+from bsllmner_viewer.api.schemas import Element, TermElement, Unit
+from bsllmner_viewer.dsl.fields import MAPPED_EXACT, MAPPED_SELECTED, FieldDef
 
 EXPECTED_MIN = 5.0
 RATIO_THRESHOLD = 2.0
@@ -53,8 +53,8 @@ def term_status_counts(
         "JOIN annotation a ON a.biosample = p.biosample AND a.field = ? AND a.term_id IS NOT NULL "
         f"JOIN term_closure c ON c.descendant = a.term_id AND c.ancestor IN ({placeholders})) "
         f"SELECT m.element, "
-        f"{count_expr(unit, 'm')} FILTER (WHERE m.status = 'mapped_exact'), "
-        f"{count_expr(unit, 'm')} FILTER (WHERE m.status = 'mapped_selected') "
+        f"{count_expr(unit, 'm')} FILTER (WHERE m.status = '{MAPPED_EXACT}'), "
+        f"{count_expr(unit, 'm')} FILTER (WHERE m.status = '{MAPPED_SELECTED}') "
         f"FROM m {bp_join(unit, 'm')} GROUP BY m.element",
         [*pop.params, dim.annotation_field, *elements],
     ).fetchall()
@@ -98,6 +98,49 @@ def parents_within(cur: duckdb.DuckDBPyConnection, elements: list[str]) -> dict[
         for term_id, parent_id in rows:
             found[str(term_id)].add(str(parent_id))
     return {e: [p for p in elements if p in found[e]] for e in elements}
+
+
+def term_elements(
+    cur: duckdb.DuckDBPyConnection,
+    pop: Population,
+    dim: FieldDef,
+    ids: list[str],
+    unit: Unit,
+    labels: dict[str, str],
+    counts: dict[str, int],
+) -> list[TermElement]:
+    """Term elements with the counts of their mapped statuses, whether child terms have counts, and parents in `ids`."""
+    statuses = term_status_counts(cur, pop, dim, ids, unit)
+    children = has_children(cur, pop, dim, ids, unit)
+    parents = parents_within(cur, ids)
+    return [
+        TermElement(
+            value=e,
+            label=labels.get(e, e),
+            clauses=clauses_for(dim, e),
+            count=counts.get(e, 0),
+            count_exact=statuses.get(e, (0, 0))[0],
+            count_selected=statuses.get(e, (0, 0))[1],
+            has_children=children.get(e, False),
+            parents=parents.get(e, []),
+        )
+        for e in ids
+    ]
+
+
+def axis_elements(
+    cur: duckdb.DuckDBPyConnection,
+    pop: Population,
+    dim: FieldDef,
+    ids: list[str],
+    unit: Unit,
+    labels: dict[str, str],
+    counts: dict[str, int],
+) -> list[TermElement | Element]:
+    """Elements of a dimension: term dimensions carry the term details, the others only the count."""
+    if dim.kind == "term":
+        return [*term_elements(cur, pop, dim, ids, unit, labels, counts)]
+    return [Element(value=e, label=labels.get(e, e), clauses=clauses_for(dim, e), count=counts.get(e, 0)) for e in ids]
 
 
 @dataclass(frozen=True, slots=True)
@@ -185,12 +228,7 @@ def trend(
     cur: duckdb.DuckDBPyConnection, pop: Population, dim: FieldDef, elements: list[str], unit: Unit
 ) -> tuple[list[int], dict[tuple[str, int], int]]:
     """Counts per (element, publication year) and the sorted years present in the population."""
-    years = [
-        int(r[0])
-        for r in cur.execute(
-            f"WITH {pop.cte()} SELECT DISTINCT p.year FROM pop p WHERE p.year IS NOT NULL ORDER BY 1", list(pop.params)
-        ).fetchall()
-    ]
+    years = population_years(cur, pop)
     if not elements:
         return years, {}
     member = membership(dim, elements)
@@ -202,13 +240,3 @@ def trend(
         [*pop.params, *member.params],
     ).fetchall()
     return years, {(str(e), int(y)): int(n) for e, y, n in rows}
-
-
-def status_counts(cur: duckdb.DuckDBPyConnection, pop: Population, field: str, unit: Unit) -> dict[str, int]:
-    """Count of units per status (six statuses) for an annotation field."""
-    rows = cur.execute(
-        f"WITH {pop.cte()} SELECT a.status, {count_expr(unit)} FROM pop p "
-        f"JOIN annotation a ON a.biosample = p.biosample AND a.field = ? {bp_join(unit)} GROUP BY a.status",
-        [*pop.params, field],
-    ).fetchall()
-    return {str(s): int(n) for s, n in rows}

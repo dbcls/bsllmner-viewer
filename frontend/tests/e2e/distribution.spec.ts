@@ -1,9 +1,20 @@
 import { expect, test } from "@playwright/test"
 
-import { distribution, select } from "./_api"
-import { bar, expectParam, expectQ, formatCount, workspaceUrl } from "./_helpers"
+import { dataset, distribution, select } from "./_api"
+import { bar, expectParam, expectQ, fieldLabel, formatCount, workspaceUrl } from "./_helpers"
 
 test.describe("distribution", () => {
+  test("the cards follow the order of the dataset's fields", async ({ page, request }) => {
+    const fields = (await dataset(request)).fields.map((field) => fieldLabel(field.name))
+    await page.goto(workspaceUrl({ tab: "distribution" }))
+    const exports = page.getByRole("main").getByRole("button", { name: /^Export the .+ distribution$/ })
+    await expect(exports).toHaveCount(fields.length)
+    const cards = (await exports.evaluateAll((buttons) => buttons.map((b) => b.getAttribute("aria-label") ?? ""))).map((name) =>
+      name.replace(/^Export the /, "").replace(/ distribution$/, ""),
+    )
+    expect(cards).toEqual(fields)
+  })
+
   test("clicking a bar adds its clause and keeps the field's other bars under self-exclusion", async ({ page, request }) => {
     const [first] = (await distribution(request, "disease")).elements
     if (!first) throw new Error("the dataset has no disease")

@@ -18,6 +18,7 @@ from bsllmner_viewer.build.evidence import (
     similar,
     trace,
 )
+from bsllmner_viewer.store.metadata import EvidenceStrategy
 
 # Letters that differ in case, digits, separators, brackets, a letter that folds to two letters, and a full-width
 # letter that folds to ASCII.
@@ -37,7 +38,9 @@ def _cuts_a_word(text: str, span: Span) -> bool:
 
 
 @given(st.sampled_from(TEXT_STRATEGIES), values, texts)
-def test_find_returns_spans_inside_the_text_in_order_without_overlaps(strategy: str, value: str, text: str) -> None:
+def test_find_returns_spans_inside_the_text_in_order_without_overlaps(
+    strategy: EvidenceStrategy, value: str, text: str
+) -> None:
     spans = find(strategy, Text(value), Text(text))
     assert all(0 <= s.start < s.end <= len(text) for s in spans)
     assert all(a.end <= b.start for a, b in pairwise(spans))

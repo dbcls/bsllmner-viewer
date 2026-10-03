@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Literal
 
+from bsllmner_viewer.dsl.lex import is_bare_word
+
 type ValueKind = Literal["phrase", "word", "wildcard", "date", "range"]
 type BoolOpKind = Literal["AND", "OR", "NOT"]
 
@@ -61,10 +63,8 @@ type Node = FreeText | FieldClause | BoolOp
 
 def clause(field: str, value: str, *, kind: ValueKind | None = None) -> FieldClause:
     """Build a leaf for a value, choosing `word` when the value is a bare word and `phrase` otherwise."""
-    from bsllmner_viewer.dsl.lex import WORD_RE, needs_quote
-
     if kind is None:
-        kind = "word" if WORD_RE.match(value) and not needs_quote(value) else "phrase"
+        kind = "word" if is_bare_word(value) else "phrase"
     return FieldClause(field=field, value_kind=kind, value=value)
 
 
@@ -127,11 +127,9 @@ def normalize(node: Node) -> Node:
 
 def _normalize_kind(node: FieldClause) -> FieldClause:
     """Use `word` exactly when the value can be written bare; `phrase` otherwise."""
-    from bsllmner_viewer.dsl.lex import WORD_RE, needs_quote
-
     if node.value_kind not in ("word", "phrase") or not isinstance(node.value, str):
         return node
-    kind: ValueKind = "word" if WORD_RE.match(node.value) and not needs_quote(node.value) else "phrase"
+    kind: ValueKind = "word" if is_bare_word(node.value) else "phrase"
     if kind == node.value_kind:
         return node
     return FieldClause(field=node.field, value_kind=kind, value=node.value, position=node.position)

@@ -11,6 +11,3 @@ export const formatRatio = (value: number): string => {
   if (value < 0.01) return "<0.01×"
   return `${value < 10 ? value.toPrecision(2) : formatCount(value)}×`
 }
-
-export const truncate = (value: string, max: number): string =>
-  value.length > max ? `${value.slice(0, max - 1)}…` : value

@@ -8,10 +8,8 @@ type TextInputProps = Omit<InputHTMLAttributes<HTMLInputElement>, "className" | 
   value: string
   onChange: (value: string) => void
   onEnter?: () => void
-  mono?: boolean
   size?: BoxSize
   block?: boolean
-  widthClass?: string
   /** A glyph inside the start of the box, such as the search glyph of a search box. */
   icon?: IconName
 }
@@ -21,7 +19,7 @@ const PADDING: Record<BoxSize, string> = { sm: "px-2", md: "px-2.5" }
 const PADDING_WITH_ICON: Record<BoxSize, string> = { sm: "pr-2 pl-7", md: "pr-2.5 pl-8" }
 const ICON_AT: Record<BoxSize, string> = { sm: "left-2", md: "left-2.5" }
 
-export const TextInput = ({ value, onChange, onEnter, mono, size = "md", block, widthClass, icon, ...rest }: TextInputProps) => {
+export const TextInput = ({ value, onChange, onEnter, size = "md", block, icon, ...rest }: TextInputProps) => {
   const input = (
     <input
       {...rest}
@@ -38,9 +36,7 @@ export const TextInput = ({ value, onChange, onEnter, mono, size = "md", block, 
         BOX_FOCUS,
         BOX_SIZE[size],
         icon === undefined ? PADDING[size] : PADDING_WITH_ICON[size],
-        mono && "font-mono",
         block && "w-full",
-        widthClass,
       )}
     />
   )

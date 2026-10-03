@@ -9,7 +9,8 @@ from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from bsllmner_viewer.dsl.ast import Node
-from tests.pbt.api.test_invariants import UNITS, _and, _count, _q, conditions
+from tests.api_helpers import and_clauses, condition_q, count
+from tests.strategies import UNITS, conditions
 from tests.synthetic import ONTOLOGIES
 
 ONTOLOGY_OF = {
@@ -41,7 +42,7 @@ def axes(draw: st.DrawFn) -> tuple[str, list[str]]:
 def _crosstab(client: TestClient, ast: Node | None, row: tuple[str, list[str]], unit: str) -> dict[str, Any]:
     field, terms = row
     col = "library_strategy"
-    params = {"row": field, "col": col, "rowElements": ",".join(terms), "q": _q(ast) or "", "unit": unit}
+    params = {"row": field, "col": col, "rowElements": ",".join(terms), "q": condition_q(ast) or "", "unit": unit}
     body: dict[str, Any] = client.get("/api/crosstab", params={**params, "facetSelfExclude": "true"}).json()
     return body
 
@@ -70,7 +71,7 @@ def test_term_element_has_children_when_a_direct_child_has_a_count_in_the_popula
         counted = {
             child
             for child in _children(field, element["value"])
-            if _count(client, _and(pop, [{"field": field, "value": child}]), unit) > 0
+            if count(client, and_clauses(pop, [{"field": field, "value": child}]), unit) > 0
         }
         assert element["hasChildren"] == bool(counted), element["value"]
         params = {"field": field, "termId": element["value"], "q": pop or "", "unit": unit, "facetSelfExclude": "true"}
@@ -85,7 +86,7 @@ def test_distribution_term_elements_have_children_exactly_when_the_children_endp
     client: TestClient, ast: Node | None, field: str, unit: str, excl: bool
 ) -> None:
     flag = str(excl).lower()
-    q = _q(ast) or ""
+    q = condition_q(ast) or ""
     params = {"field": field, "q": q, "unit": unit, "facetSelfExclude": flag}
     body = client.get("/api/distribution", params=params).json()
     for element in body["elements"]:

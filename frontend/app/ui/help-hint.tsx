@@ -2,6 +2,7 @@ import { type ReactNode, useEffect, useId, useRef, useState } from "react"
 
 import { cn } from "./cn"
 import { ACTION_ICON, Icon } from "./icons"
+import { useOutsidePointer } from "./panel-position"
 
 type HelpHintProps = {
   /** What the help is about, as the accessible name of the button: "About annotation status". */
@@ -24,22 +25,15 @@ export const HelpHint = ({ label, side = "bottom", children }: HelpHintProps) =>
   const bubbleId = useId()
   const open = hovered || pinned
 
+  useOutsidePointer(pinned, [wrapper], () => setPinned(false))
+
   useEffect(() => {
     if (!pinned) return
-    const onPointerDown = (event: MouseEvent | TouchEvent) => {
-      if (wrapper.current && !wrapper.current.contains(event.target as Node)) setPinned(false)
-    }
     const onKey = (event: KeyboardEvent) => {
       if (event.key === "Escape") setPinned(false)
     }
-    document.addEventListener("mousedown", onPointerDown)
-    document.addEventListener("touchstart", onPointerDown)
     document.addEventListener("keydown", onKey)
-    return () => {
-      document.removeEventListener("mousedown", onPointerDown)
-      document.removeEventListener("touchstart", onPointerDown)
-      document.removeEventListener("keydown", onKey)
-    }
+    return () => document.removeEventListener("keydown", onKey)
   }, [pinned])
 
   return (

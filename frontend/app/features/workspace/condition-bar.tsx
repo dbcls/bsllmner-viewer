@@ -2,6 +2,7 @@ import { Fragment, useEffect, useState } from "react"
 
 import { useDataset, useDistribution, useEntries, useParsedCondition, useProjects } from "~/lib/api/queries"
 import { formatCount } from "~/lib/format"
+import { unitLabel } from "~/lib/labels"
 import { ACTION_ICON, Button, Chip, cn, CopyButton, LinkButton, Segmented, Skeleton, TextArea } from "~/ui"
 
 import { clauseLabel, type ConditionGroup, conditionGroups, describeAst, groupLabel } from "./ast"
@@ -14,7 +15,6 @@ type ConditionBarProps = {
   q: string | null
   condition: Condition
   onShare: () => Promise<boolean>
-  onExport: () => void
   onApi: () => void
   exportMenu: React.ReactNode
 }
@@ -164,7 +164,7 @@ const SkeletonRows = ({ count }: { count: number }) => (
 )
 
 /** The current condition as a query tree or as the editable string, with its totals and the outputs that belong to it. */
-export const ConditionBar = ({ q, condition, onShare, onExport, onApi, exportMenu }: ConditionBarProps) => {
+export const ConditionBar = ({ q, condition, onShare, onApi, exportMenu }: ConditionBarProps) => {
   const [mode, setMode] = useState<Mode>("visual")
   const [draft, setDraft] = useState(q ?? "")
   const [draftError, setDraftError] = useState<string | null>(null)
@@ -173,7 +173,7 @@ export const ConditionBar = ({ q, condition, onShare, onExport, onApi, exportMen
   // Experiments are not entries; the total of any distribution counted in experiments is the count of the condition.
   const experiments = useDistribution({ field: "library_strategy", q, unit: "sra-experiment", selfExclusion: false, limit: 1 })
   const projects = useProjects({ q, selfExclusion: false, sort: "biosampleCount:desc", page: 1, perPage: 1 })
-  const groups = conditionGroups(condition.ast)
+  const groups = conditionGroups(condition.ast, condition.selected, condition.keywordText)
   const dataset = useDataset()
   const termFields = new Set(dataset.data?.dslFields.filter((field) => field.kind === "term").map((field) => field.name))
 
@@ -202,9 +202,9 @@ export const ConditionBar = ({ q, condition, onShare, onExport, onApi, exportMen
   }, [draftError, draftParse.data, draftParse.error, condition])
 
   const totals: Total[] = [
-    { count: biosamples.data?.pagination.total, unit: "BioSamples" },
-    { count: experiments.data?.total, unit: "SRA Experiments" },
-    { count: projects.data?.pagination.total, unit: "BioProjects" },
+    { count: biosamples.data?.pagination.total, unit: unitLabel("biosample") },
+    { count: experiments.data?.total, unit: unitLabel("sra-experiment") },
+    { count: projects.data?.pagination.total, unit: unitLabel("bioproject") },
   ]
 
   return (
@@ -272,20 +272,7 @@ export const ConditionBar = ({ q, condition, onShare, onExport, onApi, exportMen
         <CopyButton size="xs" block onCopy={onShare}>
           Share
         </CopyButton>
-        <span className="relative flex">
-          <Button
-            kind="secondary"
-            size="xs"
-            block
-            icon={ACTION_ICON.download}
-            trailingIcon={ACTION_ICON.openList}
-            onClick={onExport}
-            aria-haspopup="menu"
-          >
-            Export
-          </Button>
-          {exportMenu}
-        </span>
+        {exportMenu}
         <Button kind="secondary" size="xs" block icon={ACTION_ICON.openDialog} onClick={onApi} aria-haspopup="dialog">
           API
         </Button>

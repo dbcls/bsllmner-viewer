@@ -4,7 +4,15 @@ import pytest
 
 from bsllmner_viewer.dsl.ast import BoolOp, FreeText, Node, normalize, structurally_equal
 from bsllmner_viewer.dsl.errors import DslError, ErrorType
-from bsllmner_viewer.dsl.keyword import Accession, TextMatch, accession_kind, parts, typed_keywords, word_matches
+from bsllmner_viewer.dsl.keyword import (
+    Accession,
+    TextMatch,
+    accession_kind,
+    keyword_text,
+    parts,
+    typed_keywords,
+    word_matches,
+)
 from bsllmner_viewer.dsl.parser import parse
 from bsllmner_viewer.dsl.serializer import serialize
 
@@ -251,3 +259,19 @@ def test_typed_keywords_with_single_quotes_survive_serialization_alone_and_toget
         assert structurally_equal(normalize(parse(serialize(keyword))), keyword)
     combined: Node = keywords[0] if len(keywords) == 1 else BoolOp("AND", tuple(keywords))
     assert structurally_equal(normalize(parse(serialize(combined))), normalize(combined))
+
+
+def test_keyword_text_keeps_a_backslash_of_a_phrase() -> None:
+    ast = parse(r'"CD4\\CD8"')
+    assert keyword_text(ast) == r'"CD4\\CD8"'
+    assert typed_keywords(keyword_text(ast)) == [FreeText("CD4\\CD8", is_phrase=True)]
+
+
+def test_keyword_text_puts_words_before_phrases_and_ignores_other_conjuncts() -> None:
+    ast = parse('"cell line" AND breast cancer AND disease:"MONDO:1" AND NOT lung')
+    assert keyword_text(ast) == 'breast cancer "cell line"'
+
+
+def test_keyword_text_of_a_condition_without_keywords_is_empty() -> None:
+    assert keyword_text(None) == ""
+    assert keyword_text(parse("disease:A")) == ""

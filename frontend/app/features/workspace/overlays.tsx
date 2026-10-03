@@ -1,147 +1,66 @@
-import { type ReactNode, useEffect, useState } from "react"
+import { useEffect, useState } from "react"
 
-import { apiUrl, exportAccessionsUrl, exportEntriesUrl } from "~/lib/api/client"
+import { exportAccessionsUrl, exportEntriesUrl } from "~/lib/api/client"
+import { useDataset } from "~/lib/api/queries"
+import type { AccessionType } from "~/lib/api/types"
 import { copyText } from "~/lib/export"
 import { formatCount } from "~/lib/format"
-import { ACTION_ICON, CopyButton, DownloadLink, Icon, Modal } from "~/ui"
+import { ACTION_ICON, CopyButton, MenuButton, Modal } from "~/ui"
 
-import type { WorkspaceState } from "./state"
+import { TAB_LABELS, type WorkspaceState } from "./state"
+import { apiRequestsFor } from "./view-requests"
 
 type ExportMenuProps = {
-  open: boolean
-  onClose: () => void
   q: string | null
   totalEntries: number | undefined
 }
 
-const ACCESSION_TYPES = [
-  { type: "biosample", label: "BioSample", hint: "SAMN…" },
-  { type: "sra-experiment", label: "SRA Experiment", hint: "SRX…" },
-  { type: "sra-run", label: "SRA Run", hint: "SRR…" },
-  { type: "bioproject", label: "BioProject", hint: "PRJ…" },
-] as const
-
-type MenuGroupProps = {
-  title: string
-  note: string
-  children: ReactNode
+// A record, so that the type checker reports an accession type that the api adds and this list lacks.
+const ACCESSION_TYPES: Record<AccessionType, { label: string; hint: string }> = {
+  biosample: { label: "BioSample", hint: "SAMN…" },
+  "sra-experiment": { label: "SRA Experiment", hint: "SRX…" },
+  "sra-run": { label: "SRA Run", hint: "SRR…" },
+  bioproject: { label: "BioProject", hint: "PRJ…" },
 }
-
-const MenuGroup = ({ title, note, children }: MenuGroupProps) => (
-  <div role="group" aria-label={`${title} (${note})`} className="px-1.5 pt-2.5 pb-1">
-    <div aria-hidden="true" className="mx-1.5 mb-1 flex items-baseline gap-1.5 border-b border-border-soft pb-1.5">
-      <span className="border-l-4 border-brand pl-2 text-fs-body-sm leading-tight font-bold text-ink">{title}</span>
-      <span className="text-fs-label text-ink-soft">{note}</span>
-    </div>
-    {children}
-  </div>
-)
-
-type MenuItemProps = {
-  href: string
-  label: string
-  hint?: string
-}
-
-const MenuItem = ({ href, label, hint }: MenuItemProps) => (
-  <DownloadLink
-    role="menuitem"
-    href={href}
-    className="flex items-center gap-2 rounded-button px-2 py-1.5 text-fs-body-sm text-ink no-underline hover:bg-brand-soft hover:text-brand-deep"
-  >
-    <Icon name={ACTION_ICON.download} className="text-brand" />
-    <span className="flex-1">{label}</span>
-    {hint && <span className="font-mono text-fs-label text-ink-soft">{hint}</span>}
-  </DownloadLink>
-)
 
 /** The outputs of the condition: entry exports and accession lists. */
-export const ExportMenu = ({ open, onClose, q, totalEntries }: ExportMenuProps) => {
-  useEffect(() => {
-    if (!open) return
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose()
-    }
-    const onClick = () => onClose()
-    window.addEventListener("keydown", onKey)
-    // Registered once the click that opened the menu has finished bubbling, so that click does not close it.
-    const timer = setTimeout(() => window.addEventListener("click", onClick), 0)
-    return () => {
-      clearTimeout(timer)
-      window.removeEventListener("keydown", onKey)
-      window.removeEventListener("click", onClick)
-    }
-  }, [open, onClose])
-  if (!open) return null
-  return (
-    <div
-      role="menu"
-      onClick={(event) => event.stopPropagation()}
-      className="absolute top-full right-0 z-popover mt-1.5 w-menu rounded-card border border-border-soft bg-surface pb-1.5 shadow-modal"
-    >
-      <MenuGroup title="Entries" note="all annotation fields">
-        <MenuItem
-          href={exportEntriesUrl("biosample", q, "tsv")}
-          label="TSV"
-          {...(totalEntries === undefined ? {} : { hint: `${formatCount(totalEntries)} rows` })}
-        />
-        <MenuItem href={exportEntriesUrl("biosample", q, "ndjson")} label="JSON lines" />
-      </MenuGroup>
-      <MenuGroup title="Accession lists" note="one per line">
-        {ACCESSION_TYPES.map(({ type, label, hint }) => (
-          <MenuItem key={type} href={exportAccessionsUrl(type, q)} label={label} hint={hint} />
-        ))}
-      </MenuGroup>
-    </div>
-  )
-}
+export const ExportMenu = ({ q, totalEntries }: ExportMenuProps) => (
+  <MenuButton
+    label="Export"
+    icon={ACTION_ICON.download}
+    appearance="bar"
+    monoHints
+    items={[
+      {
+        title: "Entries",
+        note: "all annotation fields",
+        items: [
+          {
+            label: "TSV",
+            href: exportEntriesUrl("biosample", q, "tsv"),
+            ...(totalEntries === undefined ? {} : { hint: `${formatCount(totalEntries)} rows` }),
+          },
+          { label: "JSON lines", href: exportEntriesUrl("biosample", q, "ndjson") },
+        ],
+      },
+      {
+        title: "Accession lists",
+        note: "one per line",
+        items: (Object.entries(ACCESSION_TYPES) as [AccessionType, (typeof ACCESSION_TYPES)[AccessionType]][]).map(([type, { label, hint }]) => ({
+          label,
+          hint,
+          href: exportAccessionsUrl(type, q),
+        })),
+      },
+    ]}
+  />
+)
 
 type ApiModalProps = {
   open: boolean
   onClose: () => void
   state: WorkspaceState
   onAlert: (message: string) => void
-}
-
-const TAB_LABELS: Record<WorkspaceState["tab"], string> = {
-  samples: "Samples",
-  distribution: "Distribution",
-  heatmap: "Heatmap",
-  trend: "Trend",
-  projects: "Projects",
-}
-
-/** The api request that returns the current view. */
-export const apiRequestFor = (state: WorkspaceState): string => {
-  const q = state.q ?? undefined
-  switch (state.tab) {
-    case "samples":
-      return apiUrl("/api/entries/biosample", { q, page: state.page, perPage: state.perPage })
-    case "distribution":
-      return apiUrl("/api/distribution", { q, field: "disease", unit: state.unit, facetSelfExclude: "true" })
-    case "heatmap":
-      return apiUrl("/api/crosstab", {
-        q,
-        row: state.row,
-        col: state.col,
-        unit: state.unit,
-        facetSelfExclude: "true",
-        rowElements: state.rowTerms?.join(","),
-        colElements: state.colTerms?.join(","),
-      })
-    case "trend":
-      return apiUrl("/api/trend", {
-        q,
-        field: state.trendField,
-        unit: state.unit,
-        facetSelfExclude: "true",
-        elements: state.trendTerms?.join(","),
-        yearFrom: state.trendFrom ?? undefined,
-        yearTo: state.trendTo ?? undefined,
-      })
-    case "projects":
-      return apiUrl("/api/projects", { q, facetSelfExclude: "true", sort: state.sort, page: state.page, perPage: state.perPage })
-  }
 }
 
 /** The longest response the dialog shows before it cuts the rest. */
@@ -169,14 +88,16 @@ const BLOCK_HEADING = "mb-1.5 text-fs-body-sm font-semibold text-ink"
 
 export const ApiModal = ({ open, onClose, state, onAlert }: ApiModalProps) => {
   const [response, setResponse] = useState<string>("")
-  const request = apiRequestFor(state)
-  const url = typeof window === "undefined" ? request : `${window.location.origin}${request}`
-  const curl = `curl -s "${url}" \\\n  -H "Accept: application/json"`
+  const dataset = useDataset()
+  const requests = apiRequestsFor(state, dataset.data ? dataset.data.fields.map((f) => f.name) : null)
+  const [first] = requests
+  const origin = typeof window === "undefined" ? "" : window.location.origin
+  const curl = requests.map((request) => `curl -s "${origin}${request}" \\\n  -H "Accept: application/json"`).join("\n\n")
   useEffect(() => {
-    if (!open) return
+    if (!open || first === undefined) return
     let cancelled = false
     setResponse("")
-    fetch(request)
+    fetch(first)
       .then((r) => r.text())
       .then((text) => {
         if (!cancelled) setResponse(responseExcerpt(text))
@@ -185,7 +106,7 @@ export const ApiModal = ({ open, onClose, state, onAlert }: ApiModalProps) => {
     return () => {
       cancelled = true
     }
-  }, [open, request])
+  }, [open, first])
   return (
     <Modal
       open={open}
@@ -193,12 +114,16 @@ export const ApiModal = ({ open, onClose, state, onAlert }: ApiModalProps) => {
       width="lg"
       align="center"
       title="Same result via the API"
-      description={`Returns the ${TAB_LABELS[state.tab]} view for the current condition. Same q, same unit.`}
+      description={
+        state.tab === "distribution"
+          ? "Each card of the Distribution view is one request for the current condition, listed in the order of the cards. Same q, same unit."
+          : `Returns the ${TAB_LABELS[state.tab]} view for the current condition. Same q, same unit.`
+      }
     >
       <div className="px-6 pb-6">
-        <h3 className={BLOCK_HEADING}>Request</h3>
+        <h3 className={BLOCK_HEADING}>{requests.length > 1 ? "Requests" : "Request"}</h3>
         <div className="relative mb-4">
-          <pre className="rounded-button bg-ink py-3 pr-28 pl-3.5 font-mono text-fs-label leading-relaxed break-all whitespace-pre-wrap text-brand-soft">{curl}</pre>
+          <pre className="max-h-60 overflow-auto rounded-button bg-ink py-3 pr-28 pl-3.5 font-mono text-fs-label leading-relaxed break-all whitespace-pre-wrap text-brand-soft">{curl}</pre>
           <span className="absolute top-2 right-2">
             <CopyButton
               kind="inverse"
@@ -212,7 +137,7 @@ export const ApiModal = ({ open, onClose, state, onAlert }: ApiModalProps) => {
             </CopyButton>
           </span>
         </div>
-        <h3 className={BLOCK_HEADING}>Response (excerpt)</h3>
+        <h3 className={BLOCK_HEADING}>{requests.length > 1 ? "Response to the first request (excerpt)" : "Response (excerpt)"}</h3>
         <pre className="max-h-64 overflow-auto rounded-button border border-border-soft bg-surface-subtle px-3.5 py-3 font-mono text-fs-label leading-relaxed whitespace-pre-wrap text-ink-mid">
           {response || "Loading…"}
         </pre>

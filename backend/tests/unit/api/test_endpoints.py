@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
+from tests.api_helpers import accessions, count, entry_items, entry_pages
 from tests.synthetic import Synthetic
 
 
@@ -93,14 +94,48 @@ def test_parse_returns_ast_and_normalized_q(client: TestClient) -> None:
     }
 
 
-def test_serialize_accepts_a_parse_result(client: TestClient) -> None:
+def test_parse_of_the_returned_q_returns_the_same_condition(client: TestClient) -> None:
     parsed = client.get(
-        "/api/dsl/parse", params={"q": "date_published:[2015-01-01 TO 2020-12-31] AND NOT organism_id:9606"}
+        "/api/dsl/parse", params={"q": "NOT organism_id:9606 AND date_published:[2015-01-01 TO 2020-12-31]"}
     ).json()
-    body = client.post("/api/dsl/serialize", json={"ast": parsed["ast"]}).json()
-    assert body["dsl"] == parsed["q"]
-    assert "q" not in body
-    assert body["ast"] == parsed["ast"]
+    assert client.get("/api/dsl/parse", params={"q": parsed["q"]}).json() == parsed
+
+
+def test_parse_returns_the_selected_clauses_and_the_keyword_text(client: TestClient) -> None:
+    q = (
+        '(disease:"MONDO:0007254" OR disease:"MONDO:0005061") AND NOT tissue:"UBERON:1" '
+        'AND (cell_line:"CVCL:1" OR tissue:"UBERON:2") AND date_published:[2015-01-01 TO 2020-12-31] '
+        'AND breast AND "cell line"'
+    )
+    body = client.get("/api/dsl/parse", params={"q": q}).json()
+    assert body["selected"] == [
+        {"field": "disease", "value": "MONDO:0007254"},
+        {"field": "disease", "value": "MONDO:0005061"},
+        {"field": "date_published", "from": "2015-01-01", "to": "2020-12-31"},
+    ]
+    assert body["keyword"] == 'breast "cell line"'
+
+
+def test_select_and_keyword_return_the_selected_clauses_and_the_keyword_text(client: TestClient) -> None:
+    clause = {"field": "disease", "value": "MONDO:0007254"}
+    selected = client.post("/api/dsl/select", json={"q": None, "clauses": [clause]}).json()
+    assert selected["selected"] == [clause]
+    assert selected["keyword"] == ""
+    typed = client.post("/api/dsl/keyword", json={"q": selected["dsl"], "keyword": 'breast "cell line"'}).json()
+    assert typed["selected"] == [clause]
+    assert typed["keyword"] == 'breast "cell line"'
+    cleared = client.post("/api/dsl/select", json={"q": typed["dsl"], "clauses": [clause]}).json()
+    assert cleared["selected"] == []
+    assert cleared["keyword"] == 'breast "cell line"'
+
+
+def test_select_removes_a_clause_that_is_in_a_later_group_of_its_field(client: TestClient) -> None:
+    q = 'disease:"MONDO:0007254" AND disease:"MONDO:0005148"'
+    body = client.post(
+        "/api/dsl/select", json={"q": q, "clauses": [{"field": "disease", "value": "MONDO:0005148"}]}
+    ).json()
+    assert body["dsl"] == 'disease:"MONDO:0007254"'
+    assert body["selected"] == [{"field": "disease", "value": "MONDO:0007254"}]
 
 
 def test_select_builds_the_documented_condition(client: TestClient) -> None:
@@ -138,8 +173,8 @@ def test_invalid_conditions_are_problem_documents(client: TestClient) -> None:
         assert body["instance"] == "/api/entries/biosample"
 
 
-def test_invalid_ast_is_a_problem_document(client: TestClient) -> None:
-    response = client.post("/api/dsl/serialize", json={"ast": {"op": "XOR"}})
+def test_invalid_select_clause_is_a_problem_document(client: TestClient) -> None:
+    response = client.post("/api/dsl/select", json={"clauses": [{"field": "disease", "from": "2020-01-01"}]})
     assert response.status_code == 400
     assert response.json()["type"] == "https://ddbj.nig.ac.jp/problems/invalid-ast"
 
@@ -474,17 +509,8 @@ def test_entries_of_a_type_other_than_biosample_are_not_found(client: TestClient
 
 @pytest.mark.parametrize("q", [None, "library_strategy:RNA-Seq", "library_strategy:ChIP-Seq"])
 def test_entries_list_every_matching_experiment_in_the_item_of_its_biosample(client: TestClient, q: str | None) -> None:
-    params = {"q": q} if q else {}
-    listed: list[str] = []
-    page = 1
-    while True:
-        body = client.get("/api/entries/biosample", params={**params, "perPage": 100, "page": page}).json()
-        listed += [e for item in body["items"] for e in item["experiments"]]
-        if not body["pagination"]["hasNext"]:
-            break
-        page += 1
-    expected = client.get("/api/export/accessions/sra-experiment", params=params).text.splitlines()[1:]
-    assert sorted(listed) == expected
+    listed = [e for item in entry_items(client, q) for e in item["experiments"]]
+    assert sorted(listed) == accessions(client, "sra-experiment", q)
 
 
 def test_entries_rows_carry_annotations_for_every_field(client: TestClient) -> None:
@@ -581,10 +607,7 @@ def test_terms_search_counts_each_hit_without_the_conjuncts_on_its_own_field(cli
         ]
         if (h["field"], h["termId"]) == ("disease", "MONDO:0007254")
     )
-    expected = client.get(
-        "/api/entries/biosample", params={"q": 'library_strategy:RNA-Seq AND disease:"MONDO:0007254"'}
-    ).json()["pagination"]["total"]
-    assert hit["count"] == expected
+    assert hit["count"] == count(client, 'library_strategy:RNA-Seq AND disease:"MONDO:0007254"')
 
 
 def test_terms_children_lists_annotated_children(client: TestClient) -> None:
@@ -598,12 +621,12 @@ def test_export_accessions_lists_one_per_line(client: TestClient) -> None:
     text = client.get("/api/export/accessions/biosample").text
     lines = text.splitlines()
     assert lines[0].startswith("# bsllmner-viewer biosample accessions")
-    total = client.get("/api/entries/biosample").json()["pagination"]["total"]
+    total = count(client, None)
     assert len(lines) - 1 == total
     assert len(set(lines[1:])) == total
-    runs = client.get("/api/export/accessions/sra-run").text.splitlines()[1:]
+    runs = accessions(client, "sra-run")
     assert all(r.startswith("SRR") for r in runs)
-    experiments = client.get("/api/export/accessions/sra-experiment").text.splitlines()[1:]
+    experiments = accessions(client, "sra-experiment")
     by_experiment = client.get("/api/distribution", params={"field": "library_strategy", "unit": "sra-experiment"})
     assert len(experiments) == by_experiment.json()["total"]
 
@@ -620,7 +643,7 @@ def test_export_entries_tsv_and_ndjson(client: TestClient) -> None:
     tsv_response = client.get("/api/export/entries/biosample", params={"format": "tsv", "q": q})
     assert tsv_response.headers["content-type"].startswith("text/tab-separated-values")
     tsv = tsv_response.text.splitlines()
-    total = client.get("/api/entries/biosample", params={"q": q}).json()["pagination"]["total"]
+    total = count(client, q)
     assert tsv[0].split("\t")[:3] == ["identifier", "type", "experiments"]
     assert "libraryStrategy" in tsv[0].split("\t")
     assert len(tsv) - 1 == total
@@ -680,15 +703,7 @@ def test_date_published_range_selects_exactly_the_biosamples_published_in_the_ra
             [low, high],
         ).fetchall()
     }
-    got: set[str] = set()
-    page = 1
-    while True:
-        body = client.get("/api/entries/biosample", params={"q": q, "perPage": "100", "page": str(page)}).json()
-        got |= {item["identifier"] for item in body["items"]}
-        if page * 100 >= body["pagination"]["total"]:
-            break
-        page += 1
-    assert got == expected
+    assert {item["identifier"] for body in entry_pages(client, q) for item in body["items"]} == expected
 
 
 def test_entry_returns_no_omitted_attribute_and_its_evidence_points_into_the_returned_attributes(
@@ -713,18 +728,17 @@ def test_entry_returns_no_omitted_attribute_and_its_evidence_points_into_the_ret
 
 def test_keyword_does_not_match_the_value_of_an_omitted_attribute(client: TestClient, synthetic: Synthetic) -> None:
     accession = synthetic.accessions[0]
-    total = client.get("/api/entries/biosample", params={"q": f"GSM{accession[4:]}"}).json()["pagination"]["total"]
-    assert total == 0
+    assert count(client, f"GSM{accession[4:]}") == 0
 
 
 def test_entry_returns_every_stored_piece_of_evidence_of_each_field(
     client: TestClient, store_con: duckdb.DuckDBPyConnection
 ) -> None:
     stored: dict[str, dict[str, int]] = {}
-    for biosample, field, count in store_con.execute(
+    for biosample, field, n_evidence in store_con.execute(
         "SELECT biosample, field, count(*) FROM evidence GROUP BY biosample, field"
     ).fetchall():
-        stored.setdefault(str(biosample), {})[str(field)] = int(count)
+        stored.setdefault(str(biosample), {})[str(field)] = int(n_evidence)
     checked = 0
     for accession in sorted(stored)[:40]:
         body = client.get(f"/api/entries/biosample/{accession}").json()
@@ -799,8 +813,7 @@ def test_entry_annotation_with_a_term_has_the_clause_that_selects_the_biosample(
                 continue
             assert annotation["clauses"] == [{"field": annotation["field"], "value": annotation["termId"]}]
             q = client.post("/api/dsl/select", json={"q": None, "clauses": annotation["clauses"]}).json()["dsl"]
-            found = client.get("/api/entries/biosample", params={"q": f"{q} AND {accession}"}).json()
-            assert found["pagination"]["total"] == (1 if in_population else 0)
+            assert count(client, f"{q} AND {accession}") == (1 if in_population else 0)
             checked += 1
     assert checked > 0
 

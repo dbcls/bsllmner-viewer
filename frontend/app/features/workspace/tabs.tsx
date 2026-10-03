@@ -2,15 +2,7 @@ import { Link } from "react-router"
 
 import { cn } from "~/ui"
 
-import { type Tab, TABS, workspaceSearch,type WorkspaceState } from "./state"
-
-const TAB_LABELS: Record<Tab, string> = {
-  samples: "Samples",
-  distribution: "Distribution",
-  heatmap: "Heatmap",
-  trend: "Trend",
-  projects: "Projects",
-}
+import { TAB_LABELS, TABS, workspaceSearch, type WorkspaceState } from "./state"
 
 /** The row of view tabs. It only switches views; the controls of a view are in the view. */
 export const Tabs = ({ state }: { state: WorkspaceState }) => (

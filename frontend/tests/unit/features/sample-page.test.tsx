@@ -1,16 +1,18 @@
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
-import { render, screen, within } from "@testing-library/react"
+import { screen, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { MemoryRouter } from "react-router"
 import { describe, expect, it, vi } from "vitest"
 
 import type * as Client from "~/lib/api/client"
 
+import { renderWithQuery } from "../query"
+
 vi.mock("~/lib/api/client", async (importOriginal) => {
   const original = await importOriginal<typeof Client>()
+  const { ok } = await import("../query")
   const GET = async (path: string, init?: { params: { path: { accession?: string; termId?: string } } }) => {
     if (path === "/api/dataset") {
-      return { data: { fields: [], targetAssays: ["RNA-Seq"] }, response: new Response("{}") }
+      return ok({ fields: [], targetAssays: ["RNA-Seq"] })
     }
     if (path === "/api/terms/{termId}") {
       const data = {
@@ -21,7 +23,7 @@ vi.mock("~/lib/api/client", async (importOriginal) => {
         parents: [{ termId: "UBERON:0002423", label: "hepatobiliary system" }],
         url: "https://www.ebi.ac.uk/ols4/ontologies/uberon/classes?obo_id=UBERON:0002107",
       }
-      return { data, response: new Response("{}") }
+      return ok(data)
     }
     // The accession ends with the number of SRA Experiments of the BioSample (SAMN), or of its BioProjects (SAMP).
     const accession = init?.params.path.accession ?? ""
@@ -73,11 +75,11 @@ vi.mock("~/lib/api/client", async (importOriginal) => {
         title: `Project ${index + 1}`,
       })),
     }
-    return { data, response: new Response("{}") }
+    return ok(data)
   }
   const POST = async (_path: string, init: { body: { clauses: { field: string; value: string }[] } }) => {
     const [clause] = init.body.clauses
-    return { data: { dsl: `${clause?.field}:"${clause?.value}"`, ast: {}, labels: {} }, response: new Response("{}") }
+    return ok({ dsl: `${clause?.field}:"${clause?.value}"`, ast: {}, labels: {} })
   }
   return { ...original, api: { ...original.api, GET, POST } }
 })
@@ -85,13 +87,10 @@ vi.mock("~/lib/api/client", async (importOriginal) => {
 import { SamplePage } from "~/features/sample/sample-page"
 
 const renderSample = (accession: string) => {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  render(
-    <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={[`/entries/${accession}`]}>
-        <SamplePage accession={accession} />
-      </MemoryRouter>
-    </QueryClientProvider>,
+  renderWithQuery(
+    <MemoryRouter initialEntries={[`/entries/${accession}`]}>
+      <SamplePage accession={accession} />
+    </MemoryRouter>,
   )
 }
 

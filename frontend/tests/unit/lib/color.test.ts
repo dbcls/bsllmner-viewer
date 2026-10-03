@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest"
 
-import { logPosition, mix, ratioScale, ratioScaleIsDark } from "~/lib/color"
+import { logPosition, mix, RATIO_STEPS, ratioScale, ratioScaleIsDark } from "~/lib/color"
 
 describe("logPosition", () => {
   it("maps zero and non-positive to 0 and the maximum to 1", () => {
@@ -40,5 +40,14 @@ describe("ratioScale", () => {
     expect(ratioScaleIsDark(3.99)).toBe(false)
     expect(ratioScaleIsDark(0)).toBe(false)
     expect(ratioScaleIsDark(null)).toBe(false)
+  })
+})
+
+describe("RATIO_STEPS", () => {
+  it("are the ratios at which ratioScale changes", () => {
+    const { low, mid, high } = RATIO_STEPS
+    expect(ratioScale(low)).not.toBe(ratioScale(low + 0.001))
+    expect(ratioScale(mid - 0.001)).not.toBe(ratioScale(mid))
+    expect(ratioScale(high - 0.001)).not.toBe(ratioScale(high))
   })
 })

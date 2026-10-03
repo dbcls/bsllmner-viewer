@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises"
 import { expect, test } from "@playwright/test"
 
 import { countOf, distribution, entries, select, smallProjects } from "./_api"
-import { expectCounted, formatCount, workspaceUrl } from "./_helpers"
+import { expectCounted, fieldLabel, formatCount, workspaceUrl } from "./_helpers"
 
 test.describe("outputs of the condition", () => {
   test("the export menu links carry the condition and the entry count", async ({ page, request }) => {
@@ -58,24 +58,35 @@ test.describe("outputs of the condition", () => {
     expect((await read(/BioSample/)).length).toBe(total)
   })
 
-  test("the API modal shows the request for the current view and its response", async ({ page, request }) => {
+  test("the API modal lists the request of every Distribution card in the order of the cards and shows the response of the first", async ({ page, request }) => {
     const [term] = (await distribution(request, "disease")).elements
     if (!term) throw new Error("the dataset has no disease")
     const q = await select(request, null, term.clauses)
-    const expected = await distribution(request, "disease", { q, unit: "bioproject" })
     await page.goto(workspaceUrl({ q, tab: "distribution", unit: "bioproject" }))
     await expectCounted(page)
+    const exports = page.getByRole("main").getByRole("button", { name: /^Export the .+ distribution$/ })
+    await expect(exports.first()).toBeVisible()
+    const cards = (await exports.evaluateAll((buttons) => buttons.map((b) => b.getAttribute("aria-label") ?? ""))).map((name) =>
+      name.replace(/^Export the /, "").replace(/ distribution$/, ""),
+    )
     await page.getByRole("button", { name: "API", exact: true }).click()
     const dialog = page.getByRole("dialog", { name: "Same result via the API" })
     await expect(dialog).toBeVisible()
+    await expect(dialog).toContainText("one request for the current condition, listed in the order of the cards")
     const curl = (await dialog.locator("pre").first().innerText()).replace(/\\\s+/g, " ")
-    const shown = new URL(/curl -s "([^"]+)"/.exec(curl)?.[1] ?? "")
-    expect(shown.pathname).toBe("/api/distribution")
-    expect(shown.searchParams.get("q")).toBe(q)
-    expect(shown.searchParams.get("unit")).toBe("bioproject")
-    expect(shown.searchParams.get("field")).toBe("disease")
-    expect(shown.searchParams.get("facetSelfExclude")).toBe("true")
-    const response = await request.get(`${shown.pathname}${shown.search}`)
+    const shown = [...curl.matchAll(/curl -s "([^"]+)"/g)].map((match) => new URL(match[1] ?? ""))
+    expect(shown.length).toBe(cards.length)
+    expect(shown.map((url) => fieldLabel(url.searchParams.get("field") ?? ""))).toEqual(cards)
+    for (const url of shown) {
+      expect(url.pathname).toBe("/api/distribution")
+      expect(url.searchParams.get("q")).toBe(q)
+      expect(url.searchParams.get("unit")).toBe("bioproject")
+      expect(url.searchParams.get("facetSelfExclude")).toBe("true")
+    }
+    const [firstShown] = shown
+    const firstField = firstShown?.searchParams.get("field") ?? ""
+    const expected = await distribution(request, firstField, { q, unit: "bioproject" })
+    const response = await request.get(`${firstShown?.pathname}${firstShown?.search}`)
     expect(response.ok()).toBe(true)
     expect(((await response.json()) as { total: number }).total).toBe(expected.total)
     await expect(dialog).toContainText(`"total": ${expected.total}`)

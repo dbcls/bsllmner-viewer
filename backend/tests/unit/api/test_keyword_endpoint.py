@@ -3,6 +3,8 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
+from tests.api_helpers import count
+
 PROBLEM = "https://ddbj.nig.ac.jp/problems/"
 
 
@@ -12,16 +14,11 @@ def _set(client: TestClient, q: str | None, keyword: str) -> dict[str, object]:
     return response.json()  # type: ignore[no-any-return]
 
 
-def _total(client: TestClient, unit: str, q: str | None) -> int:
-    params = {"q": q} if q else {}
-    return int(client.get(f"/api/entries/{unit}", params=params).json()["pagination"]["total"])
-
-
 def test_keyword_endpoint_sets_the_keyword_of_an_empty_condition(client: TestClient) -> None:
     body = _set(client, None, "breast cancer")
     assert body["dsl"] == "breast cancer"
     assert body["ast"] == {"op": "free_text", "value": "breast cancer", "is_phrase": False}
-    assert set(body) == {"datasetVersion", "dsl", "ast", "labels"}
+    assert set(body) == {"datasetVersion", "dsl", "ast", "labels", "selected", "keyword"}
 
 
 def test_keyword_endpoint_replaces_the_old_keywords_and_keeps_the_other_clauses(client: TestClient) -> None:
@@ -75,9 +72,7 @@ def test_keyword_endpoint_result_is_a_condition_the_entries_endpoint_accepts(cli
     body = _set(client, "organism_id:9606", 'sample "run1 sample"')
     q = str(body["dsl"])
     assert client.get("/api/entries/biosample", params={"q": q}).status_code == 200
-    assert _total(client, "biosample", q) == _total(
-        client, "biosample", 'organism_id:9606 AND sample AND "run1 sample"'
-    )
+    assert count(client, q) == count(client, 'organism_id:9606 AND sample AND "run1 sample"')
 
 
 @pytest.mark.parametrize("keyword", ["hypoxia*", "hyp?xia", "liver *", '"ok" a*b'])
@@ -114,37 +109,37 @@ def test_keyword_endpoint_accepts_a_long_keyword_without_error(client: TestClien
 def test_keyword_whole_word_does_not_match_the_start_of_a_longer_word_but_the_last_word_does(
     client: TestClient,
 ) -> None:
-    assert _total(client, "biosample", "samp") == _total(client, "biosample", None)
-    assert _total(client, "biosample", "samp sample") == 0
-    assert _total(client, "biosample", "sample samp") == _total(client, "biosample", None)
-    assert _total(client, "biosample", "samp AND sample") == _total(client, "biosample", "samp")
+    assert count(client, "samp") == count(client, None)
+    assert count(client, "samp sample") == 0
+    assert count(client, "sample samp") == count(client, None)
+    assert count(client, "samp AND sample") == count(client, "samp")
 
 
 def test_keyword_matches_nothing_when_a_word_is_absent_and_under_not_matches_everything(client: TestClient) -> None:
-    everything = _total(client, "biosample", None)
-    assert _total(client, "biosample", "zzzzzz") == 0
-    assert _total(client, "biosample", "NOT zzzzzz") == everything
-    assert _total(client, "biosample", "zzzzzz OR sample") == everything
+    everything = count(client, None)
+    assert count(client, "zzzzzz") == 0
+    assert count(client, "NOT zzzzzz") == everything
+    assert count(client, "zzzzzz OR sample") == everything
 
 
 def test_keyword_phrase_needs_its_words_in_sequence(client: TestClient) -> None:
-    assert _total(client, "biosample", '"sample of"') == _total(client, "biosample", None)
-    assert _total(client, "biosample", '"of sample"') == 0
-    assert _total(client, "biosample", "of sample") == _total(client, "biosample", None)
+    assert count(client, '"sample of"') == count(client, None)
+    assert count(client, '"of sample"') == 0
+    assert count(client, "of sample") == count(client, None)
 
 
 def test_keyword_phrase_does_not_span_two_values(client: TestClient) -> None:
-    assert _total(client, "biosample", '"homo sapiens"') > 0
-    assert _total(client, "biosample", '"sapiens sample"') == 0
-    assert _total(client, "biosample", "sapiens sample") > 0
+    assert count(client, '"homo sapiens"') > 0
+    assert count(client, '"sapiens sample"') == 0
+    assert count(client, "sapiens sample") > 0
 
 
 def test_problem_detail_of_an_error_without_a_span_has_no_position_suffix(client: TestClient) -> None:
     wildcard = client.post("/api/dsl/keyword", json={"q": None, "keyword": "hypoxia*"}).json()
     assert "(column" not in wildcard["detail"]
     assert "hypoxia*" in wildcard["detail"]
-    ast = client.post("/api/dsl/serialize", json={"ast": {"op": "XOR"}}).json()
-    assert "(column" not in ast["detail"]
+    clause = client.post("/api/dsl/select", json={"clauses": [{"field": "disease", "from": "2020-01-01"}]}).json()
+    assert "(column" not in clause["detail"]
 
 
 def test_problem_detail_of_an_error_with_a_span_keeps_the_position(client: TestClient) -> None:
@@ -153,5 +148,3 @@ def test_problem_detail_of_an_error_with_a_span_keeps_the_position(client: TestC
         assert "column" in detail, q
     unknown = client.get("/api/entries/biosample", params={"q": "nope:x"}).json()["detail"]
     assert unknown.count("column") == 1
-    ast_keyword = client.post("/api/dsl/serialize", json={"ast": {"op": "free_text", "value": "--"}}).json()
-    assert ast_keyword["type"].endswith("/invalid-value")

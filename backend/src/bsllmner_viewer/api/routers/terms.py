@@ -10,12 +10,11 @@ from bsllmner_viewer.api.common import aggregation_population, q_of, version_ref
 from bsllmner_viewer.api.deps import FacetSelfExcludeParam, QParam, StoreDep, parse_condition
 from bsllmner_viewer.api.problems import NOT_FOUND_RESPONSE, ApiError
 from bsllmner_viewer.api.queries import terms as tq
-from bsllmner_viewer.api.queries.aggregate import element_counts, has_children, parents_within, term_status_counts
+from bsllmner_viewer.api.queries.aggregate import element_counts, term_elements
 from bsllmner_viewer.api.queries.core import population
 from bsllmner_viewer.api.queries.dimensions import clauses_for, dimension
 from bsllmner_viewer.api.schemas import (
     TermChildrenResponse,
-    TermElement,
     TermHit,
     TermOntology,
     TermParent,
@@ -132,29 +131,16 @@ def term_children(
         counts = element_counts(cur, pop, dim, [t for t, _ in listed], unit)
         # Only the child terms with a count in the population, as `hasChildren` of the term promises.
         children = [(t, label) for t, label in listed if counts.get(t, 0) > 0]
-        ids = [t for t, _ in children]
-        statuses = term_status_counts(cur, pop, dim, ids, unit)
-        has_kids = has_children(cur, pop, dim, ids, unit)
-        parents = parents_within(cur, ids)
+        elements = term_elements(
+            cur, pop, dim, [t for t, _ in children], unit, {t: label or t for t, label in children}, counts
+        )
     return TermChildrenResponse(
         dataset_version=version_ref(store),
         field=dim.name,
         term_id=term_id,
         population_q=q_of(pop_ast),
         unit=unit,
-        children=[
-            TermElement(
-                value=t,
-                label=label or t,
-                clauses=clauses_for(dim, t),
-                count=counts.get(t, 0),
-                count_exact=statuses.get(t, (0, 0))[0],
-                count_selected=statuses.get(t, (0, 0))[1],
-                has_children=has_kids.get(t, False),
-                parents=parents.get(t, []),
-            )
-            for t, label in children
-        ],
+        children=elements,
     )
 
 

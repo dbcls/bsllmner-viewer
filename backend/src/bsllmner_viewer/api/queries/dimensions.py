@@ -8,10 +8,13 @@ from typing import Any
 import duckdb
 
 from bsllmner_viewer.api.problems import ApiError
+from bsllmner_viewer.api.queries.core import Population, population_years
 from bsllmner_viewer.api.schemas import Clause
 from bsllmner_viewer.dsl.fields import STATUS_GROUPS, FieldDef, FieldKind, FieldSet, expand_status
 
 DIMENSION_KINDS: frozenset[FieldKind] = frozenset({"term", "status", "assay", "organism", "date"})
+# The dimensions whose elements the condition can name, and whose default elements are ordered by their count.
+NAMED_BY_CONDITION: frozenset[FieldKind] = frozenset({"term", "assay", "organism"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,11 +85,11 @@ def clauses_for(dim: FieldDef, element: str) -> list[Clause]:
 def default_elements(
     cur: duckdb.DuckDBPyConnection,
     dim: FieldDef,
-    pop_cte: str,
-    pop_params: tuple[Any, ...],
+    pop: Population,
     limit: int,
 ) -> list[str]:
     """Elements shown when the request does not name them."""
+    pop_cte, pop_params = pop.cte(), pop.params
     if dim.kind == "term":
         rows = cur.execute(
             f"WITH {pop_cte} SELECT a.term_id, count(DISTINCT p.biosample) AS n FROM pop p "
@@ -110,10 +113,7 @@ def default_elements(
             [*pop_params, limit],
         ).fetchall()
         return [str(r[0]) for r in rows]
-    rows = cur.execute(
-        f"WITH {pop_cte} SELECT DISTINCT p.year FROM pop p WHERE p.year IS NOT NULL ORDER BY 1", list(pop_params)
-    ).fetchall()
-    return [str(r[0]) for r in rows]
+    return [str(year) for year in population_years(cur, pop)]
 
 
 def _int(value: str, what: str) -> int:
