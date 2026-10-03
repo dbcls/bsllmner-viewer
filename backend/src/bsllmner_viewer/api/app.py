@@ -27,19 +27,28 @@ from bsllmner_viewer.api.store import Store, store_path_from_env
 API_VERSION = "0.1.0"
 
 OPENAPI_TAGS: list[dict[str, str]] = [
-    {"name": "Entries", "description": "Lists of BioSamples and SRA experiments, and the detail of one BioSample."},
+    {"name": "Entries", "description": "The list of matching BioSamples, and the detail of one BioSample."},
     {
         "name": "Aggregations",
-        "description": "Counts of the matching BioSamples or experiments per element of one or two dimensions, "
-        "and per year.",
+        "description": "Counts of the matching BioSamples, SRA Experiments, or BioProjects per element of one or two "
+        "dimensions, and per year.",
     },
     {"name": "Condition", "description": "Conversion between condition strings and ASTs, and element selection."},
     {"name": "Projects", "description": "BioProjects of the matching BioSamples."},
     {"name": "Terms", "description": "Search and navigation of the ontology terms that annotate the BioSamples."},
-    {"name": "Export", "description": "Matching entries and accessions as files."},
+    {"name": "Export", "description": "Matching BioSamples as TSV or NDJSON, and accession lists as plain text."},
     {"name": "Dataset", "description": "Version information, fields, and population totals of the dataset."},
     {"name": "Service Info", "description": "Service metadata and the state of the store."},
 ]
+
+INFO_DESCRIPTION = (
+    "Queries, aggregations, and exports over ontology-mapped BioSample annotations. "
+    "The conventions follow the DDBJ Search API.\n\n"
+    "Start with [/llms.txt](/llms.txt): condition examples and recipes for common tasks. "
+    "[/llms-full.txt](/llms-full.txt) has the rules that span operations: the condition language, the descendants of "
+    "terms, counting units and populations, self-exclusion, default elements, expected counts, export formats, "
+    "errors, and limits. A description in this document names the heading of the rule that it relies on."
+)
 
 _ERROR_STATUS_CODES = ("400", "404", "422", "500", "503")
 _PROBLEM_MEDIA_TYPE = "application/problem+json"
@@ -95,10 +104,7 @@ def create_app(store_path: Path | None = None, limits: Limits | None = None) -> 
     app = FastAPI(
         title="bsllmner-viewer API",
         version=API_VERSION,
-        description=(
-            "Queries, aggregations, and exports over ontology-mapped BioSample annotations. "
-            "The conventions follow the DDBJ Search API."
-        ),
+        description=INFO_DESCRIPTION,
         lifespan=lifespan,
         docs_url="/api",
         redoc_url="/api/redoc",

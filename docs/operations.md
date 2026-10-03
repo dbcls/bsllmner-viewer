@@ -90,7 +90,7 @@ A store holds the version of the store schema that it was written with, and the 
 
 ## Deployment
 
-`deploy/compose.yml` runs two containers: `api` (the FastAPI server) and `web` (nginx, which serves the built frontend and proxies `/api` to the api). The web container serves the frontend built for the same origin, so the frontend needs no configuration: the browser calls `/api` on the host that served the page.
+`deploy/compose.yml` runs two containers: `api` (the FastAPI server) and `web` (nginx, which serves the built frontend and proxies `/api` to the api). The web container serves the frontend built for the same origin, so the frontend needs no configuration: the browser calls `/api` on the host that served the page. The build context of the web image is the root of the repository, because the build also reads `docs/api.md` and `docs/data-model.md` to make `/llms-full.txt`. `.dockerignore` at the root is an allowlist, so the context has only `frontend/` and these two documents.
 
 Copy `deploy/.env.example` to `deploy/.env` and set the variables. Every compose command reads `deploy/.env` automatically, and git ignores it. Then build the images and start the containers:
 
@@ -133,7 +133,7 @@ Each api worker limits its use of memory, disk, and time, so that one heavy requ
 
 ### Health
 
-`GET /api/service-info` reports `"store": "ok"` while the api can query the store and the store file has the size and the modification time that it had when the api opened it. If someone overwrites or truncates a served store file, then the state is `unavailable`. The health check of the api container calls it, and `podman ps` shows the container as unhealthy when the check fails. An external monitor should check the same URL on the public host.
+`GET /api/service-info` reports the state of the store, as [api.md](api.md#service-information) describes. The health check of the api container calls it, and `podman ps` shows the container as unhealthy when the check fails. An external monitor should check the same URL on the public host.
 
 Logs go to the container logs: `podman logs bsllmner-viewer_api_1` for the api requests and `podman logs bsllmner-viewer_web_1` for the nginx access log.
 
@@ -151,8 +151,9 @@ nginx in the web container adds limits and headers that the api does not set.
 
 ### Crawlers
 
-The web container serves `/robots.txt` and `/llms.txt`.
+The web container serves `/robots.txt`, `/llms.txt`, and `/llms-full.txt`.
 
-- `/llms.txt` describes the site and the API in Markdown, for programs such as LLM agents.
-- If `BSLLMNER_VIEWER_NOINDEX` is `true`, then `/robots.txt` allows only the API and `/llms.txt`, and every response has the header `X-Robots-Tag: noindex`. The API stays open to programs that follow robots.txt.
+- `/llms.txt` is a short entry in Markdown, for programs such as LLM agents. It is written by hand (`frontend/public/llms.txt`).
+- `/llms-full.txt` joins `docs/api.md` and `docs/data-model.md`, with the links between the two documents turned into anchors of the file and the links to other documents rewritten to their GitHub addresses. The build of the web image generates it with `frontend/scripts/llms-full.ts`, so it is not edited by hand, and it always matches the api of the same commit. If `BSLLMNER_VIEWER_COMMIT` is set, the GitHub addresses name that commit. Otherwise, they name `main`.
+- If `BSLLMNER_VIEWER_NOINDEX` is `true`, then `/robots.txt` allows only the API, `/llms.txt`, and `/llms-full.txt`, and every response has the header `X-Robots-Tag: noindex`. The API stays open to programs that follow robots.txt.
 - Otherwise, `/robots.txt` disallows `/entries` with parameters and the exports. Their combinations are endless, and each of them is a query.

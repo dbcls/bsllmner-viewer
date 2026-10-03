@@ -1,6 +1,6 @@
 # Architecture
 
-bsllmner-viewer consists of four components: **build** produces a store, the **store** holds one version of a dataset, the **api** serves queries over the store, and the **frontend** renders the results in a browser.
+bsllmner-viewer consists of four components: build produces a store, the store holds one version of a dataset, the api serves queries over the store, and the frontend renders the results in a browser.
 
 ## Components
 
@@ -33,7 +33,7 @@ Input formats and build operations are specified in [build.md](build.md), the me
 
 ### The UI and the API have the same capabilities
 
-The frontend displays what the api returns and does not count matches or evaluate conditions itself. Each UI view corresponds to exactly one api query, and every query accepts the same condition DSL. Any result shown in the UI is therefore reproducible by an API client using the same condition.
+The frontend displays what the api returns and does not count matches or evaluate conditions itself. Every count, table, and chart that the UI shows comes from one api query, and every query accepts the same condition DSL. Any result shown in the UI is therefore reproducible by an API client using the same condition.
 
 The frontend may sort, color, and lay out results, but every count it displays comes from the api.
 
@@ -55,5 +55,5 @@ The api's OpenAPI document is the source of truth for request and response types
 
 ## Technology constraints
 
-- **Store as a single DuckDB file.** Datasets are built in bulk and served read-only. One file per version makes publication and rollback a file switch and requires no database server.
-- **Frontend as a static single-page application.** The api is a public API without authentication, so no server-side layer is needed between the frontend and the api.
+- Store as a single DuckDB file. Datasets are built in bulk and served read-only. One file per version makes publication and rollback a file switch and requires no database server.
+- Frontend as a static single-page application. The api is a public API without authentication, so no server-side layer is needed between the frontend and the api.

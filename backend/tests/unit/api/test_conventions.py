@@ -69,7 +69,6 @@ class TestCamelCase:
             client.get("/api/entries/biosample", params={"q": disease}),
             client.get(f"/api/entries/biosample/{accession}"),
             client.get("/api/distribution", params={"field": "disease", "q": disease}),
-            client.get("/api/distribution", params={"field": "disease_status"}),
             client.get(
                 "/api/crosstab", params={"row": "disease", "col": "library_strategy", "rowElements": "MONDO:0007254"}
             ),
@@ -78,7 +77,7 @@ class TestCamelCase:
             client.get("/api/terms", params={"query": "breast", "q": disease}),
             client.get("/api/terms/children", params={"field": "disease", "termId": "MONDO:0004992"}),
             client.get("/api/dsl/parse", params={"q": f"{disease} AND date_published:[2015-01-01 TO 2020-12-31]"}),
-            client.post("/api/dsl/select", json={"q": None, "clauses": [{"field": "cell_line", "value": "A"}]}),
+            client.post("/api/dsl/select", json={"q": None, "clauses": [{"field": "cell_line", "value": "CVCL:A"}]}),
         ]
         for response in responses:
             assert response.status_code == 200, response.url
@@ -359,7 +358,7 @@ class TestProblems:
                 "invalid-dimension",
             ),
             (
-                client.get("/api/distribution", params={"field": "disease_status", "elements": "bogus"}),
+                client.get("/api/distribution", params={"field": "organism_id", "elements": "bogus"}),
                 "invalid-element",
             ),
             (

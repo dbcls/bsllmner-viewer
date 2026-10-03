@@ -143,7 +143,7 @@ server {
         try_files $robots_file =404;
     }
 
-    location = /llms.txt {
+    location ~ ^/llms(-full)?\.txt$ {
         types { }
         default_type text/markdown;
         charset utf-8;

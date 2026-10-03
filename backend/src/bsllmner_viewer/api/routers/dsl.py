@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Annotated
+
 from fastapi import APIRouter, Query
 from pydantic import TypeAdapter
 
@@ -56,8 +58,15 @@ def _condition_response(store: Store, ast: Node | None) -> ConditionResponse:
     responses=error_responses(bad_request=DSL_SLUGS),
     response_model=ParseResponse,
     summary="Parse a condition string into an AST",
+    description=(
+        "Parses `q` into the AST of the DDBJ Search API, with the display labels of its term IDs and organism IDs. "
+        "An invalid condition gets 400 with the column of the error, so this operation also checks a condition "
+        'before it is used. See "Condition DSL" in /llms-full.txt.'
+    ),
 )
-def parse_dsl(store: StoreDep, q: str = Query(min_length=1)) -> ParseResponse:
+def parse_dsl(
+    store: StoreDep, q: Annotated[str, Query(min_length=1, description="The condition to parse. It cannot be empty")]
+) -> ParseResponse:
     ast = parse_condition(store, q)
     if ast is None:
         raise DslError(type=ErrorType.unexpected_token, detail="empty query string", column=1, length=1)
@@ -80,10 +89,9 @@ def parse_dsl(store: StoreDep, q: str = Query(min_length=1)) -> ParseResponse:
     response_model=ConditionResponse,
     summary="Apply the clauses of an aggregation element to a condition",
     description=(
-        "In `toggle` mode, adds each clause to the condition: joined with OR into the top-level clause group of the "
-        "same field when one exists, otherwise as a new AND conjunct. When every clause is already present, the "
-        "clauses are removed instead. In `narrow` mode, adds each clause as a new AND conjunct; with the population "
-        "of an aggregation as `q`, the result matches the BioSamples or experiments counted by the element."
+        "Applies the clauses of an aggregation element to `q`. `toggle` adds the clauses, or removes them when all of "
+        "them are already in `q`. `narrow` adds each clause as a new `AND` conjunct. "
+        'See "From elements to conditions" in /llms-full.txt for where a clause goes.'
     ),
 )
 def select_dsl(store: StoreDep, body: SelectRequest) -> ConditionResponse:

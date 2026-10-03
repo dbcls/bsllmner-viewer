@@ -19,8 +19,9 @@ import { FigureExport } from "../figure-export"
 import type { Update, WorkspaceState } from "../state"
 import { TermIdHover } from "../term-id-hover"
 import type { Condition } from "../use-condition"
+import { useReplaceUnofferedDimensions } from "../use-offered-dimensions"
 import { ViewControls } from "../view-controls"
-import { trendLineField, trendParams } from "../view-requests"
+import { trendAxis, trendParams } from "../view-requests"
 import { trendFields } from "./field"
 import { gridLines, PLOT, showYearLabel, xForIndex, yForValue, yMax } from "./scale"
 import { yearChoices } from "./years"
@@ -64,8 +65,9 @@ export const TrendTab = ({ state, condition, update, latest, replacing, setRepla
   const svgRef = useRef<SVGSVGElement>(null)
   const [termsOpen, setTermsOpen] = useState(false)
   const dataset = useDataset()
+  useReplaceUnofferedDimensions(state, update, dataset)
   const fields = dataset.data?.fields.map((f) => f.name) ?? []
-  const split = trendLineField(state, dataset.data ? fields : null)
+  const { field: split, terms: trendTerms } = trendAxis(state, dataset.data ? fields : null)
   const dimensions = trendFields(fields).map((f) => ({ value: f, label: fieldLabel(f) }))
 
   const trend = useTrend(trendParams(state, dataset.data ? fields : null))
@@ -99,7 +101,7 @@ export const TrendTab = ({ state, condition, update, latest, replacing, setRepla
   }
   // The terms that the URL names, when the user chose them: the lines on screen can still be those of the previous
   // terms while the trend of the new ones is on its way.
-  const values = state.trendTerms ?? series.map((s) => s.value)
+  const values = trendTerms ?? series.map((s) => s.value)
   // No terms left is the top terms.
   const setTerms = (next: string[] | null) => update({ trendTerms: next?.length ? next : null })
   const limit = { max: TREND_LIMIT, subject: "A trend" }
@@ -112,7 +114,7 @@ export const TrendTab = ({ state, condition, update, latest, replacing, setRepla
   const replace = async (entries: string[]) => {
     setReplacing(true)
     try {
-      const result = await replaceTerms(entries, (list) => resolvePasted(list, fields.includes(split), (label) => findTermId(split, label), elementValidator(split) ?? undefined), limit)
+      const result = await replaceTerms(entries, (list) => resolvePasted(list, fields.includes(split), (label) => findTermId(split, label, state.unit), elementValidator(split) ?? undefined), limit)
       // The terms belong to the dimension that the entries were resolved on; they are dropped when the lines moved to another one while they waited.
       if (latest().trendField !== state.trendField) return
       if (result.terms !== null) setTerms(result.terms)
@@ -172,9 +174,9 @@ export const TrendTab = ({ state, condition, update, latest, replacing, setRepla
             selectLabel="Line dimension"
             dimension={split}
             dimensions={dimensions}
-            elements={failed ? (state.trendTerms ?? []).map((value) => ({ value, label: value })) : series}
-            pending={data === undefined && !failed ? expectedElements(split, dataset.data, TREND_LIMIT, state.trendTerms) : null}
-            unknown={failed && state.trendTerms === null}
+            elements={failed ? (trendTerms ?? []).map((value) => ({ value, label: value })) : series}
+            pending={data === undefined && !failed ? expectedElements(split, dataset.data, TREND_LIMIT, trendTerms) : null}
+            unknown={failed && trendTerms === null}
             onDimension={changeDimension}
             onOpenTerms={() => setTermsOpen(true)}
           />
@@ -192,14 +194,15 @@ export const TrendTab = ({ state, condition, update, latest, replacing, setRepla
         open={termsOpen}
         onClose={() => setTermsOpen(false)}
         title="Line terms"
+        unit={state.unit}
         dimension={split}
         dimensions={dimensions}
         fields={fields}
-        elements={failed ? (state.trendTerms ?? []).map((value) => ({ value, label: value })) : series}
+        elements={failed ? (trendTerms ?? []).map((value) => ({ value, label: value })) : series}
         pending={null}
-        explicit={state.trendTerms !== null}
+        explicit={trendTerms !== null}
         limit={TREND_LIMIT}
-        q={state.q}
+        q={data && !stale ? data.populationQ : state.q}
         selectedNote="✓ in trend"
         onDimension={changeDimension}
         onPick={pick}

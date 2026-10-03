@@ -8,7 +8,7 @@ import re
 from bsllmner_viewer.dsl.ast import BoolOp, FieldClause, FreeText, Node, Range
 from bsllmner_viewer.dsl.canonical import ORGANISM_ID_MAX, canonical_int
 from bsllmner_viewer.dsl.errors import DslError, ErrorType
-from bsllmner_viewer.dsl.fields import FieldDef, FieldSet, Operator, expand_status
+from bsllmner_viewer.dsl.fields import STATUS_GROUPS, FieldDef, FieldSet, Operator, expand_status
 from bsllmner_viewer.dsl.keyword import word_matches
 
 MAX_DEPTH = 5
@@ -16,6 +16,7 @@ MAX_NODES = 512
 MAX_KEYWORDS = 16
 MAX_KEYWORD_WORDS = 64
 
+TERM_ID_RE = re.compile(r"^[^\s:]+:\S+\Z")
 _DATE_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}\Z")
 
 
@@ -139,10 +140,10 @@ def _check_nodes(node: Node, fields: FieldSet) -> None:
             _check_nodes(child, fields)
         return
     field, _ = resolve_operator(node, fields)
-    _check_value(field, node)
+    _check_value(field, node, fields)
 
 
-def _check_value(field: FieldDef, clause: FieldClause) -> None:
+def _check_value(field: FieldDef, clause: FieldClause, fields: FieldSet) -> None:
     col, length = clause.position.column, clause.position.length
     if isinstance(clause.value, Range):
         for bound in (clause.value.from_, clause.value.to):
@@ -156,7 +157,30 @@ def _check_value(field: FieldDef, clause: FieldClause) -> None:
     elif field.kind == "status" and not expand_status(value):
         raise DslError(
             type=ErrorType.invalid_value,
-            detail=f"unknown status {value!r} for field {field.name!r} at column {col}",
+            detail=(
+                f"{field.name!r} accepts only the status groups {', '.join(STATUS_GROUPS)}, got {value!r} "
+                f"at column {col}"
+            ),
+            column=col,
+            length=length,
+        )
+    elif field.kind == "term" and not TERM_ID_RE.match(value):
+        raise DslError(
+            type=ErrorType.invalid_value,
+            detail=(
+                f"{field.name!r} takes a term ID in the form PREFIX:ID, got {value!r} at column {col}; "
+                "find term IDs with GET /api/terms"
+            ),
+            column=col,
+            length=length,
+        )
+    elif field.kind == "assay" and fields.target_assays is not None and value not in fields.target_assays:
+        raise DslError(
+            type=ErrorType.invalid_value,
+            detail=(
+                f"{field.name!r} accepts only the assays of the dataset ({', '.join(fields.target_assays)}), "
+                f"got {value!r} at column {col}"
+            ),
             column=col,
             length=length,
         )

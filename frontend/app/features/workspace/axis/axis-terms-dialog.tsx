@@ -1,6 +1,6 @@
 import { useState } from "react"
 
-import type { TermHit } from "~/lib/api/types"
+import type { TermHit, Unit } from "~/lib/api/types"
 import { fieldLabel } from "~/lib/labels"
 import { Button, Chip, Modal, Segmented, Skeleton, TextArea } from "~/ui"
 
@@ -14,6 +14,8 @@ type AxisTermsDialogProps = {
   open: boolean
   onClose: () => void
   title: string
+  /** The counting unit of the view, in which the found terms are counted. */
+  unit: Unit
   dimension: string
   dimensions: { value: string; label: string }[]
   /** The annotation fields; another dimension has no terms to search. */
@@ -52,6 +54,7 @@ export const AxisTermsDialog = ({ open, onClose, title, ...rest }: AxisTermsDial
 )
 
 const AxisTerms = ({
+  unit,
   dimension,
   dimensions,
   fields,
@@ -106,6 +109,7 @@ const AxisTerms = ({
         <PickerSearch
           fieldOptions={dimensions}
           field={dimension}
+          unit={unit}
           onField={(next) => {
             setPasted(null)
             onDimension(next)

@@ -17,11 +17,11 @@ test.describe("deployment", () => {
     expect(response?.headers()["x-robots-tag"]).toBeUndefined()
   })
 
-  test("a deployment that search engines must not index allows only the API and llms.txt and marks every response noindex", async ({ page, request }) => {
+  test("a deployment that search engines must not index allows only the API, llms.txt, and llms-full.txt and marks every response noindex", async ({ page, request }) => {
     test.skip(EXPECTED.noindex !== "true", "BSLLMNER_VIEWER_E2E_NOINDEX=true is not given")
     const robots = (await (await request.get("/robots.txt")).text()).split("\n").map((line) => line.trim()).filter((line) => line !== "")
-    expect(robots).toEqual(["User-agent: *", "Allow: /api", "Allow: /llms.txt", "Disallow: /"])
-    for (const path of ["/", "/entries", "/api/service-info", "/llms.txt"]) {
+    expect(robots).toEqual(["User-agent: *", "Allow: /api", "Allow: /llms.txt", "Allow: /llms-full.txt", "Disallow: /"])
+    for (const path of ["/", "/entries", "/api/service-info", "/llms.txt", "/llms-full.txt"]) {
       const response = await page.goto(path)
       expect(response?.headers()["x-robots-tag"], path).toContain("noindex")
     }

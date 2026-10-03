@@ -7,7 +7,7 @@ from collections.abc import AsyncIterator, Callable, Iterator
 from typing import Annotated, Literal
 
 import orjson
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Path, Query
 from fastapi.responses import StreamingResponse
 from starlette.background import BackgroundTask
 from starlette.concurrency import iterate_in_threadpool
@@ -91,11 +91,26 @@ def _response(
 @router.get(
     "/export/accessions/{type}",
     operation_id="exportAccessions",
-    responses=error_responses(bad_request=DSL_SLUGS, not_found=True, busy=True),
+    responses={
+        **error_responses(bad_request=DSL_SLUGS, not_found=True, busy=True),
+        200: {
+            "description": "The header line and the accessions",
+            "content": {"text/plain": {"schema": {"type": "string"}}},
+        },
+    },
     summary="Accession list of the matching entries, with a header line and then one accession per line",
+    description=(
+        "Returns every distinct accession of `type` among the entries that match `q`, as plain text: a header line "
+        "that starts with `#` and names `q` and the dataset version, then one accession per line in ascending order. "
+        'See "Entries" in /llms-full.txt.'
+    ),
     response_class=StreamingResponse,
 )
-def export_accessions(store: StoreDep, type: AccessionType, q: QParam = None) -> StreamingResponse:
+def export_accessions(
+    store: StoreDep,
+    type: Annotated[AccessionType, Path(description="Kind of accession to list")],
+    q: QParam = None,
+) -> StreamingResponse:
     ast = parse_condition(store, q)
     pop = population(ast, store.field_set)
     version = version_ref(store)
@@ -127,15 +142,28 @@ def export_accessions(store: StoreDep, type: AccessionType, q: QParam = None) ->
 @router.get(
     "/export/entries/{type}",
     operation_id="exportEntries",
-    responses=error_responses(bad_request=DSL_SLUGS, not_found=True, busy=True),
+    responses={
+        **error_responses(bad_request=DSL_SLUGS, not_found=True, busy=True),
+        200: {
+            "description": "The entries, one per line after the header line of the TSV",
+            "content": {
+                "text/tab-separated-values": {"schema": {"type": "string"}},
+                "application/x-ndjson": {"schema": {"type": "string"}},
+            },
+        },
+    },
     summary="Matching entries as TSV or newline-delimited JSON",
+    description=(
+        "Returns every BioSample that matches `q`, in the order of the entry list, as TSV or as newline-delimited "
+        'JSON. See "Entries" in /llms-full.txt for the columns and the cells.'
+    ),
     response_class=StreamingResponse,
 )
 def export_entries(
     store: StoreDep,
-    type: EntryType,
+    type: Annotated[EntryType, Path(description="Entry type. Only `biosample` has entries")],
     q: QParam = None,
-    format: Annotated[Literal["tsv", "ndjson"], Query()] = "tsv",
+    format: Annotated[Literal["tsv", "ndjson"], Query(description="File format of the entries")] = "tsv",
 ) -> StreamingResponse:
     ast = parse_condition(store, q)
     pop = population(ast, store.field_set)

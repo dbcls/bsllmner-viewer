@@ -41,6 +41,15 @@ _SYNONYM_TAGS = frozenset(
     }
 )
 
+_OBO_PART_OF = frozenset({"part_of", "BFO:0000050"})
+_OBO_ALL_ONLY_RE = re.compile(r'all_only\s*=\s*"true"')
+_OBO_GCI_RE = re.compile(r"\bgci_(?:relation|filler)\s*=")
+_OBO_QUALIFIERS_RE = re.compile(r"\{.*\}")
+_BFO_PART_OF_URI = "http://purl.obolibrary.org/obo/BFO_0000050"
+_RESTRICTION_TAG = f"{{{_OWL}}}Restriction"
+_ON_PROPERTY_TAG = f"{{{_OWL}}}onProperty"
+_SOME_VALUES_FROM_TAG = f"{{{_OWL}}}someValuesFrom"
+
 _OBO_SYNONYM_RE = re.compile(r'^"((?:[^"\\]|\\.)*)"')
 
 
@@ -110,25 +119,60 @@ def read_obo(path: Path) -> Iterator[OntologyTerm]:
                 if m:
                     term.synonyms.append(m.group(1).replace('\\"', '"'))
             elif key == "is_a":
-                parent = value.split("!")[0].split("{")[0].strip()
+                parent = _obo_is_a_parent(value)
                 if parent:
                     term.parents.append(normalize_term_id(parent))
+            elif key == "relationship":
+                part_of = _obo_part_of_parent(value)
+                if part_of and _prefix(normalize_term_id(part_of)) == _prefix(term.term_id):
+                    term.parents.append(normalize_term_id(part_of))
             elif key == "is_obsolete" and value.startswith("true"):
                 obsolete = True
     if term is not None and not obsolete:
         yield term
 
 
+def _prefix(term_id: str) -> str:
+    return term_id.partition(":")[0]
+
+
+def _obo_qualifiers(value: str) -> str:
+    match = _OBO_QUALIFIERS_RE.search(value.split(" ! ")[0])
+    return match.group() if match else ""
+
+
+def _obo_is_a_parent(value: str) -> str | None:
+    """The target of an `is_a:` value, or None if it is empty or a general class inclusion axiom."""
+    if _OBO_GCI_RE.search(_obo_qualifiers(value)):
+        return None
+    return value.split("!")[0].split("{")[0].strip() or None
+
+
+def _obo_part_of_parent(value: str) -> str | None:
+    """The target of a `relationship:` value if it is an unconditional part-of relation that states existence, else
+    None."""
+    fields = value.split("!")[0].split("{")[0].split()
+    if len(fields) != 2 or fields[0] not in _OBO_PART_OF:
+        return None
+    qualifiers = _obo_qualifiers(value)
+    if _OBO_ALL_ONLY_RE.search(qualifiers) or _OBO_GCI_RE.search(qualifiers):
+        return None
+    return fields[1]
+
+
 def read_owl(path: Path) -> Iterator[OntologyTerm]:
     for _event, element in etree.iterparse(str(path), events=("end",), tag=(_CLASS_TAG, _DESCRIPTION_TAG)):
+        parent = element.getparent()
+        if parent is None or parent.getparent() is not None:
+            # An anonymous class expression nested in a restriction belongs to its enclosing class.
+            continue
         about = element.get(_ABOUT)
         if about and (element.tag == _CLASS_TAG or _is_class_description(element)):
             term = _owl_term(about, element)
             if term is not None:
                 yield term
         element.clear(keep_tail=False)
-        parent = element.getparent()
-        while parent is not None and parent.getprevious() is not None:
+        while element.getprevious() is not None:
             del parent[0]
 
 
@@ -154,4 +198,21 @@ def _owl_term(about: str, element: etree._Element) -> OntologyTerm | None:
             resource = child.get(_RESOURCE)
             if resource:
                 term.parents.append(normalize_term_id(resource))
+            else:
+                part_of = _owl_part_of_parent(child)
+                if part_of and _prefix(normalize_term_id(part_of)) == _prefix(term.term_id):
+                    term.parents.append(normalize_term_id(part_of))
     return term
+
+
+def _owl_part_of_parent(subclass: etree._Element) -> str | None:
+    """The `owl:someValuesFrom` target of a part-of `owl:Restriction` inside an `rdfs:subClassOf`, else None."""
+    for restriction in subclass:
+        if restriction.tag != _RESTRICTION_TAG:
+            continue
+        on_property = restriction.find(_ON_PROPERTY_TAG)
+        values = restriction.find(_SOME_VALUES_FROM_TAG)
+        if on_property is None or values is None or on_property.get(_RESOURCE) != _BFO_PART_OF_URI:
+            continue
+        return values.get(_RESOURCE)
+    return None

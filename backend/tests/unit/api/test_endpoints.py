@@ -12,7 +12,7 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from tests.api_helpers import accessions, count, entry_items, entry_pages
-from tests.synthetic import Synthetic
+from tests.synthetic import TARGET_ASSAYS, Synthetic
 
 
 def test_dataset_reports_version_fields_and_totals(client: TestClient) -> None:
@@ -43,7 +43,7 @@ def test_dataset_counts_equal_the_distributions_of_the_whole_population(client: 
     assert [n for _, n in returned] == sorted((n for _, n in returned), reverse=True)
     assert {o["identifier"]: o["biosampleCount"] for o in body["organisms"]} == counts("organism_id")
     for field in body["fields"]:
-        assert field["mappedBiosampleCount"] == counts(f"{field['name']}_status").get("mapped", 0), field
+        assert field["mappedBiosampleCount"] == count(client, f"{field['name']}_status:mapped"), field
 
 
 def test_organism_names_are_the_names_that_most_biosamples_give_everywhere(
@@ -141,14 +141,16 @@ def test_select_removes_a_clause_that_is_in_a_later_group_of_its_field(client: T
 def test_select_builds_the_documented_condition(client: TestClient) -> None:
     q = None
     for clause in (
-        {"field": "disease", "value": "A"},
+        {"field": "disease", "value": "MONDO:A"},
         {"field": "library_strategy", "value": "ATAC-seq"},
-        {"field": "disease", "value": "B"},
+        {"field": "disease", "value": "MONDO:B"},
     ):
         q = client.post("/api/dsl/select", json={"q": q, "clauses": [clause]}).json()["dsl"]
-    assert q == "(disease:A OR disease:B) AND library_strategy:ATAC-seq"
-    removed = client.post("/api/dsl/select", json={"q": q, "clauses": [{"field": "disease", "value": "A"}]}).json()
-    assert removed["dsl"] == "disease:B AND library_strategy:ATAC-seq"
+    assert q == '(disease:"MONDO:A" OR disease:"MONDO:B") AND library_strategy:ATAC-seq'
+    removed = client.post(
+        "/api/dsl/select", json={"q": q, "clauses": [{"field": "disease", "value": "MONDO:A"}]}
+    ).json()
+    assert removed["dsl"] == 'disease:"MONDO:B" AND library_strategy:ATAC-seq'
     year = client.post(
         "/api/dsl/select",
         json={"q": None, "clauses": [{"field": "date_published", "from": "2020-01-01", "to": "2020-12-31"}]},
@@ -364,10 +366,31 @@ def test_crosstab_rejects_the_same_dimension_on_both_axes(client: TestClient) ->
     assert response.json()["type"] == "https://ddbj.nig.ac.jp/problems/invalid-dimension"
 
 
-def test_crosstab_a_field_and_its_status_are_different_dimensions_accepted(client: TestClient) -> None:
-    response = client.get("/api/crosstab", params={"row": "disease", "col": "disease_status"})
-    assert response.status_code == 200
-    assert response.json()["colField"] == "disease_status"
+@pytest.mark.parametrize("value", ["mapped_exact", "mapped_selected", "unmapped_no_candidate", "unmapped_rejected"])
+def test_entries_condition_on_a_detailed_status_is_rejected_with_the_accepted_groups(
+    client: TestClient, value: str
+) -> None:
+    response = client.get("/api/entries/biosample", params={"q": f"disease_status:{value}"})
+    assert response.status_code == 400
+    body = response.json()
+    assert body["type"] == "https://ddbj.nig.ac.jp/problems/invalid-value"
+    assert all(group in body["detail"] for group in ("mapped", "unmapped", "no_value"))
+
+
+@pytest.mark.parametrize(
+    ("path", "params"),
+    [
+        ("/api/distribution", {"field": "disease_status"}),
+        ("/api/crosstab", {"row": "disease", "col": "disease_status"}),
+        ("/api/crosstab", {"row": "tissue_status", "col": "disease"}),
+        ("/api/trend", {"field": "disease_status"}),
+        ("/api/terms", {"field": "disease_status"}),
+    ],
+)
+def test_a_status_field_is_not_an_aggregation_dimension(client: TestClient, path: str, params: dict[str, str]) -> None:
+    response = client.get(path, params=params)
+    assert response.status_code == 400
+    assert response.json()["type"] == "https://ddbj.nig.ac.jp/problems/invalid-dimension"
 
 
 def test_select_narrow_builds_the_documented_condition(client: TestClient) -> None:
@@ -381,18 +404,22 @@ def test_select_narrow_builds_the_documented_condition(client: TestClient) -> No
         },
     ).json()
     assert table["populationQ"] is None
-    cell = [{"field": "cell_line", "value": "A"}, {"field": "library_strategy", "value": "RNA-Seq"}]
+    cell = [{"field": "cell_line", "value": "CVCL:A"}, {"field": "library_strategy", "value": "RNA-Seq"}]
     narrowed = client.post(
         "/api/dsl/select", json={"q": table["populationQ"], "clauses": cell, "mode": "narrow"}
     ).json()
-    assert narrowed["dsl"] == "cell_line:A AND library_strategy:RNA-Seq"
+    assert narrowed["dsl"] == 'cell_line:"CVCL:A" AND library_strategy:RNA-Seq'
     again = client.post("/api/dsl/select", json={"q": narrowed["dsl"], "clauses": cell, "mode": "narrow"}).json()
     assert again["dsl"] == narrowed["dsl"]
     kept = client.post(
         "/api/dsl/select",
-        json={"q": "(cell_line:A OR cell_line:B) AND organism_id:9606", "clauses": cell[:1], "mode": "narrow"},
+        json={
+            "q": '(cell_line:"CVCL:A" OR cell_line:"CVCL:B") AND organism_id:9606',
+            "clauses": cell[:1],
+            "mode": "narrow",
+        },
     ).json()
-    assert kept["dsl"] == "(cell_line:A OR cell_line:B) AND organism_id:9606 AND cell_line:A"
+    assert kept["dsl"] == '(cell_line:"CVCL:A" OR cell_line:"CVCL:B") AND organism_id:9606 AND cell_line:"CVCL:A"'
     invalid = client.post("/api/dsl/select", json={"q": None, "clauses": cell, "mode": "other"})
     assert invalid.status_code == 422
     assert invalid.json()["type"] == "about:blank"
@@ -881,3 +908,80 @@ def test_dataset_names_every_prefix_of_its_terms_as_the_term_endpoint_does(clien
     for term_id in ("CVCL:0004", "MONDO:0007254", "NCBIGene:2146", "CHEBI:28748", "UBERON:0002107"):
         ontology = client.get(f"/api/terms/{term_id}").json()["ontology"]
         assert names[ontology["prefix"]] == ontology["name"]
+
+
+def test_entries_condition_on_an_unknown_assay_is_rejected_with_the_dataset_assays(client: TestClient) -> None:
+    response = client.get("/api/entries/biosample", params={"q": "library_strategy:rna-seq"})
+    assert response.status_code == 400
+    body = response.json()
+    assert body["type"] == "https://ddbj.nig.ac.jp/problems/invalid-value"
+    assert all(assay in body["detail"] for assay in TARGET_ASSAYS)
+
+
+def test_entries_condition_on_a_term_that_is_not_a_prefixed_id_points_to_the_term_search(client: TestClient) -> None:
+    response = client.get("/api/entries/biosample", params={"q": "tissue:brain"})
+    assert response.status_code == 400
+    assert response.json()["type"] == "https://ddbj.nig.ac.jp/problems/invalid-value"
+    assert "GET /api/terms" in response.json()["detail"]
+
+
+def test_entries_condition_on_a_well_formed_unknown_term_id_matches_nothing(client: TestClient) -> None:
+    assert count(client, 'tissue:"UBERON:9999999"') == 0
+    assert count(client, "organism_id:9999999") == 0
+    assert count(client, "nonexistentkeyword") == 0
+
+
+@pytest.mark.parametrize("path", ["/api/entries/{}", "/api/export/entries/{}"])
+def test_entry_type_not_found_lists_the_accepted_type(client: TestClient, path: str) -> None:
+    response = client.get(path.format("sra-run"))
+    assert response.status_code == 404
+    detail = response.json()["detail"]
+    assert "'sra-run'" in detail
+    assert "biosample" in detail
+
+
+def test_accession_type_not_found_lists_the_accepted_types(client: TestClient) -> None:
+    detail = client.get("/api/export/accessions/run").json()["detail"]
+    for accepted in ("biosample", "sra-experiment", "sra-run", "bioproject"):
+        assert accepted in detail
+
+
+@pytest.mark.parametrize("accession", ["SRR11745799", "PRJNA1", "brain", "SAMN"])
+def test_biosample_not_found_for_another_accession_points_to_the_keyword_search(
+    client: TestClient, accession: str
+) -> None:
+    response = client.get(f"/api/entries/biosample/{accession}")
+    assert response.status_code == 404
+    detail = response.json()["detail"]
+    assert accession in detail
+    assert "GET /api/entries/biosample" in detail
+    assert "keyword" in detail
+
+
+def test_biosample_not_found_for_a_lower_case_biosample_accession_points_to_the_keyword_search(
+    client: TestClient,
+) -> None:
+    detail = client.get("/api/entries/biosample/samn99999999").json()["detail"]
+    assert "GET /api/entries/biosample" in detail
+    assert "keyword" in detail
+
+
+def test_biosample_not_found_for_a_biosample_accession_does_not_point_to_the_keyword_search(
+    client: TestClient,
+) -> None:
+    detail = client.get("/api/entries/biosample/SAMN99999999").json()["detail"]
+    assert "SAMN99999999" in detail
+    assert "keyword" not in detail
+
+
+@pytest.mark.parametrize("field", ["tissue_status", "library_strategy", "organism_id", "date_published", "bioproject"])
+@pytest.mark.parametrize("path", ["/api/terms", "/api/terms/children"])
+def test_term_endpoints_reject_a_field_that_is_not_an_annotation_field_with_the_annotation_fields(
+    client: TestClient, path: str, field: str
+) -> None:
+    params = {"field": field, "termId": "UBERON:1"} if path.endswith("children") else {"field": field}
+    response = client.get(path, params=params)
+    assert response.status_code == 400, response.text
+    detail = response.json()["detail"]
+    assert "annotation fields are" in detail
+    assert "library_strategy" not in detail.split("annotation fields are")[1]

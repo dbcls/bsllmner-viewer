@@ -29,8 +29,8 @@ def test_deeply_nested_q_is_a_nest_depth_problem_not_a_server_error(client: Test
 
 
 def test_select_that_makes_q_too_long_is_the_problem_of_a_too_long_parse(client: TestClient) -> None:
-    q = "disease:" + "a" * (MAX_LENGTH - 8)
-    response = client.post("/api/dsl/select", json={"q": q, "clauses": [{"field": "disease", "value": "b"}]})
+    q = 'disease:"MONDO:' + "a" * (MAX_LENGTH - 16) + '"'
+    response = client.post("/api/dsl/select", json={"q": q, "clauses": [{"field": "disease", "value": "MONDO:b"}]})
     assert response.status_code == 400
     assert response.json()["type"] == f"{PROBLEM}unexpected-token"
     assert "too long" in response.json()["detail"]
@@ -71,7 +71,7 @@ def test_parse_returns_a_q_that_parses_to_the_same_ast(client: TestClient, q: st
 
 
 def test_parse_whose_canonical_q_is_too_long_is_a_too_long_problem(client: TestClient) -> None:
-    q = "disease:'" + '"' * (MAX_LENGTH - 10) + "'"
+    q = "disease:'MONDO:" + '"' * (MAX_LENGTH - 16) + "'"
     assert len(q) <= MAX_LENGTH
     response = client.get("/api/dsl/parse", params={"q": q})
     assert response.status_code == 400

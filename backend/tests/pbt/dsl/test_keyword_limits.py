@@ -56,7 +56,7 @@ def test_validate_accepts_the_most_words_in_one_keyword() -> None:
 
 
 def test_the_keyword_limits_do_not_count_clauses_of_a_field() -> None:
-    q = " OR ".join(f"disease:MONDO{i}" for i in range(MAX_KEYWORDS + 20))
+    q = " OR ".join(f'disease:"MONDO:{i}"' for i in range(MAX_KEYWORDS + 20))
     validate(parse(q), FIELDS)
 
 

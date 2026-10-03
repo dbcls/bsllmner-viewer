@@ -4,6 +4,8 @@ services:
       context: ./backend
     volumes:
       - ./backend:/app
+      - ./docs:/docs:ro
+      - ./frontend/public:/frontend/public:ro
       - backend-venv:/app/.venv
       - ${BSLLMNER_VIEWER_DATA_DIR:-./data}:/data
     environment:
@@ -20,6 +22,7 @@ services:
       context: ./frontend
     volumes:
       - ./frontend:/app
+      - ./docs:/docs:ro
       - frontend-node-modules:/app/node_modules
     environment:
       BSLLMNER_VIEWER_API_URL: http://api:8000

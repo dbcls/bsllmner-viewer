@@ -9,7 +9,7 @@ import duckdb
 from fastapi import APIRouter, Query
 
 from bsllmner_viewer.api.common import aggregation_population, q_of, split_csv, version_ref
-from bsllmner_viewer.api.deps import FacetSelfExcludeParam, QParam, StoreDep, parse_condition
+from bsllmner_viewer.api.deps import FacetSelfExcludeParam, QParam, StoreDep, UnitParam, parse_condition
 from bsllmner_viewer.api.problems import AGGREGATION_SLUGS, ApiError, error_responses
 from bsllmner_viewer.api.queries import aggregate
 from bsllmner_viewer.api.queries.core import Population, population
@@ -22,6 +22,7 @@ from bsllmner_viewer.api.queries.dimensions import (
     labels_for,
 )
 from bsllmner_viewer.api.schemas import (
+    MAX_ELEMENTS,
     NAME_MAX_LENGTH,
     Cell,
     CrosstabResponse,
@@ -29,21 +30,57 @@ from bsllmner_viewer.api.schemas import (
     TrendPoint,
     TrendResponse,
     TrendSeries,
-    Unit,
 )
 from bsllmner_viewer.dsl.ast import BoolOp, Node, and_, clause
-from bsllmner_viewer.dsl.fields import MAPPED, STATUS_SUFFIX, FieldDef
+from bsllmner_viewer.dsl.fields import MAPPED, STATUS_SUFFIX, FieldDef, FieldSet
 from bsllmner_viewer.dsl.transform import named_values
 
 router = APIRouter(tags=["Aggregations"])
 
-UnitParam = Annotated[Unit, Query(description="Counting unit")]
-LimitParam = Annotated[int, Query(ge=1, le=200, description="Number of elements when they are not named")]
-MAX_ELEMENTS = 100
-CrosstabLimitParam = Annotated[
-    int, Query(ge=1, le=MAX_ELEMENTS, description="Number of elements of each axis when they are not named")
+_LIMIT = (
+    "Number of default elements, from 1 to 200, when `elements` is omitted. "
+    "The elements that `q` names come in addition"
+)
+LimitParam = Annotated[
+    int,
+    Query(ge=1, le=200, description=f"{_LIMIT}. It does not apply to `date_published`, which has every year"),
 ]
-FieldParam = Annotated[str, Query(max_length=NAME_MAX_LENGTH)]
+TrendLimitParam = Annotated[int, Query(ge=1, le=200, description=_LIMIT)]
+CrosstabLimitParam = Annotated[
+    int,
+    Query(
+        ge=1,
+        le=MAX_ELEMENTS,
+        description=(
+            "Number of default elements of each axis, from 1 to 100, when the elements of the axis are omitted. "
+            "The elements that `q` names come in addition"
+        ),
+    ),
+]
+_ELEMENTS_HEAD = (
+    "Comma-separated elements, at most 100. An element is a term ID for an annotation term field, a target assay "
+)
+_ELEMENTS = (
+    f"{_ELEMENTS_HEAD}for `library_strategy`, an NCBI Taxonomy ID for `organism_id`, and a year for `date_published`. "
+    'See "Default elements" in /llms-full.txt'
+)
+_TREND_ELEMENTS = (
+    f"{_ELEMENTS_HEAD}for `library_strategy`, and an NCBI Taxonomy ID for `organism_id`. "
+    'See "Default elements" in /llms-full.txt'
+)
+_DIMENSION = (
+    "An annotation term field, `library_strategy`, `organism_id`, or `date_published`. "
+    "`dslFields` of `GET /api/dataset` lists the fields with their kinds `term`, `assay`, `organism`, and `date`"
+)
+FieldParam = Annotated[str, Query(max_length=NAME_MAX_LENGTH, description=f"Dimension of the counts. {_DIMENSION}")]
+RowParam = Annotated[str, Query(max_length=NAME_MAX_LENGTH, description=f"Dimension of the rows. {_DIMENSION}")]
+ColParam = Annotated[
+    str,
+    Query(
+        max_length=NAME_MAX_LENGTH,
+        description=f"Dimension of the columns, a field other than `row`. {_DIMENSION}",
+    ),
+]
 
 
 def _ordered(dim: FieldDef, named: str | None, chosen: list[str], counts: dict[str, int]) -> list[str]:
@@ -59,6 +96,7 @@ def _ordered(dim: FieldDef, named: str | None, chosen: list[str], counts: dict[s
 
 def _elements(
     cur: duckdb.DuckDBPyConnection,
+    fields: FieldSet,
     dim: FieldDef,
     named: str | None,
     ast: Node | None,
@@ -70,7 +108,7 @@ def _elements(
     if len(elements) > MAX_ELEMENTS:
         raise ApiError("too-many-elements", 400, f"at most {MAX_ELEMENTS} elements per dimension")
     if elements:
-        check_elements(dim, elements)
+        check_elements(fields, dim, elements)
         return elements
     chosen = default_elements(cur, dim, pop, limit)
     if dim.kind in NAMED_BY_CONDITION:
@@ -85,10 +123,10 @@ def _elements(
     response_model=DistributionResponse,
     summary="Counts per element of one dimension",
     description=(
-        "Elements default to the terms most often annotated directly, followed by the elements that the condition "
-        "names, ordered by their count with descendants. For a term dimension, each element also carries the counts of "
-        "its `mapped_exact` and `mapped_selected` annotations, and `withoutTerm` is the count of the population "
-        "without a term of the field."
+        "Counts the population per element of the dimension `field`, in `unit`. The population is `q`, or `q` without "
+        "the conjuncts on `field` with `facetSelfExclude`. `total` is the count of the population. An element counts "
+        "the units that have its value. For a term dimension, the units have the term or one of its descendants. "
+        'See "Aggregations" and "Default elements" in /llms-full.txt for the elements and their order.'
     ),
 )
 def get_distribution(
@@ -97,9 +135,7 @@ def get_distribution(
     q: QParam = None,
     unit: UnitParam = "biosample",
     facet_self_exclude: FacetSelfExcludeParam = False,
-    elements: Annotated[
-        str | None, Query(description="Comma-separated elements; omitted means the top elements")
-    ] = None,
+    elements: Annotated[str | None, Query(description=_ELEMENTS)] = None,
     limit: LimitParam = 10,
 ) -> DistributionResponse:
     dim = dimension(store.field_set, field)
@@ -107,7 +143,7 @@ def get_distribution(
     pop_ast = aggregation_population(ast, [dim.name], facet_self_exclude)
     pop = population(pop_ast, store.field_set)
     with store.cursor(heavy=True) as cur:
-        chosen = _elements(cur, dim, elements, ast, pop, limit)
+        chosen = _elements(cur, store.field_set, dim, elements, ast, pop, limit)
         total = aggregate.population_total(cur, pop, unit)
         counts = aggregate.element_counts(cur, pop, dim, chosen, unit)
         chosen = _ordered(dim, elements, chosen, counts)
@@ -137,20 +173,31 @@ def get_distribution(
     responses=error_responses(bad_request=AGGREGATION_SLUGS, busy=True),
     response_model=CrosstabResponse,
     summary="Counts per cell of two dimensions with expected counts",
+    description=(
+        "Counts the population per pair of an element of `row` and an element of `col`, in `unit`. The population is "
+        "`q`, or `q` without the conjuncts on `row` and `col` with `facetSelfExclude`. Each cell has the expected "
+        "count under independence, the ratio and the residual against it, and a classification. "
+        'See "Expected counts in cross-tabulations" in /llms-full.txt for the formulas and the thresholds.'
+    ),
 )
 def get_crosstab(
     store: StoreDep,
-    row: FieldParam,
-    col: FieldParam,
+    row: RowParam,
+    col: ColParam,
     q: QParam = None,
     unit: UnitParam = "biosample",
     facet_self_exclude: FacetSelfExcludeParam = False,
     row_elements: Annotated[
-        str | None, Query(alias="rowElements", description="Comma-separated row elements; omitted means the top rows")
+        str | None,
+        Query(
+            alias="rowElements", description=f"Elements of the rows. Omitted means the default elements. {_ELEMENTS}"
+        ),
     ] = None,
     col_elements: Annotated[
         str | None,
-        Query(alias="colElements", description="Comma-separated column elements; omitted means the top columns"),
+        Query(
+            alias="colElements", description=f"Elements of the columns. Omitted means the default elements. {_ELEMENTS}"
+        ),
     ] = None,
     limit: CrosstabLimitParam = 10,
 ) -> CrosstabResponse:
@@ -162,8 +209,8 @@ def get_crosstab(
     pop_ast = aggregation_population(ast, [row_dim.name, col_dim.name], facet_self_exclude)
     pop = population(pop_ast, store.field_set)
     with store.cursor(heavy=True) as cur:
-        rows_chosen = _elements(cur, row_dim, row_elements, ast, pop, limit)
-        cols_chosen = _elements(cur, col_dim, col_elements, ast, pop, limit)
+        rows_chosen = _elements(cur, store.field_set, row_dim, row_elements, ast, pop, limit)
+        cols_chosen = _elements(cur, store.field_set, col_dim, col_elements, ast, pop, limit)
         result = aggregate.crosstab(cur, pop, row_dim, rows_chosen, col_dim, cols_chosen, unit)
         rows_chosen = _ordered(row_dim, row_elements, rows_chosen, result.row_counts)
         cols_chosen = _ordered(col_dim, col_elements, cols_chosen, result.col_counts)
@@ -218,28 +265,36 @@ def _year_span(years: Iterable[int]) -> list[int]:
     response_model=TrendResponse,
     summary="Counts of the condition per BioSample publication year",
     description=(
-        "`total` counts the condition per year, computed without the conjuncts on `date_published`. "
-        "When `field` is given, `series` counts each element of that dimension per year, computed without the "
-        "conjuncts on that dimension as well. `yearFrom` and `yearTo` limit the years returned without changing the "
-        "counts or the elements; `firstYear` and `lastYear` are the first and the last year with a match, whatever "
-        "the limits. A reversed range returns no years. `allEntries` counts the whole population in the same years, "
-        "without `q`."
+        "Counts the population per publication year of the BioSample, in `unit`: `total` for `q`, `series` for each "
+        "element of `field`, and `allEntries` for the whole population without `q`. With `facetSelfExclude`, `total` "
+        "leaves out the conjuncts on `date_published`, and `series` also the conjuncts on `field`. Otherwise both "
+        "count `q`. `yearFrom` and `yearTo` limit the years returned without changing the counts or the elements, and "
+        '`firstYear` and `lastYear` ignore them. See "Trend" in /llms-full.txt.'
     ),
 )
 def get_trend(
     store: StoreDep,
     field: Annotated[
-        str | None, Query(max_length=NAME_MAX_LENGTH, description="Dimension of the series; omitted means no series")
+        str | None,
+        Query(
+            max_length=NAME_MAX_LENGTH,
+            description=(
+                "Dimension of the series: an annotation term field, `library_strategy`, or `organism_id`. Omitted "
+                "means no series. `dslFields` of `GET /api/dataset` lists the fields with their kinds"
+            ),
+        ),
     ] = None,
     q: QParam = None,
     unit: UnitParam = "biosample",
     facet_self_exclude: FacetSelfExcludeParam = False,
-    elements: Annotated[
-        str | None, Query(description="Comma-separated elements; omitted means the top elements")
+    elements: Annotated[str | None, Query(description=f"Elements of the series. {_TREND_ELEMENTS}")] = None,
+    limit: TrendLimitParam = 5,
+    year_from: Annotated[
+        int | None, Query(alias="yearFrom", description="First year to return; omitted means no lower limit")
     ] = None,
-    limit: LimitParam = 5,
-    year_from: Annotated[int | None, Query(alias="yearFrom", description="First year to return")] = None,
-    year_to: Annotated[int | None, Query(alias="yearTo", description="Last year to return")] = None,
+    year_to: Annotated[
+        int | None, Query(alias="yearTo", description="Last year to return; omitted means no upper limit")
+    ] = None,
 ) -> TrendResponse:
     date_dim = dimension(store.field_set, "date_published")
     dim = None if field is None else dimension(store.field_set, field)
@@ -260,7 +315,7 @@ def get_trend(
         span = _year_span(total_counts)
         if dim is not None:
             pop = population(series_ast, store.field_set)
-            chosen = _elements(cur, dim, elements, ast, pop, limit)
+            chosen = _elements(cur, store.field_set, dim, elements, ast, pop, limit)
             series_years, counts = aggregate.trend(cur, pop, dim, chosen, unit)
             over_years: dict[str, int] = {}
             for (element, _year), n in counts.items():

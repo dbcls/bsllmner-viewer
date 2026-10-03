@@ -106,10 +106,10 @@ class TestAccessionListHeader:
         assert len(lines) == total + 1
 
     def test_header_writes_the_condition_as_a_json_string(self, client: TestClient) -> None:
-        q = 'disease:"a\nb" AND library_strategy:RNA-Seq'
+        q = '"a\nb" AND library_strategy:RNA-Seq'
         header = client.get("/api/export/accessions/biosample", params={"q": q}).text.splitlines()[0]
         assert re.fullmatch(
-            r'# bsllmner-viewer biosample accessions; q="disease:\\"a\\nb\\" AND library_strategy:RNA-Seq"; '
+            r'# bsllmner-viewer biosample accessions; q="\\"a\\nb\\" AND library_strategy:RNA-Seq"; '
             r"dataset=\S+ \S+ \S+",
             header,
         ), header
@@ -172,3 +172,48 @@ class TestMethodNotAllowed:
         assert "GET" in {m.strip() for m in response.headers["allow"].split(",")}
         assert response.headers["x-request-id"]
         assert response.json()["status"] == 405
+
+
+class TestNamedElementValues:
+    @pytest.mark.parametrize("bad", ["brain", "UBERON", "UBERON:", ":0000955", "UBERON: 1"])
+    def test_term_element_that_is_not_a_term_id_is_rejected(self, client: TestClient, bad: str) -> None:
+        for path, params in (
+            ("/api/distribution", {"field": "tissue", "elements": bad}),
+            ("/api/trend", {"field": "tissue", "elements": bad}),
+            ("/api/crosstab", {"row": "tissue", "col": "library_strategy", "rowElements": bad}),
+            ("/api/crosstab", {"row": "library_strategy", "col": "tissue", "colElements": bad}),
+        ):
+            response = client.get(path, params=params)
+            assert response.status_code == 400, (path, params, response.text)
+            body = response.json()
+            assert body["type"] == PROBLEM_PREFIX + "invalid-element"
+            assert "PREFIX:ID" in body["detail"]
+
+    @pytest.mark.parametrize("bad", ["WGS", "rna-seq", "RNA-seq", "ChIP"])
+    def test_assay_element_that_is_not_a_target_assay_is_rejected(self, client: TestClient, bad: str) -> None:
+        for path, params in (
+            ("/api/distribution", {"field": "library_strategy", "elements": f"RNA-Seq,{bad}"}),
+            ("/api/trend", {"field": "library_strategy", "elements": bad}),
+            ("/api/crosstab", {"row": "library_strategy", "col": "tissue", "rowElements": bad}),
+        ):
+            response = client.get(path, params=params)
+            assert response.status_code == 400, (path, params, response.text)
+            body = response.json()
+            assert body["type"] == PROBLEM_PREFIX + "invalid-element"
+            assert "RNA-Seq" in body["detail"]
+
+    def test_term_and_assay_elements_of_the_right_form_are_accepted(self, client: TestClient) -> None:
+        terms = client.get("/api/distribution", params={"field": "tissue", "elements": "UBERON:9999999"})
+        assert terms.status_code == 200
+        assays = client.get("/api/distribution", params={"field": "library_strategy", "elements": "RNA-Seq"})
+        assert assays.status_code == 200
+
+    @given(st.text(max_size=12))
+    def test_an_element_gives_400_exactly_when_its_clause_gives_400(self, client: TestClient, text: str) -> None:
+        assume("," not in text and text.strip() == text and text)
+        for field in ("tissue", "library_strategy"):
+            element = client.get("/api/distribution", params={"field": field, "elements": text})
+            assert element.status_code in (200, 400), (field, text, element.text)
+            clause = client.post("/api/dsl/select", json={"clauses": [{"field": field, "value": text}]})
+            assert clause.status_code in (200, 400), (field, text, clause.text)
+            assert element.status_code == clause.status_code, (field, text, element.text, clause.text)

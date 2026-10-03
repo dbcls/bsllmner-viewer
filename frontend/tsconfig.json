@@ -2,6 +2,7 @@
   "include": [
     "app/**/*",
     "tests/**/*",
+    "scripts/**/*",
     ".react-router/types/**/*",
     "vite.config.ts",
     "react-router.config.ts",

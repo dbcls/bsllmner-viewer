@@ -39,7 +39,7 @@ build treats a publication date as unknown when it cannot be the day on which th
 
 | Source | Used for |
 |---|---|
-| Ontology files (OWL in RDF/XML, or OBO), listed per ontology in the manifest | Term labels, synonyms, and parent–child relations. Every file of an ontology adds terms and relations. If two files define the same term, then the label comes from the earlier file. The files are in the order of the ontologies in the manifest, and then in the order of the files of each ontology |
+| Ontology files (OWL in RDF/XML, or OBO), listed per ontology in the manifest | Term labels, synonyms, and parent–child relations. Build reads is-a (`is_a`, `rdfs:subClassOf`) and part-of (`part_of`, `BFO:0000050`) as parent relations, follows part-of only between terms with the same prefix, skips conditional (`gci_relation`, `gci_filler`) lines, and reads no other relation. Every file of an ontology adds terms and relations. If two files define the same term, then the label comes from the earlier file. The files are in the order of the ontologies in the manifest, and then in the order of the files of each ontology |
 | SRA experiment JSONL (ddbj-search-converter) | `library_strategy` of experiments |
 | DBLink DuckDB file (ddbj-search-converter, table `dbxref`) | BioSample–SRA Experiment, SRA Experiment–SRA Run, and BioSample–BioProject relations |
 | BioProject JSONL (ddbj-search-converter) | BioProject titles |
@@ -65,7 +65,7 @@ Build operations validate their inputs before ingesting anything and stop on the
 
 The status and term of each annotation are read from a SelectResult entry. Statuses are defined in [data-model.md](data-model.md).
 
-The extracted values of a field are the string in `extract.extracted[field]`, or each string element if it is an array. An empty string is not a value, and an array that holds the same string several times gives the value once, at the position of its first occurrence. For example, an array with 400 copies of `GFP-TF or GFP only as control` and 3 other strings gives 4 values. An extracted value is **mapped** when `results[field]` has an element whose `value` equals the extracted value and whose `term_id` is not null; the term is taken from that element.
+The extracted values of a field are the string in `extract.extracted[field]`, or each string element if it is an array. An empty string is not a value, and an array that holds the same string several times gives the value once, at the position of its first occurrence. For example, an array with 400 copies of `GFP-TF or GFP only as control` and 3 other strings gives 4 values. An extracted value is mapped when `results[field]` has an element whose `value` equals the extracted value and whose `term_id` is not null; the term is taken from that element.
 
 | Status | Condition |
 |---|---|
@@ -109,7 +109,7 @@ Publication switches the api to a verified store file (see [architecture.md](arc
 
 ## Dataset version information
 
-A store holds the following version information. The api returns all of it from its dataset endpoint, and every response and export carries an identifier of the store: the dataset name, the creation time, the model, and a digest of the complete version information.
+A store holds the following version information. The api returns all of it from its dataset endpoint. The JSON responses and the header line of an accession list carry an identifier of the store: the dataset name, the creation time, the model, and a digest of the complete version information. [api.md](api.md#conventions) lists the responses without it.
 
 - Dataset name and store creation time
 - Model

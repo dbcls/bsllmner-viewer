@@ -19,8 +19,8 @@ vi.mock("~/lib/api/client", async (importOriginal) => {
   const GET = async (path: string, init?: { params?: { query?: Record<string, unknown> } }) => {
     const query = init?.params?.query ?? {}
     if (path === "/api/dataset") {
-      const field = { name: "disease", multiValued: false, ontologies: ["MONDO"], mappedBiosampleCount: 0 }
-      return ok({ datasetVersion: VERSION, version: {}, targetAssays: ["RNA-Seq"], assays: [], fields: [field], dslFields: [], statuses: {}, totals: { biosample: 1, experiment: 1, bioproject: 1 }, organisms: [], ontologies: [] })
+      const field = (name: string) => ({ name, multiValued: false, ontologies: ["MONDO"], mappedBiosampleCount: 0 })
+      return ok({ datasetVersion: VERSION, version: {}, targetAssays: ["RNA-Seq"], assays: [], fields: [field("disease"), field("cell_type")], dslFields: [], statuses: {}, totals: { biosample: 1, experiment: 1, bioproject: 1 }, organisms: [], ontologies: [] })
     }
     const element = (value: string) => ({ value, label: label(value), clauses: [{ field: "disease", value }], count: 1 })
     if (path === "/api/crosstab") {

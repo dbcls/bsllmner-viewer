@@ -315,7 +315,7 @@ class TestRequestLimits:
             assert response.status_code == 503
             assert response.json()["type"] == PROBLEM_PREFIX + "query-timeout"
             assert response.headers["content-type"].startswith("application/problem+json")
-            assert int(response.headers["retry-after"]) > 0
+            assert "retry-after" not in response.headers
             assert client.get("/api/dataset").status_code == 200
 
     def test_a_slow_query_does_not_stop_a_request_in_the_same_worker(self, store_path: Path) -> None:
@@ -496,7 +496,7 @@ class TestLengths:
         assert client.get("/api/entries/biosample/" + "S" * 65).status_code == 422
 
     def test_an_element_of_the_most_characters_is_accepted(self, client: TestClient) -> None:
-        ok = client.get("/api/distribution", params={"field": "disease", "elements": "T" * 256})
+        ok = client.get("/api/distribution", params={"field": "disease", "elements": "MONDO:" + "T" * 250})
         assert ok.status_code == 200
         too_long = client.get("/api/distribution", params={"field": "disease", "elements": "T" * 257})
         assert too_long.status_code == 400
@@ -553,9 +553,9 @@ class TestLengths:
 
 class TestElementLimit:
     def test_a_request_names_at_most_100_elements_of_a_dimension(self, client: TestClient) -> None:
-        names = ",".join(f"T{i}" for i in range(100))
+        names = ",".join(f"MONDO:{i}" for i in range(100))
         assert client.get("/api/distribution", params={"field": "disease", "elements": names}).status_code == 200
-        response = client.get("/api/distribution", params={"field": "disease", "elements": names + ",T100"})
+        response = client.get("/api/distribution", params={"field": "disease", "elements": names + ",MONDO:100"})
         assert response.status_code == 400
         assert response.json()["type"] == PROBLEM_PREFIX + "too-many-elements"
 

@@ -21,6 +21,7 @@ ClauseJson = TypedDict(
 TEXT_MAX_LENGTH = MAX_LENGTH
 CLAUSES_MAX_ITEMS = MAX_NODES
 NAME_MAX_LENGTH = 256
+MAX_ELEMENTS = 100
 ACCESSION_MAX_LENGTH = 64
 
 type Unit = Literal["biosample", "sra-experiment", "bioproject"]
@@ -43,9 +44,9 @@ class ApiModel(BaseModel):
 class DatasetVersionRef(ApiModel):
     """Identifies the store a response was computed from. Full details are returned by the dataset endpoint."""
 
-    name: str
-    created_at: str
-    model: str
+    name: str = Field(description="Name of the dataset version")
+    created_at: str = Field(description="Time when the store was built, ISO 8601")
+    model: str = Field(description="The model that the bsllmner-mk2 runs of the dataset used")
     digest: str = Field(description="Short hash of the full version information")
 
 
@@ -98,9 +99,9 @@ AstBool.model_rebuild()
 
 
 class FieldDescription(ApiModel):
-    name: str
-    multi_valued: bool
-    ontologies: list[str]
+    name: str = Field(description="Annotation field name, the `<field>` of `<field>_status`")
+    multi_valued: bool = Field(description="Whether a BioSample can hold several values in the field")
+    ontologies: list[str] = Field(description="Prefixes of the term IDs that the field uses")
     mapped_biosample_count: int = Field(description="BioSamples of the whole population with a term of the field")
 
 
@@ -115,27 +116,38 @@ class DatasetAssay(ApiModel):
 
 
 class DslFieldDescription(ApiModel):
-    name: str
-    kind: FieldKind
-    operators: list[Operator]
+    name: str = Field(description="Field name to use in a condition")
+    kind: FieldKind = Field(
+        description="Kind of the field. A field of kind `term`, `assay`, `organism`, or `date` can be a dimension"
+    )
+    operators: list[Operator] = Field(description="`eq` for `field:value`, `between` for `field:[a TO b]`")
 
 
 class Totals(ApiModel):
-    biosample: int
-    experiment: int
-    bioproject: int
+    biosample: int = Field(description="BioSamples of the whole population")
+    experiment: int = Field(description="SRA Experiments of the whole population")
+    bioproject: int = Field(description="BioProjects linked to the BioSamples of the whole population")
 
 
 class DatasetResponse(ApiModel):
     dataset_version: DatasetVersionRef
     version: dict[str, Any] = Field(description="Full dataset version information")
-    target_assays: list[str]
+    target_assays: list[str] = Field(
+        description="Target assays of the dataset. They are the values that `library_strategy` accepts in a condition"
+    )
     assays: list[DatasetAssay] = Field(description="Target assays in descending order of their BioSamples")
-    fields: list[FieldDescription]
-    dsl_fields: list[DslFieldDescription]
-    statuses: dict[GroupName, list[Status]] = Field(description="Status groups and the statuses under them")
-    totals: Totals
-    organisms: list[DatasetOrganism]
+    fields: list[FieldDescription] = Field(description="Annotation fields, in the order of the select configuration")
+    dsl_fields: list[DslFieldDescription] = Field(description="Every field that a condition can name")
+    statuses: dict[GroupName, list[Status]] = Field(
+        description=(
+            "Status groups and the statuses under them. A condition names a group. An entry and an export report the "
+            "status of each annotation"
+        )
+    )
+    totals: Totals = Field(description="Counts of the whole population in each counting unit")
+    organisms: list[DatasetOrganism] = Field(
+        description="Organisms of the population in descending order of their BioSamples"
+    )
     ontologies: list[DatasetOntology] = Field(description="Names of the prefixes of the terms of the dataset")
 
 
@@ -143,11 +155,11 @@ class Organism(ApiModel):
     """An organism as the NCBI Taxonomy ID and the name."""
 
     identifier: str = Field(description="NCBI Taxonomy ID")
-    name: str | None
+    name: str | None = Field(description="Name of the organism; null when no name is known")
 
 
 class DatasetOrganism(Organism):
-    biosample_count: int
+    biosample_count: int = Field(description="BioSamples of the whole population of the organism")
 
 
 _SELECTED_DESCRIPTION = (
@@ -203,15 +215,19 @@ class ConditionResponse(ApiModel):
 
 
 class Element(ApiModel):
-    value: str
-    label: str
-    clauses: list[Clause]
-    count: int
+    value: str = Field(description="The element: a term ID, a target assay, an NCBI Taxonomy ID, or a year")
+    label: str = Field(description="Name to show for the element")
+    clauses: list[Clause] = Field(description="The clauses that select what the element counts")
+    count: int = Field(description="Count of the units that have the element, in the unit of the request")
 
 
 class TermElement(Element):
-    count_exact: int
-    count_selected: int
+    count_exact: int = Field(
+        description="Count of the units that have the term or a descendant with a `mapped_exact` annotation"
+    )
+    count_selected: int = Field(
+        description="Count of the units that have the term or a descendant with a `mapped_selected` annotation"
+    )
     has_children: bool = Field(
         description="Whether a direct child term has a count above 0 in the population of the list, in the unit"
     )
@@ -226,7 +242,7 @@ class DistributionResponse(ApiModel):
     population_q: str | None = Field(description="The condition the counts were computed from")
     field: str
     unit: Unit
-    facet_self_exclude: bool
+    facet_self_exclude: bool = Field(description="The value of the request parameter")
     total: int = Field(description="Count of the population in the unit")
     elements: list[TermElement | Element]
     without_term: int | None = Field(
@@ -239,26 +255,32 @@ class DistributionResponse(ApiModel):
 
 
 class Cell(ApiModel):
-    row: str
-    col: str
-    count: int
-    expected: float | None
+    row: str = Field(description="Element of the row")
+    col: str = Field(description="Element of the column")
+    count: int = Field(description="Count of the units that have both elements")
+    expected: float | None = Field(
+        description="Count that the cell would have if the dimensions were independent; null when the total is zero"
+    )
     ratio: float | None = Field(
         description="The count divided by the expected count; null when the expected count is null or zero"
     )
-    residual: float | None
-    classification: Literal["gap", "under", "over"] | None
+    residual: float | None = Field(
+        description="Adjusted standardized residual of the count against the expected count; null when undefined"
+    )
+    classification: Literal["gap", "under", "over"] | None = Field(
+        description="`gap`, `under` (under-represented), `over` (over-represented), or null when not classified"
+    )
 
 
 class CrosstabResponse(ApiModel):
     dataset_version: DatasetVersionRef
     q: str | None
-    population_q: str | None
+    population_q: str | None = Field(description="The condition the counts were computed from")
     row_field: str
     col_field: str
     unit: Unit
     facet_self_exclude: bool
-    total: int
+    total: int = Field(description="Count of the population in the unit, the `N` of the expected counts")
     rows: list[TermElement | Element]
     cols: list[TermElement | Element]
     cells: list[Cell]
@@ -266,13 +288,15 @@ class CrosstabResponse(ApiModel):
 
 class TrendPoint(ApiModel):
     year: int
-    count: int
+    count: int = Field(
+        description="Count, in the unit of the request, of the matches whose BioSample was published in the year"
+    )
     clauses: list[Clause]
 
 
 class TrendSeries(ApiModel):
-    value: str
-    label: str
+    value: str = Field(description="The element of the series dimension")
+    label: str = Field(description="Name to show for the element")
     clauses: list[Clause]
     points: list[TrendPoint]
 
@@ -282,7 +306,7 @@ class TrendResponse(ApiModel):
     q: str | None
     unit: Unit
     facet_self_exclude: bool
-    years: list[int]
+    years: list[int] = Field(description="The years of every list of this response, in ascending order")
     first_year: int | None = Field(description="The first year with a match, whatever `yearFrom` is")
     last_year: int | None = Field(description="The last year with a match, whatever `yearTo` is")
     total: list[TrendPoint] = Field(description="Counts of the condition per year")
@@ -296,8 +320,8 @@ class TrendResponse(ApiModel):
 class Pagination(ApiModel):
     page: int
     per_page: int
-    total: int
-    has_next: bool
+    total: int = Field(description="Count of all items of the list in its counting unit, not only of this page")
+    has_next: bool = Field(description="Whether a page after this one has items")
 
     @classmethod
     def of(cls, page: int, per_page: int, total: int) -> Pagination:
@@ -307,9 +331,9 @@ class Pagination(ApiModel):
 class Project(ApiModel):
     identifier: str = Field(description="BioProject accession")
     title: str | None
-    biosample_count: int
-    experiment_count: int
-    assays: list[str]
+    biosample_count: int = Field(description="BioSamples of the BioProject in the population")
+    experiment_count: int = Field(description="SRA Experiments of the BioProject in the population")
+    assays: list[str] = Field(description="Assays of those SRA Experiments, in ascending order")
     clauses: list[Clause]
 
 
@@ -318,29 +342,29 @@ class ProjectsResponse(ApiModel):
     q: str | None
     population_q: str | None
     facet_self_exclude: bool
-    sort: ProjectSort
+    sort: ProjectSort = Field(description="The order of the items")
     pagination: Pagination
     items: list[Project]
 
 
 class AnnotationValue(ApiModel):
-    value: str | None
+    value: str | None = Field(description="The extracted value; null when none was extracted")
     status: Status
-    term_id: str | None
-    label: str | None
+    term_id: str | None = Field(description="ID of the mapped term; null when the value has no term")
+    label: str | None = Field(description="Label of the mapped term; null when the value has no term")
 
 
 class EntryItem(ApiModel):
     identifier: str = Field(description="BioSample accession")
     type: EntryType
-    experiments: list[str] = Field(description="Experiments of the BioSample that match the condition")
+    experiments: list[str] = Field(description="SRA Experiments of the BioSample that match the condition")
     title: str | None
     organism: Organism | None
-    library_strategy: list[str]
-    bioprojects: list[str]
-    date_published: str | None
+    library_strategy: list[str] = Field(description="Assays of the matching experiments")
+    bioprojects: list[str] = Field(description="Accessions of the BioProjects of the BioSample")
+    date_published: str | None = Field(description="Publication date, `YYYY-MM-DD`")
     chip_atlas: list[str] = Field(description="Genome assemblies under which ChIP-Atlas processed the experiments")
-    annotations: dict[str, list[AnnotationValue]]
+    annotations: dict[str, list[AnnotationValue]] = Field(description="Annotations per annotation field name")
 
 
 class EntriesResponse(ApiModel):
@@ -365,21 +389,21 @@ class Evidence(ApiModel):
 
 
 class EntryAnnotation(ApiModel):
-    field: str
-    value: str | None
+    field: str = Field(description="Annotation field name")
+    value: str | None = Field(description="The extracted value; null when none was extracted")
     status: Status
-    term_id: str | None
-    label: str | None
+    term_id: str | None = Field(description="ID of the mapped term; null when the value has no term")
+    label: str | None = Field(description="Label of the mapped term; null when the value has no term")
     clauses: list[Clause] = Field(description="The clause on the field and the term; empty without a term")
     evidence: list[Evidence]
 
 
 class EntryExperiment(ApiModel):
-    accession: str
+    accession: str = Field(description="SRA Experiment accession")
     library_strategy: str | None
-    in_population: bool
-    runs: list[str]
-    chip_atlas: list[str]
+    in_population: bool = Field(description="Whether the experiment is in the population")
+    runs: list[str] = Field(description="Accessions of the SRA Runs of the experiment")
+    chip_atlas: list[str] = Field(description="Genome assemblies under which ChIP-Atlas processed the experiment")
 
 
 class EntryBioProject(ApiModel):
@@ -401,21 +425,30 @@ class EntryResponse(ApiModel):
     title: str | None
     organism: Organism | None
     date_published: str | None
-    run: str
-    metadata: list[MetadataItem] = Field(description="Original metadata: the description, attributes, and record")
+    run: str = Field(description="Name of the bsllmner-mk2 run that analyzed the BioSample. It is not an SRA Run")
+    metadata: list[MetadataItem] = Field(
+        description=(
+            "Original metadata in the order of the description, the record, and the attributes. "
+            "`metadataIndex` of an evidence is a position in this list"
+        )
+    )
     annotations: list[EntryAnnotation]
     experiments: list[EntryExperiment]
     bioprojects: list[EntryBioProject]
 
 
 class TermHit(ApiModel):
-    field: str
-    term_id: str
+    field: str = Field(description="Annotation field of the hit")
+    term_id: str = Field(description="ID of the term, to use in a condition on the field")
     label: str | None
-    ontology: str
+    ontology: str = Field(description="Name of the ontology of the term")
     path: list[str] = Field(description="Labels of the ancestors along one path from a root, nearest last")
-    descendant_count: int = Field(description="Descendant terms annotated in the population")
-    count: int
+    descendant_count: int = Field(
+        description="Descendant terms annotated in the field in the whole dataset, whatever `q` is"
+    )
+    count: int = Field(
+        description="Count of the units in the population of the field that have the term or a descendant"
+    )
     matched_synonym: str | None = Field(
         description=(
             "The synonym that decides the match: a synonym equal to the query, or the synonym that contains the query "
@@ -449,7 +482,9 @@ class ServiceInfoResponse(ApiModel):
     name: str
     version: str = Field(description="Package version, followed by `+<commit>` when the build records a commit")
     description: str
-    store: Literal["ok", "unavailable"]
+    store: Literal["ok", "unavailable"] = Field(
+        description="`unavailable` when the api cannot query the store, or the store file changed since it was opened"
+    )
 
 
 class TermOntology(ApiModel):
@@ -458,13 +493,13 @@ class TermOntology(ApiModel):
 
 
 class TermParent(ApiModel):
-    term_id: str
+    term_id: str = Field(description="ID of the parent term")
     label: str | None
 
 
 class TermResponse(ApiModel):
     dataset_version: DatasetVersionRef
-    term_id: str
+    term_id: str = Field(description="ID of the term")
     label: str | None
     ontology: TermOntology | None = Field(description="Null for a term ID without a prefix")
     synonyms: list[str] = Field(

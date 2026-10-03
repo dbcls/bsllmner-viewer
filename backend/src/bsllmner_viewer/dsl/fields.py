@@ -33,11 +33,11 @@ STATUS_SUFFIX = "_status"
 
 
 def expand_status(value: str) -> tuple[Status, ...]:
-    """Statuses matched by a status value: a group expands to the statuses under it."""
+    """The statuses under a status group, or an empty tuple when the value is not a group name."""
     for group, statuses in STATUS_GROUPS.items():
         if value == group:
             return statuses
-    return tuple(status for status in STATUSES if status == value)
+    return ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,8 +64,12 @@ _FIXED: tuple[FieldDef, ...] = (
 class FieldSet:
     """The DSL fields of one dataset: fixed fields plus two per annotation field."""
 
-    def __init__(self, annotation_fields: tuple[str, ...] | list[str]) -> None:
+    def __init__(
+        self, annotation_fields: tuple[str, ...] | list[str], target_assays: tuple[str, ...] | None = None
+    ) -> None:
         self.annotation_fields: tuple[str, ...] = tuple(annotation_fields)
+        # The values of `library_strategy` that a condition may name; None accepts any value.
+        self.target_assays = target_assays
         defs: dict[str, FieldDef] = {}
         for name in self.annotation_fields:
             defs[name] = FieldDef(name, "term", name)

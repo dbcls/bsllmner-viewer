@@ -7,7 +7,7 @@ from typing import Annotated
 from fastapi import APIRouter, Path, Query
 
 from bsllmner_viewer.api.common import aggregation_population, q_of, version_ref
-from bsllmner_viewer.api.deps import FacetSelfExcludeParam, QParam, StoreDep, parse_condition
+from bsllmner_viewer.api.deps import FacetSelfExcludeParam, QParam, StoreDep, UnitParam, parse_condition
 from bsllmner_viewer.api.problems import DSL_SLUGS, ApiError, error_responses
 from bsllmner_viewer.api.queries import terms as tq
 from bsllmner_viewer.api.queries.aggregate import element_counts, term_elements
@@ -22,7 +22,6 @@ from bsllmner_viewer.api.schemas import (
     TermParent,
     TermResponse,
     TermsResponse,
-    Unit,
 )
 from bsllmner_viewer.api.term_sites import ontology_of, shown_synonyms, term_url
 
@@ -30,7 +29,8 @@ router = APIRouter(tags=["Terms"])
 
 
 def _term_dimension(store: StoreDep, field: str):  # type: ignore[no-untyped-def]
-    dim = dimension(store.field_set, field)
+    found = store.field_set.get(field)
+    dim = found if found is not None else dimension(store.field_set, field)
     if dim.kind != "term":
         raise ApiError(
             "invalid-dimension",
@@ -48,33 +48,36 @@ def _term_dimension(store: StoreDep, field: str):  # type: ignore[no-untyped-def
     response_model=TermsResponse,
     summary="Search the terms annotated in a field, or in every annotation field",
     description=(
-        "Hits are ordered by how they match `query`: a label or an ID equal to it, then a synonym equal to it, then a "
-        "label or an ID that contains it, then only a synonym that contains it. Within each of these, hits are ordered "
-        "by `count`. Each hit is counted in the population of its own field: with `facetSelfExclude`, the condition "
-        "without the conjuncts on that field. The hits are chosen in the same population. With an empty `query`, they "
-        "are the terms assigned directly to the most BioSamples of the population. With a `query`, every term that "
-        "matches it is a candidate, and the hits within `limit` are the best matches, then the terms assigned "
-        "directly to the most BioSamples of the population, then of the whole dataset. A broad term counted only "
-        "through its descendants is therefore still found by a `query`."
+        "Searches the terms of a field, or of every annotation field, and counts each hit in `unit`. Hits are ordered "
+        "by how they match `query`, then by `count`. Each hit is counted in the population of its own field. The "
+        "population is `q`. With `facetSelfExclude`, it is `q` without the conjuncts on that field. "
+        'See "Default elements" in /llms-full.txt for the hits that `limit` keeps. '
+        "Use the `termId` of a hit in a condition."
     ),
 )
 def search_terms(
     store: StoreDep,
     field: Annotated[
         str | None,
-        Query(max_length=NAME_MAX_LENGTH, description="Annotation field; omitted means every annotation field"),
+        Query(
+            max_length=NAME_MAX_LENGTH,
+            description="Annotation field, such as `disease`; omitted means every annotation field",
+        ),
     ] = None,
     query: Annotated[
         str,
         Query(
             max_length=TEXT_MAX_LENGTH,
-            description="Substring of a label, synonym, or term ID; empty lists the most annotated terms",
+            description=(
+                "Text to find in the label, a synonym, or the ID of a term, ignoring letter case; "
+                "empty lists the most annotated terms. This is not the condition `q`"
+            ),
         ),
     ] = "",
     q: QParam = None,
-    unit: Annotated[Unit, Query()] = "biosample",
+    unit: UnitParam = "biosample",
     facet_self_exclude: FacetSelfExcludeParam = False,
-    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    limit: Annotated[int, Query(ge=1, le=100, description="Number of hits to return, from 1 to 100")] = 20,
 ) -> TermsResponse:
     names = [f.name for f in store.fields] if field is None else [field]
     dims = [_term_dimension(store, name) for name in names]
@@ -128,13 +131,24 @@ def search_terms(
     responses=error_responses(bad_request=(*DSL_SLUGS, "invalid-dimension"), not_found=True, busy=True),
     response_model=TermChildrenResponse,
     summary="Child terms of a term annotated in a field",
+    description=(
+        "Lists the direct child terms of `termId` that have a count above 0 in the population, in `unit`, in the "
+        "order of their direct counts in the whole dataset. `count` of a child includes its descendants. The "
+        "population is `q`. With `facetSelfExclude`, it is `q` without the conjuncts on `field`. To expand a term of a "
+        "cross-tabulation, pass its `populationQ` as `q`. "
+        'See "Aggregations" in /llms-full.txt.'
+    ),
 )
 def term_children(
     store: StoreDep,
-    field: Annotated[str, Query(max_length=NAME_MAX_LENGTH)],
-    term_id: Annotated[str, Query(alias="termId", max_length=NAME_MAX_LENGTH)],
+    field: Annotated[
+        str, Query(max_length=NAME_MAX_LENGTH, description="Annotation field of the term, such as `disease`")
+    ],
+    term_id: Annotated[
+        str, Query(alias="termId", max_length=NAME_MAX_LENGTH, description="ID of the term, such as `MONDO:0007254`")
+    ],
     q: QParam = None,
-    unit: Annotated[Unit, Query()] = "biosample",
+    unit: UnitParam = "biosample",
     facet_self_exclude: FacetSelfExcludeParam = False,
 ) -> TermChildrenResponse:
     dim = _term_dimension(store, field)
@@ -168,9 +182,17 @@ def term_children(
     responses=error_responses(not_found=True),
     response_model=TermResponse,
     summary="A term with its synonyms, parents, ontology, and page",
+    description=(
+        "Returns one term of the dataset: its label, synonyms, direct parent terms, ontology, and the address of its "
+        "page. `parents` is empty for a root of an ontology and for a term of an ontology without hierarchy. "
+        'See "Term hierarchy" in /llms-full.txt.'
+    ),
 )
 def get_term(
-    store: StoreDep, term_id: Annotated[str, Path(alias="termId", max_length=NAME_MAX_LENGTH)]
+    store: StoreDep,
+    term_id: Annotated[
+        str, Path(alias="termId", max_length=NAME_MAX_LENGTH, description="ID of the term, such as `UBERON:0000955`")
+    ],
 ) -> TermResponse:
     with store.cursor() as cur:
         row = cur.execute("SELECT label FROM term WHERE term_id = ?", [term_id]).fetchone()

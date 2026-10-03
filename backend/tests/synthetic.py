@@ -55,6 +55,10 @@ ONTOLOGIES: dict[str, list[tuple[str, str, list[str], list[str]]]] = {
     ],
 }
 
+# Terms whose parents the ontology files write as part-of relations: `part_of` for the first, `BFO:0000050` for the
+# second. The hierarchy is the same as if they were written as is-a.
+PART_OF_RELATION = {"UBERON:0000178": "part_of", "UBERON:0003661": "BFO:0000050"}
+
 LABELS = {term_id: label for terms in ONTOLOGIES.values() for term_id, label, _, _ in terms}
 SYNONYMS = {term_id: synonyms for terms in ONTOLOGIES.values() for term_id, _, synonyms, _ in terms}
 
@@ -194,7 +198,11 @@ def _write_ontologies(root: Path) -> None:
         for term_id, label, synonyms, parents in terms:
             lines += ["[Term]", f"id: {term_id}", f"name: {label}"]
             lines += [f'synonym: "{s}" EXACT []' for s in synonyms]
-            lines += [f"is_a: {p} ! parent" for p in parents]
+            relation = PART_OF_RELATION.get(term_id)
+            if relation is None:
+                lines += [f"is_a: {p} ! parent" for p in parents]
+            else:
+                lines += [f'relationship: {relation} {p} {{source="x"}} ! parent' for p in parents]
             lines.append("")
         lines += ["[Term]", "id: OBS:1", "name: obsolete", "is_obsolete: true", ""]
         (root / "ontology" / f"{name}.obo").write_text("\n".join(lines))

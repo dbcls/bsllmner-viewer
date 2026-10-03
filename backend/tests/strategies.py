@@ -8,7 +8,7 @@ from functools import reduce
 from hypothesis import strategies as st
 
 from bsllmner_viewer.dsl.ast import BoolOp, FieldClause, FreeText, Node, Range, clause
-from bsllmner_viewer.dsl.fields import STATUS_GROUPS, STATUSES, FieldSet
+from bsllmner_viewer.dsl.fields import STATUS_GROUPS, FieldSet
 from bsllmner_viewer.dsl.keyword import word_matches
 from bsllmner_viewer.dsl.lex import RESERVED
 from bsllmner_viewer.dsl.transform import add_clause, replace_keywords
@@ -55,7 +55,7 @@ def _term_clause(field: str) -> st.SearchStrategy[FieldClause]:
 
 
 def _status_clause(field: str) -> st.SearchStrategy[FieldClause]:
-    values = st.sampled_from(tuple(STATUS_GROUPS) + STATUSES)
+    values = st.sampled_from(tuple(STATUS_GROUPS))
     return st.builds(lambda v: FieldClause(field=field + "_status", value_kind="word", value=v), values)
 
 
@@ -69,9 +69,18 @@ def _date_clause() -> st.SearchStrategy[FieldClause]:
     return st.one_of(single, between)
 
 
-# Annotation clauses on any text, whose kind (`word` or `phrase`) follows from whether the value can be written bare.
+# Annotation clauses on a term ID of any text, whose kind (`word` or `phrase`) follows from whether the value can be
+# written bare.
 text_clauses: st.SearchStrategy[FieldClause] = st.builds(
-    clause, st.sampled_from(ANNOTATION_FIELDS), st.one_of(words, apostrophe_words)
+    lambda field, prefix, local: clause(field, f"{prefix}:{local}"),
+    st.sampled_from(ANNOTATION_FIELDS),
+    words,
+    st.one_of(words, apostrophe_words),
+)
+
+# Clauses on a field whose value is not checked, so the value can be any bare word of the grammar.
+bare_clauses: st.SearchStrategy[FieldClause] = st.builds(
+    lambda v: clause("bioproject", v), st.one_of(words, apostrophe_words)
 )
 
 clauses: st.SearchStrategy[FieldClause] = st.one_of(
@@ -112,7 +121,9 @@ keywords: st.SearchStrategy[FreeText] = st.one_of(
     phrases.map(lambda p: FreeText(p, is_phrase=True)),
 ).filter(lambda k: bool(word_matches(k)))
 
-asts: st.SearchStrategy[Node] = st.recursive(st.one_of(clauses, text_clauses, keywords), _bool, max_leaves=8)
+asts: st.SearchStrategy[Node] = st.recursive(
+    st.one_of(clauses, text_clauses, bare_clauses, keywords), _bool, max_leaves=8
+)
 
 # Conditions built by element selection alone: clause groups joined by AND, same-field clauses joined by OR.
 flat_asts: st.SearchStrategy[Node | None] = st.lists(clauses, max_size=6).map(lambda cs: reduce(add_clause, cs, None))
@@ -130,13 +141,7 @@ dataset_clauses = st.one_of(
     *[st.sampled_from([_phrase_clause(f, t) for t, _ in terms]) for f, terms in ANNOTATED.items()],
     st.sampled_from([_phrase_clause("library_strategy", a) for a in TARGET_ASSAYS]),
     st.sampled_from([_phrase_clause("organism_id", "9606"), _phrase_clause("organism_id", "10090")]),
-    st.sampled_from(
-        [
-            _phrase_clause(f"{f}_status", s)
-            for f in ANNOTATED
-            for s in ("mapped", "unmapped", "no_value", "mapped_exact")
-        ]
-    ),
+    st.sampled_from([_phrase_clause(f"{f}_status", s) for f in ANNOTATED for s in ("mapped", "unmapped", "no_value")]),
     st.builds(
         lambda y: FieldClause("date_published", "range", Range(f"{y}-01-01", f"{y + 3}-12-31")), st.integers(2010, 2022)
     ),

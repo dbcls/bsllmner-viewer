@@ -19,6 +19,7 @@ import { FigureExport } from "../figure-export"
 import { type HeatmapColor, type Update, type WorkspaceState } from "../state"
 import { TermIdHover } from "../term-id-hover"
 import type { Condition } from "../use-condition"
+import { useReplaceUnofferedDimensions } from "../use-offered-dimensions"
 import { ViewControls } from "../view-controls"
 import { crosstabAxes, crosstabDimensions, crosstabParams, HEATMAP_LIMIT } from "../view-requests"
 import { type MatrixCell, matrixSvg, matrixSvgSize } from "./matrix-svg"
@@ -50,6 +51,7 @@ const ratioText = (cell: Cell): string => (cell.ratio === null ? "" : formatRati
 /** Cross-tabulation of two dimensions with expected counts, ratios to them, and gap marks. */
 export const HeatmapTab = ({ state, condition, update, latest, replacing, setReplacing, onAlert }: HeatmapTabProps) => {
   const dataset = useDataset()
+  useReplaceUnofferedDimensions(state, update, dataset)
   const fields = dataset.data?.fields.map((f) => f.name) ?? []
   // The term IDs follow the labels of the rows and of the columns that are annotation terms, when the charts show them.
   // The axes are the URL's, except a dimension that the dataset lacks, which another dimension replaces.
@@ -173,7 +175,7 @@ export const HeatmapTab = ({ state, condition, update, latest, replacing, setRep
     const started = side === "row" ? state.row : state.col
     setReplacing(true)
     try {
-      const result = await replaceTerms(entries, (list) => resolvePasted(list, fields.includes(dimension), (label) => findTermId(dimension, label), elementValidator(dimension) ?? undefined), limit)
+      const result = await replaceTerms(entries, (list) => resolvePasted(list, fields.includes(dimension), (label) => findTermId(dimension, label, state.unit), elementValidator(dimension) ?? undefined), limit)
       // The terms belong to the dimension that the entries were resolved on; they are dropped when the axis moved to another one while they waited.
       const now = latest()
       if ((side === "row" ? now.row : now.col) !== started) return
@@ -362,11 +364,12 @@ export const HeatmapTab = ({ state, condition, update, latest, replacing, setRep
         onClose={() => setTermsSide(null)}
         title={dialogSide === "col" ? "Column terms" : "Row terms"}
         {...axisProps(dialogSide)}
+        unit={state.unit}
         selectedNote="✓ in axis"
         fields={fields}
         explicit={(dialogSide === "row" ? axes.rowTerms : axes.colTerms) !== null}
         limit={HEATMAP_LIMIT}
-        q={state.q}
+        q={data && !stale ? data.populationQ : state.q}
         onPick={(hit) => pick(dialogSide, hit)}
         onRemove={(value) => remove(dialogSide, value)}
         onReset={() => {
@@ -384,7 +387,6 @@ export const HeatmapTab = ({ state, condition, update, latest, replacing, setRep
                   <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
                     0<span className="inline-block h-2.5 w-25 rounded-badge" style={{ background: gradient }} />
                     {data === undefined ? failed ? "–" : <Skeleton className="w-12" /> : formatCount(max)}
-                    {state.unit !== "biosample" && <span>{unit}</span>}
                   </span>
                 ) : (
                   <span className="inline-flex items-center gap-1.5 whitespace-nowrap">

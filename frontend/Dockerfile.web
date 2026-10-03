@@ -1,12 +1,17 @@
 # Production image: the built single-page application served by nginx, which also proxies /api to the api container.
+# The build context is the root of the repository, because the image also serves a file that it makes from docs/.
 FROM node:24-bookworm-slim AS build
 WORKDIR /app
-COPY package.json package-lock.json ./
+COPY frontend/package.json frontend/package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci
-COPY . .
+COPY frontend/ ./
 # The commit that the footer shows. After the copy, so that a new value rebuilds only the build step.
 ARG BSLLMNER_VIEWER_COMMIT=
 RUN npm run build && node nginx/csp-hashes.mjs build/client/index.html /app/csp-hashes.conf
+# /llms-full.txt: the rules of the api and the data model in one file. Only these two documents are copied, so a change
+# of another document does not rebuild the image. The links to other documents name the commit.
+COPY docs/api.md docs/data-model.md /docs/
+RUN node scripts/llms-full.ts /docs build/client/llms-full.txt
 
 FROM nginx:1.29-alpine
 # The image's entrypoint writes the nameservers into NGINX_LOCAL_RESOLVERS and fills the template with the filtered variables.

@@ -11,7 +11,7 @@ import {
   type TrendParams,
   trendQuery,
 } from "~/lib/api/queries"
-import { TREND_LIMIT, type WorkspaceState } from "~/lib/workspace-state"
+import { type Patch, TREND_LIMIT, type WorkspaceState } from "~/lib/workspace-state"
 
 import { offeredDimension, trendFields } from "./trend/field"
 
@@ -68,16 +68,47 @@ export const crosstabParams = (state: WorkspaceState, fields: string[] | null): 
 export const trendLineField = (state: WorkspaceState, fields: string[] | null): string =>
   offeredDimension(state.trendField, fields === null ? null : trendFields(fields))
 
-export const trendParams = (state: WorkspaceState, fields: string[] | null): TrendParams => ({
-  field: trendLineField(state, fields),
-  q: state.q,
-  unit: state.unit,
-  selfExclusion: true,
-  ...(state.trendTerms ? { elements: state.trendTerms.join(",") } : {}),
-  limit: TREND_LIMIT,
-  ...(state.trendFrom !== null ? { yearFrom: state.trendFrom } : {}),
-  ...(state.trendTo !== null ? { yearTo: state.trendTo } : {}),
-})
+/** What the Trend view draws as lines: the line field and the terms named for it. The terms of a field that the dataset lacks are not terms of the field that takes its place. */
+export const trendAxis = (state: WorkspaceState, fields: string[] | null) => {
+  const field = trendLineField(state, fields)
+  return { field, terms: field === state.trendField ? state.trendTerms : null }
+}
+
+/**
+ * The patch that makes the URL name the dimensions that the current tab draws, when the URL names one that the dataset does
+ * not offer, or null when it names what is drawn. The terms of a dimension that is replaced are dropped with it.
+ * `fields` is null before the dataset is known.
+ */
+export const offeredDimensionsPatch = (state: WorkspaceState, fields: string[] | null): Patch | null => {
+  if (fields === null) return null
+  if (state.tab === "heatmap") {
+    const axes = crosstabAxes(state, fields)
+    const patch: Patch = {
+      ...(axes.row !== state.row ? { row: axes.row, rowTerms: null } : {}),
+      ...(axes.col !== state.col ? { col: axes.col, colTerms: null } : {}),
+    }
+    return Object.keys(patch).length > 0 ? patch : null
+  }
+  if (state.tab === "trend") {
+    const field = trendLineField(state, fields)
+    return field !== state.trendField ? { trendField: field, trendTerms: null } : null
+  }
+  return null
+}
+
+export const trendParams = (state: WorkspaceState, fields: string[] | null): TrendParams => {
+  const { field, terms } = trendAxis(state, fields)
+  return {
+    field,
+    q: state.q,
+    unit: state.unit,
+    selfExclusion: true,
+    ...(terms ? { elements: terms.join(",") } : {}),
+    limit: TREND_LIMIT,
+    ...(state.trendFrom !== null ? { yearFrom: state.trendFrom } : {}),
+    ...(state.trendTo !== null ? { yearTo: state.trendTo } : {}),
+  }
+}
 
 export const projectsParams = (state: WorkspaceState): ProjectsParams => ({
   q: state.q,

@@ -9,6 +9,7 @@ from fastapi.dependencies.models import Dependant
 from fastapi.routing import APIRoute
 
 from bsllmner_viewer.api.problems import ApiError
+from bsllmner_viewer.api.schemas import Unit
 from bsllmner_viewer.api.store import Store
 from bsllmner_viewer.dsl.ast import Node, normalize
 from bsllmner_viewer.dsl.parser import parse
@@ -53,19 +54,47 @@ FacetSelfExcludeParam = Annotated[
     Query(
         alias="facetSelfExclude",
         description=(
-            "Compute without the top-level conjuncts of `q` that are only on the dimensions of the aggregation"
+            "If true, compute without the top-level conjuncts of `q` that are only on the dimensions of this "
+            "operation, as the screens of the UI do. The description of the operation names its dimensions. "
+            'If false, compute from `q` itself. See "Self-exclusion" in /llms-full.txt'
         ),
     ),
 ]
 
-PageParam = Annotated[int, Query(ge=1)]
-PerPageParam = Annotated[int, Query(alias="perPage", ge=1, le=100)]
+PageParam = Annotated[
+    int, Query(ge=1, description="Page number, starting at 1. A page after the last page has empty `items`")
+]
+PerPageParam = Annotated[int, Query(alias="perPage", ge=1, le=100, description="Items per page, from 1 to 100")]
+
+UnitParam = Annotated[
+    Unit,
+    Query(
+        description=(
+            "Counting unit. `biosample` counts distinct BioSamples, `sra-experiment` distinct SRA Experiments, and "
+            '`bioproject` distinct BioProjects. See "Counting" in /llms-full.txt'
+        )
+    ),
+]
 
 QParam = Annotated[
     str | None,
     Query(
-        description="Condition in the DSL. Omitted or empty means the whole population.",
-        examples=['disease:"MONDO:0007254"'],
+        description=(
+            'Condition in the condition language: `field:value`, `field:"phrase"`, `field:[a TO b]`, keywords '
+            "without a field, `AND`, `OR`, `NOT`, and parentheses. Omitted or empty means the whole population. "
+            "The value of an annotation term field is a term ID, which `GET /api/terms` finds, and it matches the "
+            "term and its descendants. The value of `<field>_status` is the group `mapped`, `unmapped`, or "
+            "`no_value`. The value of `library_strategy` is a target assay of `GET /api/dataset`. A keyword matches "
+            "the searchable text of a BioSample, or the entry that has the accession that it spells. "
+            'See "Condition DSL" in /llms-full.txt'
+        ),
+        examples=[
+            'disease:"MONDO:0007254"',
+            'cell_line:"CVCL:0030" AND library_strategy:ATAC-seq',
+            "organism_id:9606 AND date_published:[2015-01-01 TO 2020-12-31]",
+            "disease_status:unmapped",
+            '"breast cancer" AND NOT organism_id:10090',
+        ],
     ),
 ]
 

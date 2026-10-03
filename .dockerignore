@@ -1,6 +1,12 @@
-.claude/
-.git/
-data/
-backend/.venv/
+# The web image builds from the root of the repository. It needs frontend/ and two documents of docs/, so everything
+# else stays out of the context.
+*
+!frontend/
+!docs/api.md
+!docs/data-model.md
 frontend/node_modules/
 frontend/build/
+frontend/.react-router/
+frontend/playwright-report/
+frontend/test-results/
+frontend/tests/

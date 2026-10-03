@@ -20,8 +20,8 @@ vi.mock("~/lib/api/client", async (importOriginal) => {
   const GET = async (path: string, init?: { params?: { query?: Record<string, unknown> } }) => {
     const query = init?.params?.query ?? {}
     if (path === "/api/dataset") {
-      const field = { name: "disease", multiValued: false, ontologies: ["MONDO"], mappedBiosampleCount: 0 }
-      const data = { datasetVersion: VERSION, version: {}, targetAssays: ["RNA-Seq"], assays: [], fields: [field], dslFields: [], statuses: {}, totals: { biosample: 1, experiment: 1, bioproject: 1 }, organisms: [], ontologies: [] }
+      const field = (name: string) => ({ name, multiValued: false, ontologies: ["MONDO"], mappedBiosampleCount: 0 })
+      const data = { datasetVersion: VERSION, version: {}, targetAssays: ["RNA-Seq"], assays: [], fields: [field("disease"), field("cell_type")], dslFields: [], statuses: {}, totals: { biosample: 1, experiment: 1, bioproject: 1 }, organisms: [], ontologies: [] }
       return ok(data)
     }
     if (path === "/api/terms") {
@@ -76,7 +76,7 @@ const Harness = ({ View, initial, onUpdate, onAlert }: { View: View; initial: Wo
   return (
     <>
       <button onClick={() => setShown((was) => !was)}>Toggle view</button>
-      <button onClick={() => update({ row: "cell_type", col: "assay", trendField: "cell_type" })}>Switch dimension</button>
+      <button onClick={() => update({ row: "cell_type", col: "library_strategy", trendField: "cell_type" })}>Switch dimension</button>
       <button onClick={() => update({ tab: "samples" })}>Switch tab</button>
       {shown && <View state={state} condition={condition} update={update} latest={() => latest.current} replacing={replacing} setReplacing={setReplacing} onAlert={onAlert} />}
     </>
@@ -239,7 +239,7 @@ describe("a pasted list that is being resolved", () => {
     await open()
     await vi.waitFor(() => expect(within(dialog).getByRole("button", { name: "Replace terms" })).toBeEnabled())
     expect(onUpdate).toHaveBeenCalledTimes(1)
-    expect(onUpdate).toHaveBeenLastCalledWith({ row: "cell_type", col: "assay", trendField: "cell_type" })
+    expect(onUpdate).toHaveBeenLastCalledWith({ row: "cell_type", col: "library_strategy", trendField: "cell_type" })
     expect(onAlert).not.toHaveBeenCalled()
   })
 

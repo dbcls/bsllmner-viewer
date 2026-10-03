@@ -22,12 +22,26 @@ router = APIRouter(tags=["Projects"])
     responses=error_responses(bad_request=DSL_SLUGS, busy=True),
     response_model=ProjectsResponse,
     summary="BioProjects of the matching BioSamples",
+    description=(
+        "Lists the BioProjects of the BioSamples in the population. The population is `q`. With `facetSelfExclude`, "
+        "it is `q` without the conjuncts on `bioproject`. `biosampleCount`, `experimentCount`, and `assays` of a "
+        "BioProject count only the BioSamples and SRA Experiments of the population, not the whole BioProject. "
+        '`pagination.total` is the number of BioProjects. See "Aggregations" in /llms-full.txt.'
+    ),
 )
 def get_projects(
     store: StoreDep,
     q: QParam = None,
     facet_self_exclude: FacetSelfExcludeParam = False,
-    sort: Annotated[ProjectSort, Query()] = "biosampleCount:desc",
+    sort: Annotated[
+        ProjectSort,
+        Query(
+            description=(
+                "Order of the projects: the count and the direction. Equal counts are ordered by the other count in "
+                "the same direction, then by the accession"
+            )
+        ),
+    ] = "biosampleCount:desc",
     page: PageParam = 1,
     per_page: PerPageParam = 25,
 ) -> ProjectsResponse:

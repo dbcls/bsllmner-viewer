@@ -11,7 +11,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Version information, fields, and population totals */
+        /**
+         * Version information, fields, and population totals
+         * @description Returns what a client needs before it writes conditions: the version of the dataset, the target assays, the fields of the condition language with their kinds, the status groups, and the BioSample counts of the whole population per assay, organism, and field. Counts are in the BioSample unit, except `totals`, which has all three units.
+         */
         get: operations["getDataset"];
         put?: never;
         post?: never;
@@ -28,7 +31,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Parse a condition string into an AST */
+        /**
+         * Parse a condition string into an AST
+         * @description Parses `q` into the AST of the DDBJ Search API, with the display labels of its term IDs and organism IDs. An invalid condition gets 400 with the column of the error, so this operation also checks a condition before it is used. See "Condition DSL" in /llms-full.txt.
+         */
         get: operations["parseCondition"];
         put?: never;
         post?: never;
@@ -49,7 +55,7 @@ export interface paths {
         put?: never;
         /**
          * Apply the clauses of an aggregation element to a condition
-         * @description In `toggle` mode, adds each clause to the condition: joined with OR into the top-level clause group of the same field when one exists, otherwise as a new AND conjunct. When every clause is already present, the clauses are removed instead. In `narrow` mode, adds each clause as a new AND conjunct; with the population of an aggregation as `q`, the result matches the BioSamples or experiments counted by the element.
+         * @description Applies the clauses of an aggregation element to `q`. `toggle` adds the clauses, or removes them when all of them are already in `q`. `narrow` adds each clause as a new `AND` conjunct. See "From elements to conditions" in /llms-full.txt for where a clause goes.
          */
         post: operations["selectElement"];
         delete?: never;
@@ -85,7 +91,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** BioSample entries that match the condition */
+        /**
+         * BioSample entries that match the condition
+         * @description Lists the BioSamples that match `q`, one page at a time. `pagination.total` is the count of `q` in the BioSample unit, and each item lists the experiments of the BioSample that match `q`. An entry type that is not `biosample` gets 404. See "Entries" in /llms-full.txt.
+         */
         get: operations["listEntries"];
         put?: never;
         post?: never;
@@ -102,7 +111,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** A BioSample with its annotations and evidence */
+        /**
+         * A BioSample with its annotations and evidence
+         * @description Returns one BioSample with its original metadata, annotations with evidence, experiments, and BioProjects. The BioSample does not have to be in the population: `inPopulation` of each experiment tells whether the experiment is in the population. `run` is the name of the bsllmner-mk2 run that analyzed the BioSample, not an SRA Run. An accession that is not that of a BioSample gets 404. Find the BioSample of another accession with the accession as a keyword in `q`. See "Entries" in /llms-full.txt.
+         */
         get: operations["getEntry"];
         put?: never;
         post?: never;
@@ -121,7 +133,7 @@ export interface paths {
         };
         /**
          * Counts per element of one dimension
-         * @description Elements default to the terms most often annotated directly, followed by the elements that the condition names, ordered by their count with descendants. For a term dimension, each element also carries the counts of its `mapped_exact` and `mapped_selected` annotations, and `withoutTerm` is the count of the population without a term of the field.
+         * @description Counts the population per element of the dimension `field`, in `unit`. The population is `q`, or `q` without the conjuncts on `field` with `facetSelfExclude`. `total` is the count of the population. An element counts the units that have its value. For a term dimension, the units have the term or one of its descendants. See "Aggregations" and "Default elements" in /llms-full.txt for the elements and their order.
          */
         get: operations["getDistribution"];
         put?: never;
@@ -139,7 +151,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Counts per cell of two dimensions with expected counts */
+        /**
+         * Counts per cell of two dimensions with expected counts
+         * @description Counts the population per pair of an element of `row` and an element of `col`, in `unit`. The population is `q`, or `q` without the conjuncts on `row` and `col` with `facetSelfExclude`. Each cell has the expected count under independence, the ratio and the residual against it, and a classification. See "Expected counts in cross-tabulations" in /llms-full.txt for the formulas and the thresholds.
+         */
         get: operations["getCrosstab"];
         put?: never;
         post?: never;
@@ -158,7 +173,7 @@ export interface paths {
         };
         /**
          * Counts of the condition per BioSample publication year
-         * @description `total` counts the condition per year, computed without the conjuncts on `date_published`. When `field` is given, `series` counts each element of that dimension per year, computed without the conjuncts on that dimension as well. `yearFrom` and `yearTo` limit the years returned without changing the counts or the elements; `firstYear` and `lastYear` are the first and the last year with a match, whatever the limits. A reversed range returns no years. `allEntries` counts the whole population in the same years, without `q`.
+         * @description Counts the population per publication year of the BioSample, in `unit`: `total` for `q`, `series` for each element of `field`, and `allEntries` for the whole population without `q`. With `facetSelfExclude`, `total` leaves out the conjuncts on `date_published`, and `series` also the conjuncts on `field`. Otherwise both count `q`. `yearFrom` and `yearTo` limit the years returned without changing the counts or the elements, and `firstYear` and `lastYear` ignore them. See "Trend" in /llms-full.txt.
          */
         get: operations["getTrend"];
         put?: never;
@@ -176,7 +191,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** BioProjects of the matching BioSamples */
+        /**
+         * BioProjects of the matching BioSamples
+         * @description Lists the BioProjects of the BioSamples in the population. The population is `q`. With `facetSelfExclude`, it is `q` without the conjuncts on `bioproject`. `biosampleCount`, `experimentCount`, and `assays` of a BioProject count only the BioSamples and SRA Experiments of the population, not the whole BioProject. `pagination.total` is the number of BioProjects. See "Aggregations" in /llms-full.txt.
+         */
         get: operations["listProjects"];
         put?: never;
         post?: never;
@@ -195,7 +213,7 @@ export interface paths {
         };
         /**
          * Search the terms annotated in a field, or in every annotation field
-         * @description Hits are ordered by how they match `query`: a label or an ID equal to it, then a synonym equal to it, then a label or an ID that contains it, then only a synonym that contains it. Within each of these, hits are ordered by `count`. Each hit is counted in the population of its own field: with `facetSelfExclude`, the condition without the conjuncts on that field. The hits are chosen in the same population. With an empty `query`, they are the terms assigned directly to the most BioSamples of the population. With a `query`, every term that matches it is a candidate, and the hits within `limit` are the best matches, then the terms assigned directly to the most BioSamples of the population, then of the whole dataset. A broad term counted only through its descendants is therefore still found by a `query`.
+         * @description Searches the terms of a field, or of every annotation field, and counts each hit in `unit`. Hits are ordered by how they match `query`, then by `count`. Each hit is counted in the population of its own field. The population is `q`. With `facetSelfExclude`, it is `q` without the conjuncts on that field. See "Default elements" in /llms-full.txt for the hits that `limit` keeps. Use the `termId` of a hit in a condition.
          */
         get: operations["searchTerms"];
         put?: never;
@@ -213,7 +231,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Child terms of a term annotated in a field */
+        /**
+         * Child terms of a term annotated in a field
+         * @description Lists the direct child terms of `termId` that have a count above 0 in the population, in `unit`, in the order of their direct counts in the whole dataset. `count` of a child includes its descendants. The population is `q`. With `facetSelfExclude`, it is `q` without the conjuncts on `field`. To expand a term of a cross-tabulation, pass its `populationQ` as `q`. See "Aggregations" in /llms-full.txt.
+         */
         get: operations["listTermChildren"];
         put?: never;
         post?: never;
@@ -230,7 +251,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** A term with its synonyms, parents, ontology, and page */
+        /**
+         * A term with its synonyms, parents, ontology, and page
+         * @description Returns one term of the dataset: its label, synonyms, direct parent terms, ontology, and the address of its page. `parents` is empty for a root of an ontology and for a term of an ontology without hierarchy. See "Term hierarchy" in /llms-full.txt.
+         */
         get: operations["getTerm"];
         put?: never;
         post?: never;
@@ -247,7 +271,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Accession list of the matching entries, with a header line and then one accession per line */
+        /**
+         * Accession list of the matching entries, with a header line and then one accession per line
+         * @description Returns every distinct accession of `type` among the entries that match `q`, as plain text: a header line that starts with `#` and names `q` and the dataset version, then one accession per line in ascending order. See "Entries" in /llms-full.txt.
+         */
         get: operations["exportAccessions"];
         put?: never;
         post?: never;
@@ -264,7 +291,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Matching entries as TSV or newline-delimited JSON */
+        /**
+         * Matching entries as TSV or newline-delimited JSON
+         * @description Returns every BioSample that matches `q`, in the order of the entry list, as TSV or as newline-delimited JSON. See "Entries" in /llms-full.txt for the columns and the cells.
+         */
         get: operations["exportEntries"];
         put?: never;
         post?: never;
@@ -283,7 +313,7 @@ export interface paths {
         };
         /**
          * Get service information
-         * @description The name, the version, and the state of the store, for health monitoring. The api starts only with a store that it can open and whose schema version its code reads, so a missing, invalid, or mismatched store stops the process at startup. While the api runs, the response has status 200, and `store` is `ok` if the api can query the store and the store file has the size and the modification time that it had when the api opened it, and `unavailable` otherwise.
+         * @description The name, the version, and the state of the store, for health monitoring. See "Service information" in /llms-full.txt.
          */
         get: operations["getServiceInfo"];
         put?: never;
@@ -298,14 +328,25 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @enum {string} */
+        AccessionType: "biosample" | "sra-experiment" | "sra-run" | "bioproject";
         /** AnnotationValue */
         AnnotationValue: {
-            /** Value */
+            /**
+             * Value
+             * @description The extracted value; null when none was extracted
+             */
             value: string | null;
             status: components["schemas"]["Status"];
-            /** Termid */
+            /**
+             * Termid
+             * @description ID of the mapped term; null when the value has no term
+             */
             termId: string | null;
-            /** Label */
+            /**
+             * Label
+             * @description Label of the mapped term; null when the value has no term
+             */
             label: string | null;
         };
         /** AstBetween */
@@ -361,22 +402,40 @@ export interface components {
         };
         /** Cell */
         Cell: {
-            /** Row */
+            /**
+             * Row
+             * @description Element of the row
+             */
             row: string;
-            /** Col */
+            /**
+             * Col
+             * @description Element of the column
+             */
             col: string;
-            /** Count */
+            /**
+             * Count
+             * @description Count of the units that have both elements
+             */
             count: number;
-            /** Expected */
+            /**
+             * Expected
+             * @description Count that the cell would have if the dimensions were independent; null when the total is zero
+             */
             expected: number | null;
             /**
              * Ratio
              * @description The count divided by the expected count; null when the expected count is null or zero
              */
             ratio: number | null;
-            /** Residual */
+            /**
+             * Residual
+             * @description Adjusted standardized residual of the count against the expected count; null when undefined
+             */
             residual: number | null;
-            /** Classification */
+            /**
+             * Classification
+             * @description `gap`, `under` (under-represented), `over` (over-represented), or null when not classified
+             */
             classification: ("gap" | "under" | "over") | null;
         };
         /**
@@ -438,7 +497,10 @@ export interface components {
             datasetVersion: components["schemas"]["DatasetVersionRef"];
             /** Q */
             q: string | null;
-            /** Populationq */
+            /**
+             * Populationq
+             * @description The condition the counts were computed from
+             */
             populationQ: string | null;
             /** Rowfield */
             rowField: string;
@@ -447,7 +509,10 @@ export interface components {
             unit: components["schemas"]["Unit"];
             /** Facetselfexclude */
             facetSelfExclude: boolean;
-            /** Total */
+            /**
+             * Total
+             * @description Count of the population in the unit, the `N` of the expected counts
+             */
             total: number;
             /** Rows */
             rows: (components["schemas"]["TermElement"] | components["schemas"]["Element"])[];
@@ -489,9 +554,15 @@ export interface components {
              * @description NCBI Taxonomy ID
              */
             identifier: string;
-            /** Name */
+            /**
+             * Name
+             * @description Name of the organism; null when no name is known
+             */
             name: string | null;
-            /** Biosamplecount */
+            /**
+             * Biosamplecount
+             * @description BioSamples of the whole population of the organism
+             */
             biosampleCount: number;
         };
         /** DatasetResponse */
@@ -504,26 +575,39 @@ export interface components {
             version: {
                 [key: string]: unknown;
             };
-            /** Targetassays */
+            /**
+             * Targetassays
+             * @description Target assays of the dataset. They are the values that `library_strategy` accepts in a condition
+             */
             targetAssays: string[];
             /**
              * Assays
              * @description Target assays in descending order of their BioSamples
              */
             assays: components["schemas"]["DatasetAssay"][];
-            /** Fields */
+            /**
+             * Fields
+             * @description Annotation fields, in the order of the select configuration
+             */
             fields: components["schemas"]["FieldDescription"][];
-            /** Dslfields */
+            /**
+             * Dslfields
+             * @description Every field that a condition can name
+             */
             dslFields: components["schemas"]["DslFieldDescription"][];
             /**
              * Statuses
-             * @description Status groups and the statuses under them
+             * @description Status groups and the statuses under them. A condition names a group. An entry and an export report the status of each annotation
              */
             statuses: {
                 [key: string]: components["schemas"]["Status"][];
             };
+            /** @description Counts of the whole population in each counting unit */
             totals: components["schemas"]["Totals"];
-            /** Organisms */
+            /**
+             * Organisms
+             * @description Organisms of the population in descending order of their BioSamples
+             */
             organisms: components["schemas"]["DatasetOrganism"][];
             /**
              * Ontologies
@@ -536,11 +620,20 @@ export interface components {
          * @description Identifies the store a response was computed from. Full details are returned by the dataset endpoint.
          */
         DatasetVersionRef: {
-            /** Name */
+            /**
+             * Name
+             * @description Name of the dataset version
+             */
             name: string;
-            /** Createdat */
+            /**
+             * Createdat
+             * @description Time when the store was built, ISO 8601
+             */
             createdAt: string;
-            /** Model */
+            /**
+             * Model
+             * @description The model that the bsllmner-mk2 runs of the dataset used
+             */
             model: string;
             /**
              * Digest
@@ -561,7 +654,10 @@ export interface components {
             /** Field */
             field: string;
             unit: components["schemas"]["Unit"];
-            /** Facetselfexclude */
+            /**
+             * Facetselfexclude
+             * @description The value of the request parameter
+             */
             facetSelfExclude: boolean;
             /**
              * Total
@@ -578,21 +674,40 @@ export interface components {
         };
         /** DslFieldDescription */
         DslFieldDescription: {
-            /** Name */
+            /**
+             * Name
+             * @description Field name to use in a condition
+             */
             name: string;
+            /** @description Kind of the field. A field of kind `term`, `assay`, `organism`, or `date` can be a dimension */
             kind: components["schemas"]["FieldKind"];
-            /** Operators */
+            /**
+             * Operators
+             * @description `eq` for `field:value`, `between` for `field:[a TO b]`
+             */
             operators: components["schemas"]["Operator"][];
         };
         /** Element */
         Element: {
-            /** Value */
+            /**
+             * Value
+             * @description The element: a term ID, a target assay, an NCBI Taxonomy ID, or a year
+             */
             value: string;
-            /** Label */
+            /**
+             * Label
+             * @description Name to show for the element
+             */
             label: string;
-            /** Clauses */
+            /**
+             * Clauses
+             * @description The clauses that select what the element counts
+             */
             clauses: components["schemas"]["Clause-Output"][];
-            /** Count */
+            /**
+             * Count
+             * @description Count of the units that have the element, in the unit of the request
+             */
             count: number;
         };
         /** EntriesResponse */
@@ -607,14 +722,26 @@ export interface components {
         };
         /** EntryAnnotation */
         EntryAnnotation: {
-            /** Field */
+            /**
+             * Field
+             * @description Annotation field name
+             */
             field: string;
-            /** Value */
+            /**
+             * Value
+             * @description The extracted value; null when none was extracted
+             */
             value: string | null;
             status: components["schemas"]["Status"];
-            /** Termid */
+            /**
+             * Termid
+             * @description ID of the mapped term; null when the value has no term
+             */
             termId: string | null;
-            /** Label */
+            /**
+             * Label
+             * @description Label of the mapped term; null when the value has no term
+             */
             label: string | null;
             /**
              * Clauses
@@ -633,15 +760,27 @@ export interface components {
         };
         /** EntryExperiment */
         EntryExperiment: {
-            /** Accession */
+            /**
+             * Accession
+             * @description SRA Experiment accession
+             */
             accession: string;
             /** Librarystrategy */
             libraryStrategy: string | null;
-            /** Inpopulation */
+            /**
+             * Inpopulation
+             * @description Whether the experiment is in the population
+             */
             inPopulation: boolean;
-            /** Runs */
+            /**
+             * Runs
+             * @description Accessions of the SRA Runs of the experiment
+             */
             runs: string[];
-            /** Chipatlas */
+            /**
+             * Chipatlas
+             * @description Genome assemblies under which ChIP-Atlas processed the experiment
+             */
             chipAtlas: string[];
         };
         /** EntryItem */
@@ -654,24 +793,36 @@ export interface components {
             type: components["schemas"]["EntryType"];
             /**
              * Experiments
-             * @description Experiments of the BioSample that match the condition
+             * @description SRA Experiments of the BioSample that match the condition
              */
             experiments: string[];
             /** Title */
             title: string | null;
             organism: components["schemas"]["Organism"] | null;
-            /** Librarystrategy */
+            /**
+             * Librarystrategy
+             * @description Assays of the matching experiments
+             */
             libraryStrategy: string[];
-            /** Bioprojects */
+            /**
+             * Bioprojects
+             * @description Accessions of the BioProjects of the BioSample
+             */
             bioprojects: string[];
-            /** Datepublished */
+            /**
+             * Datepublished
+             * @description Publication date, `YYYY-MM-DD`
+             */
             datePublished: string | null;
             /**
              * Chipatlas
              * @description Genome assemblies under which ChIP-Atlas processed the experiments
              */
             chipAtlas: string[];
-            /** Annotations */
+            /**
+             * Annotations
+             * @description Annotations per annotation field name
+             */
             annotations: {
                 [key: string]: components["schemas"]["AnnotationValue"][];
             };
@@ -694,11 +845,14 @@ export interface components {
             organism: components["schemas"]["Organism"] | null;
             /** Datepublished */
             datePublished: string | null;
-            /** Run */
+            /**
+             * Run
+             * @description Name of the bsllmner-mk2 run that analyzed the BioSample. It is not an SRA Run
+             */
             run: string;
             /**
              * Metadata
-             * @description Original metadata: the description, attributes, and record
+             * @description Original metadata in the order of the description, the record, and the attributes. `metadataIndex` of an evidence is a position in this list
              */
             metadata: components["schemas"]["MetadataItem"][];
             /** Annotations */
@@ -744,11 +898,20 @@ export interface components {
         EvidenceStrategy: "exact" | "case_insensitive" | "normalized" | "bag_of_words" | "fuzzy" | "ontology_synonym";
         /** FieldDescription */
         FieldDescription: {
-            /** Name */
+            /**
+             * Name
+             * @description Annotation field name, the `<field>` of `<field>_status`
+             */
             name: string;
-            /** Multivalued */
+            /**
+             * Multivalued
+             * @description Whether a BioSample can hold several values in the field
+             */
             multiValued: boolean;
-            /** Ontologies */
+            /**
+             * Ontologies
+             * @description Prefixes of the term IDs that the field uses
+             */
             ontologies: string[];
             /**
              * Mappedbiosamplecount
@@ -800,7 +963,10 @@ export interface components {
              * @description NCBI Taxonomy ID
              */
             identifier: string;
-            /** Name */
+            /**
+             * Name
+             * @description Name of the organism; null when no name is known
+             */
             name: string | null;
         };
         /** Pagination */
@@ -809,9 +975,15 @@ export interface components {
             page: number;
             /** Perpage */
             perPage: number;
-            /** Total */
+            /**
+             * Total
+             * @description Count of all items of the list in its counting unit, not only of this page
+             */
             total: number;
-            /** Hasnext */
+            /**
+             * Hasnext
+             * @description Whether a page after this one has items
+             */
             hasNext: boolean;
         };
         /** ParseResponse */
@@ -883,11 +1055,20 @@ export interface components {
             identifier: string;
             /** Title */
             title: string | null;
-            /** Biosamplecount */
+            /**
+             * Biosamplecount
+             * @description BioSamples of the BioProject in the population
+             */
             biosampleCount: number;
-            /** Experimentcount */
+            /**
+             * Experimentcount
+             * @description SRA Experiments of the BioProject in the population
+             */
             experimentCount: number;
-            /** Assays */
+            /**
+             * Assays
+             * @description Assays of those SRA Experiments, in ascending order
+             */
             assays: string[];
             /** Clauses */
             clauses: components["schemas"]["Clause-Output"][];
@@ -903,6 +1084,7 @@ export interface components {
             populationQ: string | null;
             /** Facetselfexclude */
             facetSelfExclude: boolean;
+            /** @description The order of the items */
             sort: components["schemas"]["ProjectSort"];
             pagination: components["schemas"]["Pagination"];
             /** Items */
@@ -935,6 +1117,7 @@ export interface components {
             description: string;
             /**
              * Store
+             * @description `unavailable` when the api cannot query the store, or the store file changed since it was opened
              * @enum {string}
              */
             store: "ok" | "unavailable";
@@ -956,17 +1139,35 @@ export interface components {
         };
         /** TermElement */
         TermElement: {
-            /** Value */
+            /**
+             * Value
+             * @description The element: a term ID, a target assay, an NCBI Taxonomy ID, or a year
+             */
             value: string;
-            /** Label */
+            /**
+             * Label
+             * @description Name to show for the element
+             */
             label: string;
-            /** Clauses */
+            /**
+             * Clauses
+             * @description The clauses that select what the element counts
+             */
             clauses: components["schemas"]["Clause-Output"][];
-            /** Count */
+            /**
+             * Count
+             * @description Count of the units that have the element, in the unit of the request
+             */
             count: number;
-            /** Countexact */
+            /**
+             * Countexact
+             * @description Count of the units that have the term or a descendant with a `mapped_exact` annotation
+             */
             countExact: number;
-            /** Countselected */
+            /**
+             * Countselected
+             * @description Count of the units that have the term or a descendant with a `mapped_selected` annotation
+             */
             countSelected: number;
             /**
              * Haschildren
@@ -981,13 +1182,22 @@ export interface components {
         };
         /** TermHit */
         TermHit: {
-            /** Field */
+            /**
+             * Field
+             * @description Annotation field of the hit
+             */
             field: string;
-            /** Termid */
+            /**
+             * Termid
+             * @description ID of the term, to use in a condition on the field
+             */
             termId: string;
             /** Label */
             label: string | null;
-            /** Ontology */
+            /**
+             * Ontology
+             * @description Name of the ontology of the term
+             */
             ontology: string;
             /**
              * Path
@@ -996,10 +1206,13 @@ export interface components {
             path: string[];
             /**
              * Descendantcount
-             * @description Descendant terms annotated in the population
+             * @description Descendant terms annotated in the field in the whole dataset, whatever `q` is
              */
             descendantCount: number;
-            /** Count */
+            /**
+             * Count
+             * @description Count of the units in the population of the field that have the term or a descendant
+             */
             count: number;
             /**
              * Matchedsynonym
@@ -1024,7 +1237,10 @@ export interface components {
         };
         /** TermParent */
         TermParent: {
-            /** Termid */
+            /**
+             * Termid
+             * @description ID of the parent term
+             */
             termId: string;
             /** Label */
             label: string | null;
@@ -1032,7 +1248,10 @@ export interface components {
         /** TermResponse */
         TermResponse: {
             datasetVersion: components["schemas"]["DatasetVersionRef"];
-            /** Termid */
+            /**
+             * Termid
+             * @description ID of the term
+             */
             termId: string;
             /** Label */
             label: string | null;
@@ -1075,18 +1294,30 @@ export interface components {
         };
         /** Totals */
         Totals: {
-            /** Biosample */
+            /**
+             * Biosample
+             * @description BioSamples of the whole population
+             */
             biosample: number;
-            /** Experiment */
+            /**
+             * Experiment
+             * @description SRA Experiments of the whole population
+             */
             experiment: number;
-            /** Bioproject */
+            /**
+             * Bioproject
+             * @description BioProjects linked to the BioSamples of the whole population
+             */
             bioproject: number;
         };
         /** TrendPoint */
         TrendPoint: {
             /** Year */
             year: number;
-            /** Count */
+            /**
+             * Count
+             * @description Count, in the unit of the request, of the matches whose BioSample was published in the year
+             */
             count: number;
             /** Clauses */
             clauses: components["schemas"]["Clause-Output"][];
@@ -1099,7 +1330,10 @@ export interface components {
             unit: components["schemas"]["Unit"];
             /** Facetselfexclude */
             facetSelfExclude: boolean;
-            /** Years */
+            /**
+             * Years
+             * @description The years of every list of this response, in ascending order
+             */
             years: number[];
             /**
              * Firstyear
@@ -1141,9 +1375,15 @@ export interface components {
         };
         /** TrendSeries */
         TrendSeries: {
-            /** Value */
+            /**
+             * Value
+             * @description The element of the series dimension
+             */
             value: string;
-            /** Label */
+            /**
+             * Label
+             * @description Name to show for the element
+             */
             label: string;
             /** Clauses */
             clauses: components["schemas"]["Clause-Output"][];
@@ -1202,6 +1442,7 @@ export interface operations {
     parseCondition: {
         parameters: {
             query: {
+                /** @description The condition to parse. It cannot be empty */
                 q: string;
             };
             header?: never;
@@ -1219,7 +1460,17 @@ export interface operations {
                     "application/json": components["schemas"]["ParseResponse"];
                 };
             };
-            /** @description Bad Request (the slug of `type` is one of `unexpected-token`, `unknown-field`, `invalid-date-format`, `invalid-operator-for-field`, `invalid-value`, `nest-depth-exceeded`, `missing-value`) */
+            /**
+             * @description Bad Request. The slug that ends `type` is one of:
+             *
+             *     - `unexpected-token`: The condition does not parse, is longer than 4096 characters, or is blank where a condition is required, or a keyword has a wildcard. Fix the condition at the column that `detail` gives. Quote a value that has a colon or a space. See "Grammar" in /llms-full.txt.
+             *     - `unknown-field`: A condition, a clause, or a parameter (`field`, `row`, `col`) names a field that the dataset does not have. Use a field that `dslFields` of `GET /api/dataset` lists.
+             *     - `invalid-date-format`: A date is not a calendar date in the form `YYYY-MM-DD`. Write the date as `YYYY-MM-DD`, such as `2020-12-31`. See "Fields" in /llms-full.txt.
+             *     - `invalid-operator-for-field`: The form of a value does not fit the field, such as a range on a field other than `date_published`. Use `field:value` for the field, or `date_published:[a TO b]` for a range. See "Fields" in /llms-full.txt.
+             *     - `invalid-value`: A value is not allowed for the field: a status that is not a status group, an assay that the dataset does not have, a term value that is not a term ID, an organism that is not a number, a keyword without a letter or a digit, or keywords over their limits. Use the values that `detail` lists. Find a term ID with `GET /api/terms`. See "Fields" and "Keywords" in /llms-full.txt.
+             *     - `nest-depth-exceeded`: Groups nest deeper than 5 levels, or the condition has more than 512 nodes. Flatten the groups or split the condition. See "Limits" in /llms-full.txt.
+             *     - `missing-value`: A clause has an empty value. Give the clause a value. See "Fields" in /llms-full.txt.
+             */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -1270,7 +1521,18 @@ export interface operations {
                     "application/json": components["schemas"]["ConditionResponse"];
                 };
             };
-            /** @description Bad Request (the slug of `type` is one of `unexpected-token`, `unknown-field`, `invalid-date-format`, `invalid-operator-for-field`, `invalid-value`, `nest-depth-exceeded`, `missing-value`, `invalid-ast`) */
+            /**
+             * @description Bad Request. The slug that ends `type` is one of:
+             *
+             *     - `unexpected-token`: The condition does not parse, is longer than 4096 characters, or is blank where a condition is required, or a keyword has a wildcard. Fix the condition at the column that `detail` gives. Quote a value that has a colon or a space. See "Grammar" in /llms-full.txt.
+             *     - `unknown-field`: A condition, a clause, or a parameter (`field`, `row`, `col`) names a field that the dataset does not have. Use a field that `dslFields` of `GET /api/dataset` lists.
+             *     - `invalid-date-format`: A date is not a calendar date in the form `YYYY-MM-DD`. Write the date as `YYYY-MM-DD`, such as `2020-12-31`. See "Fields" in /llms-full.txt.
+             *     - `invalid-operator-for-field`: The form of a value does not fit the field, such as a range on a field other than `date_published`. Use `field:value` for the field, or `date_published:[a TO b]` for a range. See "Fields" in /llms-full.txt.
+             *     - `invalid-value`: A value is not allowed for the field: a status that is not a status group, an assay that the dataset does not have, a term value that is not a term ID, an organism that is not a number, a keyword without a letter or a digit, or keywords over their limits. Use the values that `detail` lists. Find a term ID with `GET /api/terms`. See "Fields" and "Keywords" in /llms-full.txt.
+             *     - `nest-depth-exceeded`: Groups nest deeper than 5 levels, or the condition has more than 512 nodes. Flatten the groups or split the condition. See "Limits" in /llms-full.txt.
+             *     - `missing-value`: A clause has an empty value. Give the clause a value. See "Fields" in /llms-full.txt.
+             *     - `invalid-ast`: A clause has neither `value`, nor `from` and `to` together. Give each clause `value`, or both `from` and `to`.
+             */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -1321,7 +1583,17 @@ export interface operations {
                     "application/json": components["schemas"]["ConditionResponse"];
                 };
             };
-            /** @description Bad Request (the slug of `type` is one of `unexpected-token`, `unknown-field`, `invalid-date-format`, `invalid-operator-for-field`, `invalid-value`, `nest-depth-exceeded`, `missing-value`) */
+            /**
+             * @description Bad Request. The slug that ends `type` is one of:
+             *
+             *     - `unexpected-token`: The condition does not parse, is longer than 4096 characters, or is blank where a condition is required, or a keyword has a wildcard. Fix the condition at the column that `detail` gives. Quote a value that has a colon or a space. See "Grammar" in /llms-full.txt.
+             *     - `unknown-field`: A condition, a clause, or a parameter (`field`, `row`, `col`) names a field that the dataset does not have. Use a field that `dslFields` of `GET /api/dataset` lists.
+             *     - `invalid-date-format`: A date is not a calendar date in the form `YYYY-MM-DD`. Write the date as `YYYY-MM-DD`, such as `2020-12-31`. See "Fields" in /llms-full.txt.
+             *     - `invalid-operator-for-field`: The form of a value does not fit the field, such as a range on a field other than `date_published`. Use `field:value` for the field, or `date_published:[a TO b]` for a range. See "Fields" in /llms-full.txt.
+             *     - `invalid-value`: A value is not allowed for the field: a status that is not a status group, an assay that the dataset does not have, a term value that is not a term ID, an organism that is not a number, a keyword without a letter or a digit, or keywords over their limits. Use the values that `detail` lists. Find a term ID with `GET /api/terms`. See "Fields" and "Keywords" in /llms-full.txt.
+             *     - `nest-depth-exceeded`: Groups nest deeper than 5 levels, or the condition has more than 512 nodes. Flatten the groups or split the condition. See "Limits" in /llms-full.txt.
+             *     - `missing-value`: A clause has an empty value. Give the clause a value. See "Fields" in /llms-full.txt.
+             */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -1353,14 +1625,17 @@ export interface operations {
     listEntries: {
         parameters: {
             query?: {
-                /** @description Condition in the DSL. Omitted or empty means the whole population. */
+                /** @description Condition in the condition language: `field:value`, `field:"phrase"`, `field:[a TO b]`, keywords without a field, `AND`, `OR`, `NOT`, and parentheses. Omitted or empty means the whole population. The value of an annotation term field is a term ID, which `GET /api/terms` finds, and it matches the term and its descendants. The value of `<field>_status` is the group `mapped`, `unmapped`, or `no_value`. The value of `library_strategy` is a target assay of `GET /api/dataset`. A keyword matches the searchable text of a BioSample, or the entry that has the accession that it spells. See "Condition DSL" in /llms-full.txt */
                 q?: string | null;
+                /** @description Page number, starting at 1. A page after the last page has empty `items` */
                 page?: number;
+                /** @description Items per page, from 1 to 100 */
                 perPage?: number;
             };
             header?: never;
             path: {
-                type: "biosample";
+                /** @description Entry type. Only `biosample` has entries */
+                type: components["schemas"]["EntryType"];
             };
             cookie?: never;
         };
@@ -1375,7 +1650,17 @@ export interface operations {
                     "application/json": components["schemas"]["EntriesResponse"];
                 };
             };
-            /** @description Bad Request (the slug of `type` is one of `unexpected-token`, `unknown-field`, `invalid-date-format`, `invalid-operator-for-field`, `invalid-value`, `nest-depth-exceeded`, `missing-value`) */
+            /**
+             * @description Bad Request. The slug that ends `type` is one of:
+             *
+             *     - `unexpected-token`: The condition does not parse, is longer than 4096 characters, or is blank where a condition is required, or a keyword has a wildcard. Fix the condition at the column that `detail` gives. Quote a value that has a colon or a space. See "Grammar" in /llms-full.txt.
+             *     - `unknown-field`: A condition, a clause, or a parameter (`field`, `row`, `col`) names a field that the dataset does not have. Use a field that `dslFields` of `GET /api/dataset` lists.
+             *     - `invalid-date-format`: A date is not a calendar date in the form `YYYY-MM-DD`. Write the date as `YYYY-MM-DD`, such as `2020-12-31`. See "Fields" in /llms-full.txt.
+             *     - `invalid-operator-for-field`: The form of a value does not fit the field, such as a range on a field other than `date_published`. Use `field:value` for the field, or `date_published:[a TO b]` for a range. See "Fields" in /llms-full.txt.
+             *     - `invalid-value`: A value is not allowed for the field: a status that is not a status group, an assay that the dataset does not have, a term value that is not a term ID, an organism that is not a number, a keyword without a letter or a digit, or keywords over their limits. Use the values that `detail` lists. Find a term ID with `GET /api/terms`. See "Fields" and "Keywords" in /llms-full.txt.
+             *     - `nest-depth-exceeded`: Groups nest deeper than 5 levels, or the condition has more than 512 nodes. Flatten the groups or split the condition. See "Limits" in /llms-full.txt.
+             *     - `missing-value`: A clause has an empty value. Give the clause a value. See "Fields" in /llms-full.txt.
+             */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -1411,7 +1696,13 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Service Unavailable (the slug of `type` is one of `server-busy`, `query-timeout`, `query-too-large`) */
+            /**
+             * @description Service Unavailable. The slug that ends `type` is one of:
+             *
+             *     - `server-busy`: The api has no free slot for the request after waiting, or too many requests wait already. Wait for the `Retry-After` seconds and send the request again.
+             *     - `query-timeout`: The query took longer than the time limit of a request and was stopped. Narrow the condition. The same request does not finish by itself.
+             *     - `query-too-large`: The query needs more memory or temporary disk space than a worker may use and was stopped. Narrow the condition, or ask for fewer elements.
+             */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -1427,6 +1718,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description BioSample accession, such as `SAMN14864678` */
                 accession: string;
             };
             cookie?: never;
@@ -1474,16 +1766,17 @@ export interface operations {
     getDistribution: {
         parameters: {
             query: {
+                /** @description Dimension of the counts. An annotation term field, `library_strategy`, `organism_id`, or `date_published`. `dslFields` of `GET /api/dataset` lists the fields with their kinds `term`, `assay`, `organism`, and `date` */
                 field: string;
-                /** @description Condition in the DSL. Omitted or empty means the whole population. */
+                /** @description Condition in the condition language: `field:value`, `field:"phrase"`, `field:[a TO b]`, keywords without a field, `AND`, `OR`, `NOT`, and parentheses. Omitted or empty means the whole population. The value of an annotation term field is a term ID, which `GET /api/terms` finds, and it matches the term and its descendants. The value of `<field>_status` is the group `mapped`, `unmapped`, or `no_value`. The value of `library_strategy` is a target assay of `GET /api/dataset`. A keyword matches the searchable text of a BioSample, or the entry that has the accession that it spells. See "Condition DSL" in /llms-full.txt */
                 q?: string | null;
-                /** @description Counting unit */
+                /** @description Counting unit. `biosample` counts distinct BioSamples, `sra-experiment` distinct SRA Experiments, and `bioproject` distinct BioProjects. See "Counting" in /llms-full.txt */
                 unit?: components["schemas"]["Unit"];
-                /** @description Compute without the top-level conjuncts of `q` that are only on the dimensions of the aggregation */
+                /** @description If true, compute without the top-level conjuncts of `q` that are only on the dimensions of this operation, as the screens of the UI do. The description of the operation names its dimensions. If false, compute from `q` itself. See "Self-exclusion" in /llms-full.txt */
                 facetSelfExclude?: boolean;
-                /** @description Comma-separated elements; omitted means the top elements */
+                /** @description Comma-separated elements, at most 100. An element is a term ID for an annotation term field, a target assay for `library_strategy`, an NCBI Taxonomy ID for `organism_id`, and a year for `date_published`. See "Default elements" in /llms-full.txt */
                 elements?: string | null;
-                /** @description Number of elements when they are not named */
+                /** @description Number of default elements, from 1 to 200, when `elements` is omitted. The elements that `q` names come in addition. It does not apply to `date_published`, which has every year */
                 limit?: number;
             };
             header?: never;
@@ -1501,7 +1794,20 @@ export interface operations {
                     "application/json": components["schemas"]["DistributionResponse"];
                 };
             };
-            /** @description Bad Request (the slug of `type` is one of `unexpected-token`, `unknown-field`, `invalid-date-format`, `invalid-operator-for-field`, `invalid-value`, `nest-depth-exceeded`, `missing-value`, `invalid-dimension`, `invalid-element`, `too-many-elements`) */
+            /**
+             * @description Bad Request. The slug that ends `type` is one of:
+             *
+             *     - `unexpected-token`: The condition does not parse, is longer than 4096 characters, or is blank where a condition is required, or a keyword has a wildcard. Fix the condition at the column that `detail` gives. Quote a value that has a colon or a space. See "Grammar" in /llms-full.txt.
+             *     - `unknown-field`: A condition, a clause, or a parameter (`field`, `row`, `col`) names a field that the dataset does not have. Use a field that `dslFields` of `GET /api/dataset` lists.
+             *     - `invalid-date-format`: A date is not a calendar date in the form `YYYY-MM-DD`. Write the date as `YYYY-MM-DD`, such as `2020-12-31`. See "Fields" in /llms-full.txt.
+             *     - `invalid-operator-for-field`: The form of a value does not fit the field, such as a range on a field other than `date_published`. Use `field:value` for the field, or `date_published:[a TO b]` for a range. See "Fields" in /llms-full.txt.
+             *     - `invalid-value`: A value is not allowed for the field: a status that is not a status group, an assay that the dataset does not have, a term value that is not a term ID, an organism that is not a number, a keyword without a letter or a digit, or keywords over their limits. Use the values that `detail` lists. Find a term ID with `GET /api/terms`. See "Fields" and "Keywords" in /llms-full.txt.
+             *     - `nest-depth-exceeded`: Groups nest deeper than 5 levels, or the condition has more than 512 nodes. Flatten the groups or split the condition. See "Limits" in /llms-full.txt.
+             *     - `missing-value`: A clause has an empty value. Give the clause a value. See "Fields" in /llms-full.txt.
+             *     - `invalid-dimension`: A field exists but cannot be the dimension of the operation, or the two dimensions of a cross-tabulation are the same field. Choose from the fields that `detail` lists.
+             *     - `invalid-element`: A named element does not fit its dimension, such as an organism that is not an NCBI Taxonomy ID or a year that is not a number. Name elements of the form that `detail` gives, or omit them to get the default elements.
+             *     - `too-many-elements`: A request names more elements of one dimension than the limit of 100. Name at most 100 elements.
+             */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -1528,7 +1834,13 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Service Unavailable (the slug of `type` is one of `server-busy`, `query-timeout`, `query-too-large`) */
+            /**
+             * @description Service Unavailable. The slug that ends `type` is one of:
+             *
+             *     - `server-busy`: The api has no free slot for the request after waiting, or too many requests wait already. Wait for the `Retry-After` seconds and send the request again.
+             *     - `query-timeout`: The query took longer than the time limit of a request and was stopped. Narrow the condition. The same request does not finish by itself.
+             *     - `query-too-large`: The query needs more memory or temporary disk space than a worker may use and was stopped. Narrow the condition, or ask for fewer elements.
+             */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -1542,19 +1854,21 @@ export interface operations {
     getCrosstab: {
         parameters: {
             query: {
+                /** @description Dimension of the rows. An annotation term field, `library_strategy`, `organism_id`, or `date_published`. `dslFields` of `GET /api/dataset` lists the fields with their kinds `term`, `assay`, `organism`, and `date` */
                 row: string;
+                /** @description Dimension of the columns, a field other than `row`. An annotation term field, `library_strategy`, `organism_id`, or `date_published`. `dslFields` of `GET /api/dataset` lists the fields with their kinds `term`, `assay`, `organism`, and `date` */
                 col: string;
-                /** @description Condition in the DSL. Omitted or empty means the whole population. */
+                /** @description Condition in the condition language: `field:value`, `field:"phrase"`, `field:[a TO b]`, keywords without a field, `AND`, `OR`, `NOT`, and parentheses. Omitted or empty means the whole population. The value of an annotation term field is a term ID, which `GET /api/terms` finds, and it matches the term and its descendants. The value of `<field>_status` is the group `mapped`, `unmapped`, or `no_value`. The value of `library_strategy` is a target assay of `GET /api/dataset`. A keyword matches the searchable text of a BioSample, or the entry that has the accession that it spells. See "Condition DSL" in /llms-full.txt */
                 q?: string | null;
-                /** @description Counting unit */
+                /** @description Counting unit. `biosample` counts distinct BioSamples, `sra-experiment` distinct SRA Experiments, and `bioproject` distinct BioProjects. See "Counting" in /llms-full.txt */
                 unit?: components["schemas"]["Unit"];
-                /** @description Compute without the top-level conjuncts of `q` that are only on the dimensions of the aggregation */
+                /** @description If true, compute without the top-level conjuncts of `q` that are only on the dimensions of this operation, as the screens of the UI do. The description of the operation names its dimensions. If false, compute from `q` itself. See "Self-exclusion" in /llms-full.txt */
                 facetSelfExclude?: boolean;
-                /** @description Comma-separated row elements; omitted means the top rows */
+                /** @description Elements of the rows. Omitted means the default elements. Comma-separated elements, at most 100. An element is a term ID for an annotation term field, a target assay for `library_strategy`, an NCBI Taxonomy ID for `organism_id`, and a year for `date_published`. See "Default elements" in /llms-full.txt */
                 rowElements?: string | null;
-                /** @description Comma-separated column elements; omitted means the top columns */
+                /** @description Elements of the columns. Omitted means the default elements. Comma-separated elements, at most 100. An element is a term ID for an annotation term field, a target assay for `library_strategy`, an NCBI Taxonomy ID for `organism_id`, and a year for `date_published`. See "Default elements" in /llms-full.txt */
                 colElements?: string | null;
-                /** @description Number of elements of each axis when they are not named */
+                /** @description Number of default elements of each axis, from 1 to 100, when the elements of the axis are omitted. The elements that `q` names come in addition */
                 limit?: number;
             };
             header?: never;
@@ -1572,7 +1886,20 @@ export interface operations {
                     "application/json": components["schemas"]["CrosstabResponse"];
                 };
             };
-            /** @description Bad Request (the slug of `type` is one of `unexpected-token`, `unknown-field`, `invalid-date-format`, `invalid-operator-for-field`, `invalid-value`, `nest-depth-exceeded`, `missing-value`, `invalid-dimension`, `invalid-element`, `too-many-elements`) */
+            /**
+             * @description Bad Request. The slug that ends `type` is one of:
+             *
+             *     - `unexpected-token`: The condition does not parse, is longer than 4096 characters, or is blank where a condition is required, or a keyword has a wildcard. Fix the condition at the column that `detail` gives. Quote a value that has a colon or a space. See "Grammar" in /llms-full.txt.
+             *     - `unknown-field`: A condition, a clause, or a parameter (`field`, `row`, `col`) names a field that the dataset does not have. Use a field that `dslFields` of `GET /api/dataset` lists.
+             *     - `invalid-date-format`: A date is not a calendar date in the form `YYYY-MM-DD`. Write the date as `YYYY-MM-DD`, such as `2020-12-31`. See "Fields" in /llms-full.txt.
+             *     - `invalid-operator-for-field`: The form of a value does not fit the field, such as a range on a field other than `date_published`. Use `field:value` for the field, or `date_published:[a TO b]` for a range. See "Fields" in /llms-full.txt.
+             *     - `invalid-value`: A value is not allowed for the field: a status that is not a status group, an assay that the dataset does not have, a term value that is not a term ID, an organism that is not a number, a keyword without a letter or a digit, or keywords over their limits. Use the values that `detail` lists. Find a term ID with `GET /api/terms`. See "Fields" and "Keywords" in /llms-full.txt.
+             *     - `nest-depth-exceeded`: Groups nest deeper than 5 levels, or the condition has more than 512 nodes. Flatten the groups or split the condition. See "Limits" in /llms-full.txt.
+             *     - `missing-value`: A clause has an empty value. Give the clause a value. See "Fields" in /llms-full.txt.
+             *     - `invalid-dimension`: A field exists but cannot be the dimension of the operation, or the two dimensions of a cross-tabulation are the same field. Choose from the fields that `detail` lists.
+             *     - `invalid-element`: A named element does not fit its dimension, such as an organism that is not an NCBI Taxonomy ID or a year that is not a number. Name elements of the form that `detail` gives, or omit them to get the default elements.
+             *     - `too-many-elements`: A request names more elements of one dimension than the limit of 100. Name at most 100 elements.
+             */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -1599,7 +1926,13 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Service Unavailable (the slug of `type` is one of `server-busy`, `query-timeout`, `query-too-large`) */
+            /**
+             * @description Service Unavailable. The slug that ends `type` is one of:
+             *
+             *     - `server-busy`: The api has no free slot for the request after waiting, or too many requests wait already. Wait for the `Retry-After` seconds and send the request again.
+             *     - `query-timeout`: The query took longer than the time limit of a request and was stopped. Narrow the condition. The same request does not finish by itself.
+             *     - `query-too-large`: The query needs more memory or temporary disk space than a worker may use and was stopped. Narrow the condition, or ask for fewer elements.
+             */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -1613,21 +1946,21 @@ export interface operations {
     getTrend: {
         parameters: {
             query?: {
-                /** @description Dimension of the series; omitted means no series */
+                /** @description Dimension of the series: an annotation term field, `library_strategy`, or `organism_id`. Omitted means no series. `dslFields` of `GET /api/dataset` lists the fields with their kinds */
                 field?: string | null;
-                /** @description Condition in the DSL. Omitted or empty means the whole population. */
+                /** @description Condition in the condition language: `field:value`, `field:"phrase"`, `field:[a TO b]`, keywords without a field, `AND`, `OR`, `NOT`, and parentheses. Omitted or empty means the whole population. The value of an annotation term field is a term ID, which `GET /api/terms` finds, and it matches the term and its descendants. The value of `<field>_status` is the group `mapped`, `unmapped`, or `no_value`. The value of `library_strategy` is a target assay of `GET /api/dataset`. A keyword matches the searchable text of a BioSample, or the entry that has the accession that it spells. See "Condition DSL" in /llms-full.txt */
                 q?: string | null;
-                /** @description Counting unit */
+                /** @description Counting unit. `biosample` counts distinct BioSamples, `sra-experiment` distinct SRA Experiments, and `bioproject` distinct BioProjects. See "Counting" in /llms-full.txt */
                 unit?: components["schemas"]["Unit"];
-                /** @description Compute without the top-level conjuncts of `q` that are only on the dimensions of the aggregation */
+                /** @description If true, compute without the top-level conjuncts of `q` that are only on the dimensions of this operation, as the screens of the UI do. The description of the operation names its dimensions. If false, compute from `q` itself. See "Self-exclusion" in /llms-full.txt */
                 facetSelfExclude?: boolean;
-                /** @description Comma-separated elements; omitted means the top elements */
+                /** @description Elements of the series. Comma-separated elements, at most 100. An element is a term ID for an annotation term field, a target assay for `library_strategy`, and an NCBI Taxonomy ID for `organism_id`. See "Default elements" in /llms-full.txt */
                 elements?: string | null;
-                /** @description Number of elements when they are not named */
+                /** @description Number of default elements, from 1 to 200, when `elements` is omitted. The elements that `q` names come in addition */
                 limit?: number;
-                /** @description First year to return */
+                /** @description First year to return; omitted means no lower limit */
                 yearFrom?: number | null;
-                /** @description Last year to return */
+                /** @description Last year to return; omitted means no upper limit */
                 yearTo?: number | null;
             };
             header?: never;
@@ -1645,7 +1978,20 @@ export interface operations {
                     "application/json": components["schemas"]["TrendResponse"];
                 };
             };
-            /** @description Bad Request (the slug of `type` is one of `unexpected-token`, `unknown-field`, `invalid-date-format`, `invalid-operator-for-field`, `invalid-value`, `nest-depth-exceeded`, `missing-value`, `invalid-dimension`, `invalid-element`, `too-many-elements`) */
+            /**
+             * @description Bad Request. The slug that ends `type` is one of:
+             *
+             *     - `unexpected-token`: The condition does not parse, is longer than 4096 characters, or is blank where a condition is required, or a keyword has a wildcard. Fix the condition at the column that `detail` gives. Quote a value that has a colon or a space. See "Grammar" in /llms-full.txt.
+             *     - `unknown-field`: A condition, a clause, or a parameter (`field`, `row`, `col`) names a field that the dataset does not have. Use a field that `dslFields` of `GET /api/dataset` lists.
+             *     - `invalid-date-format`: A date is not a calendar date in the form `YYYY-MM-DD`. Write the date as `YYYY-MM-DD`, such as `2020-12-31`. See "Fields" in /llms-full.txt.
+             *     - `invalid-operator-for-field`: The form of a value does not fit the field, such as a range on a field other than `date_published`. Use `field:value` for the field, or `date_published:[a TO b]` for a range. See "Fields" in /llms-full.txt.
+             *     - `invalid-value`: A value is not allowed for the field: a status that is not a status group, an assay that the dataset does not have, a term value that is not a term ID, an organism that is not a number, a keyword without a letter or a digit, or keywords over their limits. Use the values that `detail` lists. Find a term ID with `GET /api/terms`. See "Fields" and "Keywords" in /llms-full.txt.
+             *     - `nest-depth-exceeded`: Groups nest deeper than 5 levels, or the condition has more than 512 nodes. Flatten the groups or split the condition. See "Limits" in /llms-full.txt.
+             *     - `missing-value`: A clause has an empty value. Give the clause a value. See "Fields" in /llms-full.txt.
+             *     - `invalid-dimension`: A field exists but cannot be the dimension of the operation, or the two dimensions of a cross-tabulation are the same field. Choose from the fields that `detail` lists.
+             *     - `invalid-element`: A named element does not fit its dimension, such as an organism that is not an NCBI Taxonomy ID or a year that is not a number. Name elements of the form that `detail` gives, or omit them to get the default elements.
+             *     - `too-many-elements`: A request names more elements of one dimension than the limit of 100. Name at most 100 elements.
+             */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -1672,7 +2018,13 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Service Unavailable (the slug of `type` is one of `server-busy`, `query-timeout`, `query-too-large`) */
+            /**
+             * @description Service Unavailable. The slug that ends `type` is one of:
+             *
+             *     - `server-busy`: The api has no free slot for the request after waiting, or too many requests wait already. Wait for the `Retry-After` seconds and send the request again.
+             *     - `query-timeout`: The query took longer than the time limit of a request and was stopped. Narrow the condition. The same request does not finish by itself.
+             *     - `query-too-large`: The query needs more memory or temporary disk space than a worker may use and was stopped. Narrow the condition, or ask for fewer elements.
+             */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -1686,12 +2038,15 @@ export interface operations {
     listProjects: {
         parameters: {
             query?: {
-                /** @description Condition in the DSL. Omitted or empty means the whole population. */
+                /** @description Condition in the condition language: `field:value`, `field:"phrase"`, `field:[a TO b]`, keywords without a field, `AND`, `OR`, `NOT`, and parentheses. Omitted or empty means the whole population. The value of an annotation term field is a term ID, which `GET /api/terms` finds, and it matches the term and its descendants. The value of `<field>_status` is the group `mapped`, `unmapped`, or `no_value`. The value of `library_strategy` is a target assay of `GET /api/dataset`. A keyword matches the searchable text of a BioSample, or the entry that has the accession that it spells. See "Condition DSL" in /llms-full.txt */
                 q?: string | null;
-                /** @description Compute without the top-level conjuncts of `q` that are only on the dimensions of the aggregation */
+                /** @description If true, compute without the top-level conjuncts of `q` that are only on the dimensions of this operation, as the screens of the UI do. The description of the operation names its dimensions. If false, compute from `q` itself. See "Self-exclusion" in /llms-full.txt */
                 facetSelfExclude?: boolean;
+                /** @description Order of the projects: the count and the direction. Equal counts are ordered by the other count in the same direction, then by the accession */
                 sort?: components["schemas"]["ProjectSort"];
+                /** @description Page number, starting at 1. A page after the last page has empty `items` */
                 page?: number;
+                /** @description Items per page, from 1 to 100 */
                 perPage?: number;
             };
             header?: never;
@@ -1709,7 +2064,17 @@ export interface operations {
                     "application/json": components["schemas"]["ProjectsResponse"];
                 };
             };
-            /** @description Bad Request (the slug of `type` is one of `unexpected-token`, `unknown-field`, `invalid-date-format`, `invalid-operator-for-field`, `invalid-value`, `nest-depth-exceeded`, `missing-value`) */
+            /**
+             * @description Bad Request. The slug that ends `type` is one of:
+             *
+             *     - `unexpected-token`: The condition does not parse, is longer than 4096 characters, or is blank where a condition is required, or a keyword has a wildcard. Fix the condition at the column that `detail` gives. Quote a value that has a colon or a space. See "Grammar" in /llms-full.txt.
+             *     - `unknown-field`: A condition, a clause, or a parameter (`field`, `row`, `col`) names a field that the dataset does not have. Use a field that `dslFields` of `GET /api/dataset` lists.
+             *     - `invalid-date-format`: A date is not a calendar date in the form `YYYY-MM-DD`. Write the date as `YYYY-MM-DD`, such as `2020-12-31`. See "Fields" in /llms-full.txt.
+             *     - `invalid-operator-for-field`: The form of a value does not fit the field, such as a range on a field other than `date_published`. Use `field:value` for the field, or `date_published:[a TO b]` for a range. See "Fields" in /llms-full.txt.
+             *     - `invalid-value`: A value is not allowed for the field: a status that is not a status group, an assay that the dataset does not have, a term value that is not a term ID, an organism that is not a number, a keyword without a letter or a digit, or keywords over their limits. Use the values that `detail` lists. Find a term ID with `GET /api/terms`. See "Fields" and "Keywords" in /llms-full.txt.
+             *     - `nest-depth-exceeded`: Groups nest deeper than 5 levels, or the condition has more than 512 nodes. Flatten the groups or split the condition. See "Limits" in /llms-full.txt.
+             *     - `missing-value`: A clause has an empty value. Give the clause a value. See "Fields" in /llms-full.txt.
+             */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -1736,7 +2101,13 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Service Unavailable (the slug of `type` is one of `server-busy`, `query-timeout`, `query-too-large`) */
+            /**
+             * @description Service Unavailable. The slug that ends `type` is one of:
+             *
+             *     - `server-busy`: The api has no free slot for the request after waiting, or too many requests wait already. Wait for the `Retry-After` seconds and send the request again.
+             *     - `query-timeout`: The query took longer than the time limit of a request and was stopped. Narrow the condition. The same request does not finish by itself.
+             *     - `query-too-large`: The query needs more memory or temporary disk space than a worker may use and was stopped. Narrow the condition, or ask for fewer elements.
+             */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -1750,15 +2121,17 @@ export interface operations {
     searchTerms: {
         parameters: {
             query?: {
-                /** @description Annotation field; omitted means every annotation field */
+                /** @description Annotation field, such as `disease`; omitted means every annotation field */
                 field?: string | null;
-                /** @description Substring of a label, synonym, or term ID; empty lists the most annotated terms */
+                /** @description Text to find in the label, a synonym, or the ID of a term, ignoring letter case; empty lists the most annotated terms. This is not the condition `q` */
                 query?: string;
-                /** @description Condition in the DSL. Omitted or empty means the whole population. */
+                /** @description Condition in the condition language: `field:value`, `field:"phrase"`, `field:[a TO b]`, keywords without a field, `AND`, `OR`, `NOT`, and parentheses. Omitted or empty means the whole population. The value of an annotation term field is a term ID, which `GET /api/terms` finds, and it matches the term and its descendants. The value of `<field>_status` is the group `mapped`, `unmapped`, or `no_value`. The value of `library_strategy` is a target assay of `GET /api/dataset`. A keyword matches the searchable text of a BioSample, or the entry that has the accession that it spells. See "Condition DSL" in /llms-full.txt */
                 q?: string | null;
+                /** @description Counting unit. `biosample` counts distinct BioSamples, `sra-experiment` distinct SRA Experiments, and `bioproject` distinct BioProjects. See "Counting" in /llms-full.txt */
                 unit?: components["schemas"]["Unit"];
-                /** @description Compute without the top-level conjuncts of `q` that are only on the dimensions of the aggregation */
+                /** @description If true, compute without the top-level conjuncts of `q` that are only on the dimensions of this operation, as the screens of the UI do. The description of the operation names its dimensions. If false, compute from `q` itself. See "Self-exclusion" in /llms-full.txt */
                 facetSelfExclude?: boolean;
+                /** @description Number of hits to return, from 1 to 100 */
                 limit?: number;
             };
             header?: never;
@@ -1776,7 +2149,18 @@ export interface operations {
                     "application/json": components["schemas"]["TermsResponse"];
                 };
             };
-            /** @description Bad Request (the slug of `type` is one of `unexpected-token`, `unknown-field`, `invalid-date-format`, `invalid-operator-for-field`, `invalid-value`, `nest-depth-exceeded`, `missing-value`, `invalid-dimension`) */
+            /**
+             * @description Bad Request. The slug that ends `type` is one of:
+             *
+             *     - `unexpected-token`: The condition does not parse, is longer than 4096 characters, or is blank where a condition is required, or a keyword has a wildcard. Fix the condition at the column that `detail` gives. Quote a value that has a colon or a space. See "Grammar" in /llms-full.txt.
+             *     - `unknown-field`: A condition, a clause, or a parameter (`field`, `row`, `col`) names a field that the dataset does not have. Use a field that `dslFields` of `GET /api/dataset` lists.
+             *     - `invalid-date-format`: A date is not a calendar date in the form `YYYY-MM-DD`. Write the date as `YYYY-MM-DD`, such as `2020-12-31`. See "Fields" in /llms-full.txt.
+             *     - `invalid-operator-for-field`: The form of a value does not fit the field, such as a range on a field other than `date_published`. Use `field:value` for the field, or `date_published:[a TO b]` for a range. See "Fields" in /llms-full.txt.
+             *     - `invalid-value`: A value is not allowed for the field: a status that is not a status group, an assay that the dataset does not have, a term value that is not a term ID, an organism that is not a number, a keyword without a letter or a digit, or keywords over their limits. Use the values that `detail` lists. Find a term ID with `GET /api/terms`. See "Fields" and "Keywords" in /llms-full.txt.
+             *     - `nest-depth-exceeded`: Groups nest deeper than 5 levels, or the condition has more than 512 nodes. Flatten the groups or split the condition. See "Limits" in /llms-full.txt.
+             *     - `missing-value`: A clause has an empty value. Give the clause a value. See "Fields" in /llms-full.txt.
+             *     - `invalid-dimension`: A field exists but cannot be the dimension of the operation, or the two dimensions of a cross-tabulation are the same field. Choose from the fields that `detail` lists.
+             */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -1803,7 +2187,13 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Service Unavailable (the slug of `type` is one of `server-busy`, `query-timeout`, `query-too-large`) */
+            /**
+             * @description Service Unavailable. The slug that ends `type` is one of:
+             *
+             *     - `server-busy`: The api has no free slot for the request after waiting, or too many requests wait already. Wait for the `Retry-After` seconds and send the request again.
+             *     - `query-timeout`: The query took longer than the time limit of a request and was stopped. Narrow the condition. The same request does not finish by itself.
+             *     - `query-too-large`: The query needs more memory or temporary disk space than a worker may use and was stopped. Narrow the condition, or ask for fewer elements.
+             */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -1817,12 +2207,15 @@ export interface operations {
     listTermChildren: {
         parameters: {
             query: {
+                /** @description Annotation field of the term, such as `disease` */
                 field: string;
+                /** @description ID of the term, such as `MONDO:0007254` */
                 termId: string;
-                /** @description Condition in the DSL. Omitted or empty means the whole population. */
+                /** @description Condition in the condition language: `field:value`, `field:"phrase"`, `field:[a TO b]`, keywords without a field, `AND`, `OR`, `NOT`, and parentheses. Omitted or empty means the whole population. The value of an annotation term field is a term ID, which `GET /api/terms` finds, and it matches the term and its descendants. The value of `<field>_status` is the group `mapped`, `unmapped`, or `no_value`. The value of `library_strategy` is a target assay of `GET /api/dataset`. A keyword matches the searchable text of a BioSample, or the entry that has the accession that it spells. See "Condition DSL" in /llms-full.txt */
                 q?: string | null;
+                /** @description Counting unit. `biosample` counts distinct BioSamples, `sra-experiment` distinct SRA Experiments, and `bioproject` distinct BioProjects. See "Counting" in /llms-full.txt */
                 unit?: components["schemas"]["Unit"];
-                /** @description Compute without the top-level conjuncts of `q` that are only on the dimensions of the aggregation */
+                /** @description If true, compute without the top-level conjuncts of `q` that are only on the dimensions of this operation, as the screens of the UI do. The description of the operation names its dimensions. If false, compute from `q` itself. See "Self-exclusion" in /llms-full.txt */
                 facetSelfExclude?: boolean;
             };
             header?: never;
@@ -1840,7 +2233,18 @@ export interface operations {
                     "application/json": components["schemas"]["TermChildrenResponse"];
                 };
             };
-            /** @description Bad Request (the slug of `type` is one of `unexpected-token`, `unknown-field`, `invalid-date-format`, `invalid-operator-for-field`, `invalid-value`, `nest-depth-exceeded`, `missing-value`, `invalid-dimension`) */
+            /**
+             * @description Bad Request. The slug that ends `type` is one of:
+             *
+             *     - `unexpected-token`: The condition does not parse, is longer than 4096 characters, or is blank where a condition is required, or a keyword has a wildcard. Fix the condition at the column that `detail` gives. Quote a value that has a colon or a space. See "Grammar" in /llms-full.txt.
+             *     - `unknown-field`: A condition, a clause, or a parameter (`field`, `row`, `col`) names a field that the dataset does not have. Use a field that `dslFields` of `GET /api/dataset` lists.
+             *     - `invalid-date-format`: A date is not a calendar date in the form `YYYY-MM-DD`. Write the date as `YYYY-MM-DD`, such as `2020-12-31`. See "Fields" in /llms-full.txt.
+             *     - `invalid-operator-for-field`: The form of a value does not fit the field, such as a range on a field other than `date_published`. Use `field:value` for the field, or `date_published:[a TO b]` for a range. See "Fields" in /llms-full.txt.
+             *     - `invalid-value`: A value is not allowed for the field: a status that is not a status group, an assay that the dataset does not have, a term value that is not a term ID, an organism that is not a number, a keyword without a letter or a digit, or keywords over their limits. Use the values that `detail` lists. Find a term ID with `GET /api/terms`. See "Fields" and "Keywords" in /llms-full.txt.
+             *     - `nest-depth-exceeded`: Groups nest deeper than 5 levels, or the condition has more than 512 nodes. Flatten the groups or split the condition. See "Limits" in /llms-full.txt.
+             *     - `missing-value`: A clause has an empty value. Give the clause a value. See "Fields" in /llms-full.txt.
+             *     - `invalid-dimension`: A field exists but cannot be the dimension of the operation, or the two dimensions of a cross-tabulation are the same field. Choose from the fields that `detail` lists.
+             */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -1876,7 +2280,13 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Service Unavailable (the slug of `type` is one of `server-busy`, `query-timeout`, `query-too-large`) */
+            /**
+             * @description Service Unavailable. The slug that ends `type` is one of:
+             *
+             *     - `server-busy`: The api has no free slot for the request after waiting, or too many requests wait already. Wait for the `Retry-After` seconds and send the request again.
+             *     - `query-timeout`: The query took longer than the time limit of a request and was stopped. Narrow the condition. The same request does not finish by itself.
+             *     - `query-too-large`: The query needs more memory or temporary disk space than a worker may use and was stopped. Narrow the condition, or ask for fewer elements.
+             */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -1892,6 +2302,7 @@ export interface operations {
             query?: never;
             header?: never;
             path: {
+                /** @description ID of the term, such as `UBERON:0000955` */
                 termId: string;
             };
             cookie?: never;
@@ -1939,25 +2350,38 @@ export interface operations {
     exportAccessions: {
         parameters: {
             query?: {
-                /** @description Condition in the DSL. Omitted or empty means the whole population. */
+                /** @description Condition in the condition language: `field:value`, `field:"phrase"`, `field:[a TO b]`, keywords without a field, `AND`, `OR`, `NOT`, and parentheses. Omitted or empty means the whole population. The value of an annotation term field is a term ID, which `GET /api/terms` finds, and it matches the term and its descendants. The value of `<field>_status` is the group `mapped`, `unmapped`, or `no_value`. The value of `library_strategy` is a target assay of `GET /api/dataset`. A keyword matches the searchable text of a BioSample, or the entry that has the accession that it spells. See "Condition DSL" in /llms-full.txt */
                 q?: string | null;
             };
             header?: never;
             path: {
-                type: "biosample" | "sra-experiment" | "sra-run" | "bioproject";
+                /** @description Kind of accession to list */
+                type: components["schemas"]["AccessionType"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description The header line and the accessions */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "text/plain": string;
+                };
             };
-            /** @description Bad Request (the slug of `type` is one of `unexpected-token`, `unknown-field`, `invalid-date-format`, `invalid-operator-for-field`, `invalid-value`, `nest-depth-exceeded`, `missing-value`) */
+            /**
+             * @description Bad Request. The slug that ends `type` is one of:
+             *
+             *     - `unexpected-token`: The condition does not parse, is longer than 4096 characters, or is blank where a condition is required, or a keyword has a wildcard. Fix the condition at the column that `detail` gives. Quote a value that has a colon or a space. See "Grammar" in /llms-full.txt.
+             *     - `unknown-field`: A condition, a clause, or a parameter (`field`, `row`, `col`) names a field that the dataset does not have. Use a field that `dslFields` of `GET /api/dataset` lists.
+             *     - `invalid-date-format`: A date is not a calendar date in the form `YYYY-MM-DD`. Write the date as `YYYY-MM-DD`, such as `2020-12-31`. See "Fields" in /llms-full.txt.
+             *     - `invalid-operator-for-field`: The form of a value does not fit the field, such as a range on a field other than `date_published`. Use `field:value` for the field, or `date_published:[a TO b]` for a range. See "Fields" in /llms-full.txt.
+             *     - `invalid-value`: A value is not allowed for the field: a status that is not a status group, an assay that the dataset does not have, a term value that is not a term ID, an organism that is not a number, a keyword without a letter or a digit, or keywords over their limits. Use the values that `detail` lists. Find a term ID with `GET /api/terms`. See "Fields" and "Keywords" in /llms-full.txt.
+             *     - `nest-depth-exceeded`: Groups nest deeper than 5 levels, or the condition has more than 512 nodes. Flatten the groups or split the condition. See "Limits" in /llms-full.txt.
+             *     - `missing-value`: A clause has an empty value. Give the clause a value. See "Fields" in /llms-full.txt.
+             */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -1993,7 +2417,13 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Service Unavailable (the slug of `type` is one of `server-busy`, `query-timeout`, `query-too-large`) */
+            /**
+             * @description Service Unavailable. The slug that ends `type` is one of:
+             *
+             *     - `server-busy`: The api has no free slot for the request after waiting, or too many requests wait already. Wait for the `Retry-After` seconds and send the request again.
+             *     - `query-timeout`: The query took longer than the time limit of a request and was stopped. Narrow the condition. The same request does not finish by itself.
+             *     - `query-too-large`: The query needs more memory or temporary disk space than a worker may use and was stopped. Narrow the condition, or ask for fewer elements.
+             */
             503: {
                 headers: {
                     [name: string]: unknown;
@@ -2007,26 +2437,41 @@ export interface operations {
     exportEntries: {
         parameters: {
             query?: {
-                /** @description Condition in the DSL. Omitted or empty means the whole population. */
+                /** @description Condition in the condition language: `field:value`, `field:"phrase"`, `field:[a TO b]`, keywords without a field, `AND`, `OR`, `NOT`, and parentheses. Omitted or empty means the whole population. The value of an annotation term field is a term ID, which `GET /api/terms` finds, and it matches the term and its descendants. The value of `<field>_status` is the group `mapped`, `unmapped`, or `no_value`. The value of `library_strategy` is a target assay of `GET /api/dataset`. A keyword matches the searchable text of a BioSample, or the entry that has the accession that it spells. See "Condition DSL" in /llms-full.txt */
                 q?: string | null;
+                /** @description File format of the entries */
                 format?: "tsv" | "ndjson";
             };
             header?: never;
             path: {
-                type: "biosample";
+                /** @description Entry type. Only `biosample` has entries */
+                type: components["schemas"]["EntryType"];
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Successful Response */
+            /** @description The entries, one per line after the header line of the TSV */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "text/tab-separated-values": string;
+                    "application/x-ndjson": string;
+                };
             };
-            /** @description Bad Request (the slug of `type` is one of `unexpected-token`, `unknown-field`, `invalid-date-format`, `invalid-operator-for-field`, `invalid-value`, `nest-depth-exceeded`, `missing-value`) */
+            /**
+             * @description Bad Request. The slug that ends `type` is one of:
+             *
+             *     - `unexpected-token`: The condition does not parse, is longer than 4096 characters, or is blank where a condition is required, or a keyword has a wildcard. Fix the condition at the column that `detail` gives. Quote a value that has a colon or a space. See "Grammar" in /llms-full.txt.
+             *     - `unknown-field`: A condition, a clause, or a parameter (`field`, `row`, `col`) names a field that the dataset does not have. Use a field that `dslFields` of `GET /api/dataset` lists.
+             *     - `invalid-date-format`: A date is not a calendar date in the form `YYYY-MM-DD`. Write the date as `YYYY-MM-DD`, such as `2020-12-31`. See "Fields" in /llms-full.txt.
+             *     - `invalid-operator-for-field`: The form of a value does not fit the field, such as a range on a field other than `date_published`. Use `field:value` for the field, or `date_published:[a TO b]` for a range. See "Fields" in /llms-full.txt.
+             *     - `invalid-value`: A value is not allowed for the field: a status that is not a status group, an assay that the dataset does not have, a term value that is not a term ID, an organism that is not a number, a keyword without a letter or a digit, or keywords over their limits. Use the values that `detail` lists. Find a term ID with `GET /api/terms`. See "Fields" and "Keywords" in /llms-full.txt.
+             *     - `nest-depth-exceeded`: Groups nest deeper than 5 levels, or the condition has more than 512 nodes. Flatten the groups or split the condition. See "Limits" in /llms-full.txt.
+             *     - `missing-value`: A clause has an empty value. Give the clause a value. See "Fields" in /llms-full.txt.
+             */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -2062,7 +2507,13 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Service Unavailable (the slug of `type` is one of `server-busy`, `query-timeout`, `query-too-large`) */
+            /**
+             * @description Service Unavailable. The slug that ends `type` is one of:
+             *
+             *     - `server-busy`: The api has no free slot for the request after waiting, or too many requests wait already. Wait for the `Retry-After` seconds and send the request again.
+             *     - `query-timeout`: The query took longer than the time limit of a request and was stopped. Narrow the condition. The same request does not finish by itself.
+             *     - `query-too-large`: The query needs more memory or temporary disk space than a worker may use and was stopped. Narrow the condition, or ask for fewer elements.
+             */
             503: {
                 headers: {
                     [name: string]: unknown;

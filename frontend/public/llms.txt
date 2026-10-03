@@ -1,41 +1,38 @@
 # bsllmner-viewer
 
-> Ontology-mapped annotations of public BioSamples, linked to their SRA experiments and BioProjects. bsllmner-mk2 extracted cell lines, cell types, tissues, diseases, drugs, genetic perturbations, and ChIP antigens from the free-text BioSample attributes with an LLM, and mapped each value to an ontology term. This site queries, counts, and exports those annotations.
+> Ontology-mapped annotations of public BioSamples, linked to their SRA Experiments and BioProjects. bsllmner-mk2 extracted cell lines, cell types, tissues, diseases, drugs, genetic perturbations, and ChIP antigens from the free-text BioSample attributes with an LLM, and mapped each value to an ontology term. This site queries, counts, and exports those annotations. The annotations can be wrong, and each has a status that tells how its term was chosen or why it has none.
 
-Use the JSON API rather than the pages. Every page of this site shows the result of one API query, and the API returns the same result.
+Use the JSON API rather than the pages. Every result on the pages is also an API result.
 
-## API
+## Links
 
-- [Swagger UI](/api): every endpoint with its parameters, and requests that you can try
-- [OpenAPI document](/api/openapi.json): the contract of the API
-- [API specification](https://github.com/dbcls/bsllmner-viewer/blob/main/docs/api.md): the conventions, the condition language, and how counts are computed
-- [Data model](https://github.com/dbcls/bsllmner-viewer/blob/main/docs/data-model.md): records, annotation statuses, and counting units
+- [Swagger UI](/api): the operations, with requests that you can try
+- [OpenAPI document](/api/openapi.json): every operation, parameter, and response property, and the cause and the remedy of each error
+- [Full rules](/llms-full.txt): the API specification and the data model in one file, for the rules that the recipes below name
 
 ## Conditions
 
-Every query takes one condition string, `q`. The language is the Lucene subset of the DDBJ Search API: `field:value`, `field:"phrase"`, `field:[a TO b]`, `AND`, `OR`, `NOT`, and parentheses. Text without a field is a keyword that matches the searchable text of a BioSample, such as `hypoxia organoid` or `"breast cancer"`.
+Every query takes one condition string, `q`: `field:value`, `field:"phrase"`, `field:[a TO b]`, `AND`, `OR`, `NOT`, and parentheses. Text without a field is a keyword. The value of a term field is a term ID, not a label. `GET /api/dataset` lists the fields, the target assays, and the status groups.
 
 - `disease:"MONDO:0007254"` matches breast cancer and every descendant term.
-- `cell_line:"CVCL:0030" AND library_strategy:ATAC-seq` matches HeLa ATAC-seq experiments.
+- `cell_line:"CVCL:0030" AND library_strategy:ATAC-seq` matches the ATAC-seq SRA Experiments of HeLa BioSamples.
 - `organism_id:9606 AND date_published:[2015-01-01 TO 2020-12-31]` matches human BioSamples published from 2015 to 2020.
 - `disease_status:unmapped` matches BioSamples whose disease value has no ontology term.
+- `"breast cancer" AND NOT organism_id:10090` matches BioSamples that mention breast cancer and are not mouse.
 
-`GET /api/dataset` lists the fields of the language. `GET /api/terms?query=<text>` finds the term IDs to use in a condition.
+## Recipes
 
-## Endpoints
+Each recipe names the heading of /llms-full.txt that has its rule.
 
-- `GET /api/entries/biosample?q=`: the matching BioSamples, one page at a time (`page`, `perPage`)
-- `GET /api/entries/biosample/{accession}`: one BioSample with its attributes, annotations, and the evidence of each annotation
-- `GET /api/distribution?field=&q=`: counts per term or value of one field
-- `GET /api/crosstab?row=&col=&q=`: counts per pair of two fields, with expected counts that reveal gaps
-- `GET /api/trend?q=`: counts per year of BioSample publication
-- `GET /api/projects?q=`: BioProjects of the matching BioSamples
-- `GET /api/export/accessions/{type}?q=`: every matching accession of `biosample`, `sra-experiment`, `sra-run`, or `bioproject`, as one `#` header line and then one accession per line
+- Find a term ID: `GET /api/terms?field=disease&query=breast%20cancer`. Use the `termId` of a hit in a condition. `q` is the condition, and `query` is the search text of this operation. A gene is an NCBI Gene ID, so the human and the mouse gene of one symbol are different terms.
+- Count: the BioSamples of a condition are `pagination.total` of `GET /api/entries/biosample?q=<q>&perPage=1`. For SRA Experiments or BioProjects, take `total` of `GET /api/distribution?field=library_strategy&q=<q>&unit=sra-experiment` (or `unit=bioproject`). See "Counting".
+- Count per status group: count `(<q>) AND <field>_status:<group>` as in "Count", for `mapped`, `unmapped`, and `no_value`. A condition names a group, and an entry shows the status of each annotation. See "Annotation status".
+- Count per year: `GET /api/trend?q=<q>&yearFrom=2015&yearTo=2020` gives `total` for each year of publication. Add `field=disease` to get a line for each of the top diseases in `series`. See "Trend".
+- Find gaps: `GET /api/crosstab?row=tissue&col=library_strategy&q=<q>` gives the observed and the expected count of each pair. `classification` marks the pairs far below or above the expectation. See "Expected counts in cross-tabulations".
+- Get accessions: `GET /api/export/accessions/{type}?q=<q>` lists the accessions of one type, one per line after a header line that starts with `#`. See "Entries".
+- Find the BioSample of an SRA Run, or of any other accession: `GET /api/entries/biosample?q=SRR11745799`. An accession is a keyword. See "Keywords".
+- Get the same numbers as the screens: for the distribution, the cross-tabulation, the trend, the projects, and the term search, add `facetSelfExclude=true`. The screens count the values of a field without the conditions on that field. The entry list and the counts of the whole condition use `q` itself. See "Self-exclusion".
+- Check whether a term has descendants: `descendantCount` of its hit in `GET /api/terms` is above 0. A term without descendants matches only itself, and a root term has an empty `parents` whether or not it has descendants. See "Term hierarchy".
+- Keep and cite the dataset version: counts change with every build. Record `datasetVersion` (`name`, `createdAt`, `model`, `digest`) from a JSON response, or from `GET /api/dataset` for an export, with the address of the API and the date. See "Conventions".
 
-## Notes
-
-- Counts are counts of records. A record is a BioSample with one of its SRA experiments. The `unit` parameter counts distinct BioSamples, experiments, or BioProjects.
-- Annotations come from an LLM and can be wrong. Each annotation has a status that tells how its term was chosen, or why it has none.
-- Every response has `datasetVersion`. Keep it with results that you record, because counts change with each build of the dataset.
-- Errors are RFC 7807 problem documents. A query parameter that the endpoint does not declare gives 422, so check the spelling (`q` is the condition, `query` is the search text of `/api/terms`). A condition or a field that the dataset rejects gives 400, and the `type` ends with the name of the rule. Status 503 means that the API is busy or that a query took too long: wait for the `Retry-After` seconds, or narrow the condition. More than 100 requests in progress from one address give 429 with `Retry-After`: send fewer requests at a time.
-- A condition has at most 4096 characters, 16 keywords, and 64 keyword words. A request names at most 100 elements of a dimension, and the `limit` of `/api/crosstab` is at most 100.
+Errors are problem documents. The `type` of a 400 or a 503 ends with a slug, and the OpenAPI document gives the cause and the remedy of each slug.

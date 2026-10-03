@@ -28,6 +28,12 @@ router = APIRouter(tags=["Dataset"])
     responses=error_responses(),
     response_model=DatasetResponse,
     summary="Version information, fields, and population totals",
+    description=(
+        "Returns what a client needs before it writes conditions: the version of the dataset, the target assays, the "
+        "fields of the condition language with their kinds, the status groups, and the BioSample counts of the "
+        "whole population per assay, organism, and field. Counts are in the BioSample unit, except `totals`, which "
+        "has all three units."
+    ),
 )
 def get_dataset(store: StoreDep) -> DatasetResponse:
     with store.cursor() as cur:

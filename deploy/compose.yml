@@ -38,8 +38,8 @@ services:
 
   web:
     build:
-      context: ../frontend
-      dockerfile: Dockerfile.web
+      context: ..
+      dockerfile: frontend/Dockerfile.web
       args:
         BSLLMNER_VIEWER_COMMIT: ${BSLLMNER_VIEWER_COMMIT:-}
     image: bsllmner-viewer-web

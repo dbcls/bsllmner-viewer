@@ -69,7 +69,7 @@ class Store:
                 """
             ).fetchall()
         )
-        self.field_set = FieldSet(tuple(f.name for f in self.fields))
+        self.field_set = FieldSet(tuple(f.name for f in self.fields), tuple(self.version.target_assays))
         self.organism_names: dict[int, str | None] = {
             int(organism_id): name for organism_id, name in self._con.execute(ORGANISM_NAMES).fetchall()
         }

@@ -17,7 +17,6 @@ DIMENSIONS = (
     "tissue",
     "drug",
     "chip_antigen",
-    "disease_status",
     "library_strategy",
     "organism_id",
     "date_published",
@@ -222,24 +221,6 @@ def test_without_term_equals_the_population_without_a_mapped_value_of_the_field(
     if unit != "bioproject":
         with_term = count(client, and_clauses(pop, [{"field": f"{field}_status", "value": "mapped"}]), unit)
         assert body["withoutTerm"] + with_term == body["total"]
-
-
-@settings(max_examples=20)
-@given(conditions, st.sampled_from(UNITS), st.booleans())
-def test_status_group_matches_the_union_of_its_statuses(
-    client: TestClient, ast: Node | None, unit: str, excl: bool
-) -> None:
-    grouped = client.get(
-        "/api/distribution",
-        params={
-            "field": "disease_status",
-            "unit": unit,
-            "q": condition_q(ast) or "",
-            "facetSelfExclude": str(excl).lower(),
-        },
-    ).json()
-    for element in grouped["elements"]:
-        assert element["count"] == count(client, and_clauses(grouped["populationQ"], element["clauses"]), unit)
 
 
 @settings(max_examples=20)

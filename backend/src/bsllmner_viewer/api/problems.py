@@ -6,6 +6,7 @@ import http
 import logging
 import uuid
 from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -18,7 +19,10 @@ from pydantic.alias_generators import to_camel
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from bsllmner_viewer.api.schemas import MAX_ELEMENTS
 from bsllmner_viewer.dsl.errors import DslError
+from bsllmner_viewer.dsl.parser import MAX_LENGTH
+from bsllmner_viewer.dsl.validator import MAX_DEPTH, MAX_NODES
 
 PROBLEM_TYPE_PREFIX = "https://ddbj.nig.ac.jp/problems/"
 BLANK_TYPE = "about:blank"
@@ -61,6 +65,87 @@ AGGREGATION_SLUGS = (*DSL_SLUGS, "invalid-dimension", "invalid-element", "too-ma
 BUSY_SLUGS = ("server-busy", "query-timeout", "query-too-large")
 
 
+@dataclass(frozen=True, slots=True)
+class SlugInfo:
+    """Why an error has a slug, and what a client does about it."""
+
+    cause: str
+    remedy: str
+
+
+# The one place that says what each slug of the status 400 and 503 means. Every operation shows the entries of its own
+# slugs in the description of its 400 and 503 responses. A rule that causes a slug is in the docs, under the heading
+# that the remedy names.
+SLUG_INFO: dict[str, SlugInfo] = {
+    "unexpected-token": SlugInfo(
+        f"The condition does not parse, is longer than {MAX_LENGTH} characters, or is blank where a condition is "
+        "required, or a keyword has a wildcard.",
+        "Fix the condition at the column that `detail` gives. Quote a value that has a colon or a space. "
+        'See "Grammar" in /llms-full.txt.',
+    ),
+    "unknown-field": SlugInfo(
+        "A condition, a clause, or a parameter (`field`, `row`, `col`) names a field that the dataset does not have.",
+        "Use a field that `dslFields` of `GET /api/dataset` lists.",
+    ),
+    "invalid-date-format": SlugInfo(
+        "A date is not a calendar date in the form `YYYY-MM-DD`.",
+        'Write the date as `YYYY-MM-DD`, such as `2020-12-31`. See "Fields" in /llms-full.txt.',
+    ),
+    "invalid-operator-for-field": SlugInfo(
+        "The form of a value does not fit the field, such as a range on a field other than `date_published`.",
+        'Use `field:value` for the field, or `date_published:[a TO b]` for a range. See "Fields" in /llms-full.txt.',
+    ),
+    "invalid-value": SlugInfo(
+        "A value is not allowed for the field: a status that is not a status group, an assay that the dataset does "
+        "not have, a term value that is not a term ID, an organism that is not a number, a keyword without a letter "
+        "or a digit, or keywords over their limits.",
+        "Use the values that `detail` lists. Find a term ID with `GET /api/terms`. "
+        'See "Fields" and "Keywords" in /llms-full.txt.',
+    ),
+    "nest-depth-exceeded": SlugInfo(
+        f"Groups nest deeper than {MAX_DEPTH} levels, or the condition has more than {MAX_NODES} nodes.",
+        'Flatten the groups or split the condition. See "Limits" in /llms-full.txt.',
+    ),
+    "missing-value": SlugInfo(
+        "A clause has an empty value.", 'Give the clause a value. See "Fields" in /llms-full.txt.'
+    ),
+    "invalid-ast": SlugInfo(
+        "A clause has neither `value`, nor `from` and `to` together.",
+        "Give each clause `value`, or both `from` and `to`.",
+    ),
+    "invalid-dimension": SlugInfo(
+        "A field exists but cannot be the dimension of the operation, or the two dimensions of a cross-tabulation "
+        "are the same field.",
+        "Choose from the fields that `detail` lists.",
+    ),
+    "invalid-element": SlugInfo(
+        "A named element does not fit its dimension, such as an organism that is not an NCBI Taxonomy ID or a year "
+        "that is not a number.",
+        "Name elements of the form that `detail` gives, or omit them to get the default elements.",
+    ),
+    "too-many-elements": SlugInfo(
+        f"A request names more elements of one dimension than the limit of {MAX_ELEMENTS}.",
+        f"Name at most {MAX_ELEMENTS} elements.",
+    ),
+    "server-busy": SlugInfo(
+        "The api has no free slot for the request after waiting, or too many requests wait already.",
+        "Wait for the `Retry-After` seconds and send the request again.",
+    ),
+    "query-timeout": SlugInfo(
+        "The query took longer than the time limit of a request and was stopped.",
+        "Narrow the condition. The same request does not finish by itself.",
+    ),
+    "query-too-large": SlugInfo(
+        "The query needs more memory or temporary disk space than a worker may use and was stopped.",
+        "Narrow the condition, or ask for fewer elements.",
+    ),
+}
+
+
+def _slug_list(slugs: tuple[str, ...]) -> str:
+    return "\n".join(f"- `{slug}`: {SLUG_INFO[slug].cause} {SLUG_INFO[slug].remedy}" for slug in slugs)
+
+
 def error_responses(
     *, bad_request: tuple[str, ...] = (), not_found: bool = False, busy: bool = False
 ) -> dict[int | str, dict[str, Any]]:
@@ -76,18 +161,16 @@ def error_responses(
         500: {"model": ProblemDetails, "description": "Internal Server Error"},
     }
     if bad_request:
-        slugs = ", ".join(f"`{slug}`" for slug in bad_request)
         responses[400] = {
             "model": ProblemDetails,
-            "description": f"Bad Request (the slug of `type` is one of {slugs})",
+            "description": "Bad Request. The slug that ends `type` is one of:\n\n" + _slug_list(bad_request),
         }
     if not_found:
         responses[404] = {"model": ProblemDetails, "description": "Not Found"}
     if busy:
-        slugs = ", ".join(f"`{slug}`" for slug in BUSY_SLUGS)
         responses[503] = {
             "model": ProblemDetails,
-            "description": f"Service Unavailable (the slug of `type` is one of {slugs})",
+            "description": "Service Unavailable. The slug that ends `type` is one of:\n\n" + _slug_list(BUSY_SLUGS),
         }
     return responses
 
@@ -154,8 +237,7 @@ def install_problem_handlers(app: FastAPI) -> None:
             request,
             slug="query-timeout",
             status=503,
-            detail="the query took too long and was stopped; narrow the condition or retry",
-            headers={"Retry-After": str(RETRY_AFTER_SECONDS)},
+            detail="the query took too long and was stopped; narrow the condition",
         )
 
     @app.exception_handler(duckdb.OutOfMemoryException)
@@ -178,8 +260,10 @@ def install_problem_handlers(app: FastAPI) -> None:
         for error in errors:
             loc = error.get("loc", ())
             if len(loc) >= 2 and loc[0] == "path" and loc[1] == "type":
+                expected = (error.get("ctx") or {}).get("expected")
+                accepted = f"; the accepted values are {expected}" if expected else ""
                 return problem_response(
-                    request, slug=None, status=404, detail=f"Unknown entry type: {error.get('input', '')!r}"
+                    request, slug=None, status=404, detail=f"Unknown entry type: {error.get('input', '')!r}{accepted}"
                 )
         detail = "; ".join(_format_error(e) for e in errors)
         return problem_response(request, slug=None, status=422, detail=detail)

@@ -7,7 +7,7 @@ import { copyText } from "~/lib/export"
 import { formatCount } from "~/lib/format"
 import { ACTION_ICON, CopyButton, ErrorNotice, MenuButton, Modal, Skeleton } from "~/ui"
 
-import { TAB_LABELS, type WorkspaceState } from "./state"
+import { type Tab, TAB_LABELS, type WorkspaceState } from "./state"
 import { apiRequestsFor } from "./view-requests"
 
 type ExportMenuProps = {
@@ -101,6 +101,13 @@ const failureLine = (response: Response, body: string): string => {
   return `${response.status} ${title || response.statusText}`.trim()
 }
 
+/** The sentence under the title of the API dialog. Only the requests of the views that count in a unit say that the unit is the same. */
+export const apiDialogDescription = (tab: Tab): string => {
+  if (tab === "distribution") return "Each card of the Distribution view is one request for the current condition, listed in the order of the cards. Same q, same unit."
+  const sameness = tab === "samples" || tab === "projects" ? "Same q." : "Same q, same unit."
+  return `Returns the ${TAB_LABELS[tab]} view for the current condition. ${sameness}`
+}
+
 const UNREACHABLE = "Could not reach the server."
 
 export const ApiModal = ({ open, onClose, state, onAlert }: ApiModalProps) => {
@@ -135,11 +142,7 @@ export const ApiModal = ({ open, onClose, state, onAlert }: ApiModalProps) => {
       width="lg"
       align="center"
       title="Same result via the API"
-      description={
-        state.tab === "distribution"
-          ? "Each card of the Distribution view is one request for the current condition, listed in the order of the cards. Same q, same unit."
-          : `Returns the ${TAB_LABELS[state.tab]} view for the current condition. Same q, same unit.`
-      }
+      description={apiDialogDescription(state.tab)}
     >
       <div className="px-6 pb-6">
         <h3 className={BLOCK_HEADING}>{requests.length > 1 ? "Requests" : "Request"}</h3>

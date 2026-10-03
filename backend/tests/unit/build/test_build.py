@@ -14,7 +14,7 @@ from bsllmner_viewer.build.manifest import load_manifest
 from bsllmner_viewer.build.mk2_filter_keys import MK2_FILTER_KEYS
 from bsllmner_viewer.store.metadata import ATTRIBUTE, DESCRIPTION, RECORD, description_items
 from bsllmner_viewer.store.version import read_version
-from tests.synthetic import TARGET_ASSAYS, Synthetic
+from tests.synthetic import TARGET_ASSAYS, Synthetic, generate
 
 
 def _rows(con: duckdb.DuckDBPyConnection, sql: str, *params: object) -> list[tuple[object, ...]]:
@@ -184,6 +184,14 @@ def test_build_closure_includes_self_and_all_paths(store_con: duckdb.DuckDBPyCon
     ancestors = {r[0] for r in _rows(store_con, "SELECT ancestor FROM term_closure WHERE descendant = 'MONDO:0004989'")}
     assert ancestors == {"MONDO:0004989", "MONDO:0007254", "MONDO:0004992", "MONDO:0002657", "MONDO:0000001"}
     assert _rows(store_con, "SELECT count(*) FROM term WHERE term_id = 'OBS:1'")[0] == (0,)
+
+
+def test_build_closure_follows_part_of_relations(store_con: duckdb.DuckDBPyConnection) -> None:
+    for term_id in ("UBERON:0000178", "UBERON:0003661"):
+        ancestors = {
+            r[0] for r in _rows(store_con, f"SELECT ancestor FROM term_closure WHERE descendant = '{term_id}'")
+        }
+        assert ancestors == {term_id, "UBERON:0000061"}
 
 
 def test_build_entries_reference_relations(store_con: duckdb.DuckDBPyConnection, synthetic: Synthetic) -> None:
@@ -356,3 +364,45 @@ def test_derived_biosample_carries_the_description_and_record_of_its_selected_en
     assert all(bool(r[0]) for r in rows)
     lists = _rows(store_con, "SELECT description FROM biosample WHERE description::VARCHAR LIKE '%first paragraph%'")
     assert lists
+
+
+def test_build_closure_with_cycle_through_is_a_and_part_of_terminates(tmp_path: Path) -> None:
+    synthetic = generate(tmp_path, seed=2, n_biosamples=20, n_runs=1)
+    obo = synthetic.root / "ontology" / "uberon.obo"
+    text = obo.read_text()
+    text = text.replace(
+        "id: UBERON:0002107\nname: liver\n", "id: UBERON:0002107\nname: liver\nrelationship: part_of UBERON:0002048\n"
+    ).replace("id: UBERON:0002048\nname: lung\n", "id: UBERON:0002048\nname: lung\nis_a: UBERON:0002107\n")
+    obo.write_text(text)
+    out = tmp_path / "store" / "cycle.duckdb"
+    assert build_full(load_manifest(synthetic.manifest), out, workers=1).ok
+    con = duckdb.connect(str(out), read_only=True)
+    try:
+        rows = _rows(con, "SELECT ancestor FROM term_closure WHERE descendant = 'UBERON:0002107'")
+        assert {r[0] for r in rows} == {"UBERON:0002107", "UBERON:0002048", "UBERON:0000061"}
+        assert len(rows) == 3
+    finally:
+        con.close()
+
+
+def test_build_closure_skips_general_class_inclusion_axioms_and_part_of_across_prefixes(tmp_path: Path) -> None:
+    synthetic = generate(tmp_path, seed=2, n_biosamples=20, n_runs=1)
+    obo = synthetic.root / "ontology" / "uberon.obo"
+    text = obo.read_text()
+    text = text.replace(
+        "id: UBERON:0000061\nname: anatomical structure\n",
+        "id: UBERON:0000061\nname: anatomical structure\n"
+        'relationship: part_of UBERON:0002107 {gci_relation="RO:1", gci_filler="GO:1"}\n'
+        "relationship: part_of NCBITaxon:6072\n",
+    )
+    obo.write_text(text)
+    out = tmp_path / "store" / "gci.duckdb"
+    assert build_full(load_manifest(synthetic.manifest), out, workers=1).ok
+    con = duckdb.connect(str(out), read_only=True)
+    try:
+        rows = _rows(con, "SELECT ancestor FROM term_closure WHERE descendant = 'UBERON:0000061'")
+        assert {r[0] for r in rows} == {"UBERON:0000061"}
+        rows = _rows(con, "SELECT ancestor FROM term_closure WHERE descendant = 'UBERON:0002107'")
+        assert {r[0] for r in rows} == {"UBERON:0002107", "UBERON:0000061"}
+    finally:
+        con.close()

@@ -28,6 +28,7 @@ from bsllmner_viewer.api.schemas import (
     Pagination,
 )
 from bsllmner_viewer.build.mk2_filter_keys import MK2_FILTER_KEYS
+from bsllmner_viewer.dsl.keyword import accession_kind
 from bsllmner_viewer.store.metadata import ATTRIBUTE, DESCRIPTION, RECORD, stored_attributes, stored_description
 
 router = APIRouter(tags=["Entries"])
@@ -39,10 +40,15 @@ router = APIRouter(tags=["Entries"])
     responses=error_responses(bad_request=DSL_SLUGS, not_found=True, busy=True),
     response_model=EntriesResponse,
     summary="BioSample entries that match the condition",
+    description=(
+        "Lists the BioSamples that match `q`, one page at a time. `pagination.total` is the count of `q` in the "
+        "BioSample unit, and each item lists the experiments of the BioSample that match `q`. An entry type that is "
+        'not `biosample` gets 404. See "Entries" in /llms-full.txt.'
+    ),
 )
 def list_entries(
     store: StoreDep,
-    type: EntryType,
+    type: Annotated[EntryType, Path(description="Entry type. Only `biosample` has entries")],
     q: QParam = None,
     page: PageParam = 1,
     per_page: PerPageParam = 25,
@@ -68,8 +74,21 @@ def list_entries(
     responses=error_responses(not_found=True),
     response_model=EntryResponse,
     summary="A BioSample with its annotations and evidence",
+    description=(
+        "Returns one BioSample with its original metadata, annotations with evidence, experiments, and BioProjects. "
+        "The BioSample does not have to be in the population: `inPopulation` of each experiment tells whether the "
+        "experiment is in the population. "
+        "`run` is the name of the bsllmner-mk2 run that analyzed the BioSample, not an SRA Run. "
+        "An accession that is not that of a BioSample gets 404. Find the BioSample of another accession with the "
+        'accession as a keyword in `q`. See "Entries" in /llms-full.txt.'
+    ),
 )
-def get_entry(store: StoreDep, accession: Annotated[str, Path(max_length=ACCESSION_MAX_LENGTH)]) -> EntryResponse:
+def get_entry(
+    store: StoreDep,
+    accession: Annotated[
+        str, Path(max_length=ACCESSION_MAX_LENGTH, description="BioSample accession, such as `SAMN14864678`")
+    ],
+) -> EntryResponse:
     with store.cursor() as cur:
         row = cur.execute(
             "SELECT b.accession, b.title, b.organism_id, b.organism_name, b.date_published, "
@@ -78,7 +97,13 @@ def get_entry(store: StoreDep, accession: Annotated[str, Path(max_length=ACCESSI
             [accession],
         ).fetchone()
         if row is None:
-            raise ApiError(None, 404, f"BioSample {accession} is not in the dataset")
+            detail = f"BioSample {accession} is not in the dataset"
+            if accession_kind(accession) != "biosample" or accession != accession.upper():
+                detail += (
+                    f"; {accession!r} is not an upper-case BioSample accession. "
+                    "to find its BioSample, use it as a keyword in `q` of GET /api/entries/biosample"
+                )
+            raise ApiError(None, 404, detail)
         annotation_rows = cur.execute(
             "SELECT field, value_index, extracted_value, status, term_id, term_label FROM annotation "
             "WHERE biosample = ? ORDER BY field, value_index",

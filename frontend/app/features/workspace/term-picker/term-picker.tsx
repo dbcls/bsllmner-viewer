@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 
 import { loadFailureProps } from "~/lib/api/client"
 import { queryFailed, useTerms } from "~/lib/api/queries"
-import type { TermHit } from "~/lib/api/types"
+import type { TermHit, Unit } from "~/lib/api/types"
 import { fieldLabel } from "~/lib/labels"
 import { ALL_FIELDS, SKELETON_TERMS, TERM_SEARCH_DEBOUNCE_MS, termFieldOptions, termHitRowProps, useResultListRef } from "~/lib/terms"
 import { useDebounced } from "~/lib/use-debounced"
@@ -12,6 +12,8 @@ type PickerSearchProps = {
   /** The choices of the field Select, which may include `ALL_FIELDS`. */
   fieldOptions: { value: string; label: string }[]
   field: string
+  /** The counting unit of the counts. */
+  unit: Unit
   onField: (field: string) => void
   /** The annotation fields; a field outside them has no terms to search. */
   fields: string[]
@@ -26,17 +28,17 @@ type PickerSearchProps = {
 
 /**
  * Search terms by label, synonym, or ID, in one field or in every annotation field, with counts under the current
- * condition. The counts are BioSamples without the condition on the term's own field, as in the condition panel,
- * whatever the counting unit and self-exclusion of the views. It lives in a dialog and searches while it is drawn.
+ * condition, in the given unit and without the condition on the term's own field, as in the condition panel. The picker that
+ * builds the condition counts BioSamples whatever the counting unit of the views. It lives in a dialog and searches while it is drawn.
  */
-export const PickerSearch = ({ fieldOptions, field, onField, fields, q, isSelected, selectedNote, onPick, fullHeight }: PickerSearchProps) => {
+export const PickerSearch = ({ fieldOptions, field, unit, onField, fields, q, isSelected, selectedNote, onPick, fullHeight }: PickerSearchProps) => {
   const [query, setQuery] = useState("")
   const everyField = field === ALL_FIELDS
   const searchable = everyField || fields.includes(field)
   // An emptied search shows at once, as it does when the field changes.
   const delayed = useDebounced(query.trim(), TERM_SEARCH_DEBOUNCE_MS)
   const debounced = query.trim() === "" ? "" : delayed
-  const terms = useTerms({ ...(everyField ? {} : { field }), query: debounced, q, unit: "biosample", selfExclusion: true, limit: 30 }, searchable)
+  const terms = useTerms({ ...(everyField ? {} : { field }), query: debounced, q, unit, selfExclusion: true, limit: 30 }, searchable)
   const list = useResultListRef(terms.data?.query, terms.data?.field)
   const failed = searchable && queryFailed(terms)
   return (
@@ -120,6 +122,7 @@ export const TermPicker = ({ open, onClose, fields, q, isSelected, onPick }: Ter
       <PickerSearch
         fieldOptions={termFieldOptions(fields)}
         field={field}
+        unit="biosample"
         onField={setField}
         fields={fields}
         q={q}
