@@ -1,7 +1,15 @@
-import { expect, test } from "@playwright/test"
+import { expect, type Page, test } from "@playwright/test"
 
 import { dataset, distribution, select, terms, trend } from "./_api"
 import { axisTermsButton, choose, expectChosen, expectParam, expectQ, formatCount, workspaceUrl } from "./_helpers"
+
+/**
+ * Flips a switch as a person does, by its label. The checkbox of a switch is hidden inside the label, so a click on the
+ * checkbox itself never lands.
+ */
+const flip = async (page: Page, name: string): Promise<void> => {
+  await page.locator("label").filter({ has: page.getByRole("switch", { name, exact: true }) }).click()
+}
 
 const topDisease = async (request: Parameters<typeof distribution>[0]) => {
   const [first] = (await distribution(request, "disease")).elements
@@ -26,7 +34,8 @@ test.describe("trend", () => {
     expect(series.map((s) => s.value)).toContain(disease.value)
     await expect(main.locator("svg polyline")).toHaveCount(series.length + 1)
     await expect(page.getByRole("switch", { name: "Condition" })).toBeChecked()
-    await expect(main.getByText(disease.value, { exact: true })).toBeVisible()
+    // The legend names the lines by their terms; their IDs appear only with the Term IDs switch on.
+    await expect(main.getByText(disease.label, { exact: true })).toBeVisible()
     await expect(main).toContainText("✓ in condition")
     const points = main.locator('svg g[data-series="condition"] circle')
     await expect(points).toHaveCount(total.length)
@@ -58,11 +67,11 @@ test.describe("trend", () => {
     await page.goto(workspaceUrl({ tab: "trend", q }))
     const main = page.getByRole("main")
     await expect(main.locator("svg polyline")).toHaveCount(series.length + 1)
-    await page.getByRole("switch", { name: "Condition" }).click()
+    await flip(page, "Condition")
     await expectParam(page, "trend_condition", "off")
     await expect(main.locator('svg g[data-series="condition"]')).toHaveCount(0)
     await expect(main.locator("svg polyline")).toHaveCount(series.length)
-    await page.getByRole("switch", { name: "Condition" }).click()
+    await flip(page, "Condition")
     await expectParam(page, "trend_condition", null)
     await expect(main.locator("svg polyline")).toHaveCount(series.length + 1)
   })
@@ -76,7 +85,7 @@ test.describe("trend", () => {
     await page.goto(workspaceUrl({ tab: "trend", q }))
     const main = page.getByRole("main")
     await expect(main.locator('svg g[data-series="all"]')).toHaveCount(0)
-    await page.getByRole("switch", { name: "All entries" }).click()
+    await flip(page, "All entries")
     await expectParam(page, "trend_all", "on")
     const points = main.locator('svg g[data-series="all"] circle')
     await expect(points).toHaveCount(allEntries.length)
@@ -91,11 +100,12 @@ test.describe("trend", () => {
   test("the years limit the points to the chosen range as the api returns them, and the first and last years take the limit off", async ({ page, request }) => {
     const disease = await topDisease(request)
     const q = await select(request, null, disease.clauses)
-    const whole = await trend(request, { q })
+    // The trend always draws the lines of a field, whose population widens the span of years.
+    const whole = await trend(request, { field: "disease", q })
     if (whole.years.length < 3) throw new Error("the condition matches fewer than three years")
     const from = whole.years[1] as number
     const to = whole.years[whole.years.length - 2] as number
-    const limited = await trend(request, { q, yearFrom: from, yearTo: to })
+    const limited = await trend(request, { field: "disease", q, yearFrom: from, yearTo: to })
     await page.goto(workspaceUrl({ tab: "trend", q }))
     const points = page.getByRole("main").locator('svg g[data-series="condition"] circle')
     await expect(points).toHaveCount(whole.total.length)
@@ -121,7 +131,7 @@ test.describe("trend", () => {
     await page.goto(workspaceUrl({ tab: "trend", q }))
     const labels = page.getByRole("main").locator("svg g[data-labels] text")
     await expect(labels).toHaveCount(0)
-    await page.getByRole("switch", { name: "Data labels" }).click()
+    await flip(page, "Data labels")
     await expectParam(page, "trend_labels", "on")
     // The labels of the lines of the elements come first, and those of the line of the condition, drawn over them, last.
     const counted = [...series.flatMap((s) => s.points), ...total].filter((point) => point.count > 0)
@@ -153,7 +163,7 @@ test.describe("trend", () => {
   test("a point of the condition line toggles its year in the condition", async ({ page, request }) => {
     const disease = await topDisease(request)
     const q = await select(request, null, disease.clauses)
-    const [firstYear] = (await trend(request, { q })).total
+    const [firstYear] = (await trend(request, { field: "disease", q })).total
     if (!firstYear) throw new Error("the condition has no publication year")
     const withYear = await select(request, q, firstYear.clauses)
     await page.goto(workspaceUrl({ tab: "trend", q }))

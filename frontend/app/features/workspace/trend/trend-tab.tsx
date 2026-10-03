@@ -95,7 +95,9 @@ export const TrendTab = ({ state, condition, update, onAlert }: TrendTabProps) =
     action()
   }
 
-  const values = series.map((s) => s.value)
+  // The terms that the URL names, when the user chose them: the lines on screen can still be those of the previous
+  // terms while the trend of the new ones is on its way.
+  const values = state.trendTerms ?? series.map((s) => s.value)
   const setTerms = (next: string[] | null) => update({ trendTerms: next })
   const pick = (hit: TermHit) => {
     if (values.includes(hit.termId)) setTerms(values.filter((v) => v !== hit.termId))

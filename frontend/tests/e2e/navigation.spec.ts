@@ -226,7 +226,13 @@ test.describe("workspace navigation", () => {
     if (!top) throw new Error("the dataset has no assay")
     const q = await select(request, null, top.clauses)
     await page.goto("/")
-    const bar = page.getByRole("link").filter({ hasText: top.label })
+    // The card of the statistics: the innermost element with both the heading and links. The examples name assays too.
+    const statistics = page
+      .locator("div")
+      .filter({ has: page.getByRole("heading", { name: "Statistics", exact: true }) })
+      .filter({ has: page.getByRole("link") })
+      .last()
+    const bar = statistics.getByRole("link").filter({ hasText: top.label })
     await expect(bar).toContainText(formatCount(top.count))
     await expect(bar).toHaveAttribute("href", workspaceUrl({ q }))
     await bar.click()

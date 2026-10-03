@@ -89,7 +89,12 @@ export const HeatmapTab = ({ state, condition, update, onAlert }: HeatmapTabProp
   const max = Math.max(1, ...(data?.cells ?? []).map((c) => c.count))
   const cellByKey = new Map((data?.cells ?? []).map((c) => [`${c.row}\t${c.col}`, c]))
 
-  const values = (side: AxisSide): string[] => (side === "row" ? rows : cols).map((e) => e.value)
+  /**
+   * The terms of an axis: those that the URL names, when the user chose them, as the rows and columns on screen can still
+   * be those of the previous terms while the cross-tabulation of the new ones is on its way.
+   */
+  const values = (side: AxisSide): string[] =>
+    (side === "row" ? state.rowTerms : state.colTerms) ?? (side === "row" ? rows : cols).map((e) => e.value)
   const setValues = (side: AxisSide, next: string[] | null) => update(side === "row" ? { rowTerms: next } : { colTerms: next })
   const dimensionOf = (side: AxisSide) => (side === "row" ? state.row : state.col)
 
@@ -152,10 +157,10 @@ export const HeatmapTab = ({ state, condition, update, onAlert }: HeatmapTabProp
     onAlert(`${unique.length} of ${entries.length} terms recognised`)
   }
 
-  /** Takes a term, and on the rows the rows that hang under it, off the axis. */
+  /** Takes a term, and on the rows the rows that hang under it in the tree on screen, off the axis. */
   const remove = (side: AxisSide, value: string) => {
-    const at = values(side).indexOf(value)
-    const under = side === "row" && at >= 0 ? nestedValues(at) : []
+    const at = side === "row" ? rows.findIndex((row) => row.value === value) : -1
+    const under = at >= 0 ? nestedValues(at) : []
     setValues(side, values(side).filter((v) => v !== value && !under.includes(v)))
   }
 
