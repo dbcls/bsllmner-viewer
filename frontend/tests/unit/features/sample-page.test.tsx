@@ -43,6 +43,7 @@ vi.mock("~/lib/api/client", async (importOriginal) => {
       metadata: [
         { kind: "description", name: "Title", value: "liver of a mouse", harmonizedName: null },
         { kind: "attribute", name: "tissue", value: "liver", harmonizedName: null },
+        { kind: "attribute", name: "spiperone treatment", value: "yes", harmonizedName: null },
       ],
       annotations: [
         { field: "disease", value: null, status: "not_stated", termId: null, label: null, evidence: [] },
@@ -53,8 +54,17 @@ vi.mock("~/lib/api/client", async (importOriginal) => {
           status: "mapped_exact",
           termId: "UBERON:0002107",
           label: "liver",
-          evidence: [{ name: "tissue", metadataIndex: 1, start: 0, end: 5, method: "string_match" }],
+          evidence: [{ name: "tissue", metadataIndex: 1, inName: false, start: 0, end: 5, strategy: "exact" }],
           clauses: [{ field: "tissue", value: "UBERON:0002107" }],
+        },
+        {
+          field: "compound",
+          value: "spiperone",
+          status: "unmapped_no_candidate",
+          termId: null,
+          label: null,
+          evidence: [{ name: "spiperone treatment", metadataIndex: 2, inName: true, start: 0, end: 9, strategy: "exact" }],
+          clauses: [],
         },
       ],
       experiments,
@@ -158,5 +168,15 @@ describe("SamplePage", () => {
     }
     expect(row(title).querySelector("mark")).toBeNull()
     expect(row(attribute).querySelector("mark")?.textContent).toBe("liver")
+  })
+
+  it("marks evidence in the name of an attribute in the name and leaves the value unmarked", async () => {
+    renderSample("SAMN1")
+    const mark = await screen.findByText("spiperone", { selector: "mark" })
+    const name = mark.parentElement
+    const value = name?.nextElementSibling
+    expect(name?.textContent).toBe("spiperone treatment")
+    expect(value?.textContent).toBe("yes")
+    expect(value?.querySelector("mark")).toBeNull()
   })
 })

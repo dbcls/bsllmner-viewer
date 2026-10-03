@@ -27,7 +27,7 @@ bsllmner-viewer consists of four components: **build** produces a store, the **s
 
 build and api share one package because build writes the store schema and api reads it; a schema change is applied to both sides in a single change.
 
-Input formats and build operations are specified in [build.md](build.md), the meaning of stored data in [data-model.md](data-model.md), and the external contract of the api in [api.md](api.md).
+Input formats and build operations are specified in [build.md](build.md), the meaning of stored data in [data-model.md](data-model.md), how build links extracted values to evidence in [provenance.md](provenance.md), and the external contract of the api in [api.md](api.md).
 
 ## Invariants
 

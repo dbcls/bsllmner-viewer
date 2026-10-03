@@ -514,13 +514,15 @@ def test_entry_returns_attributes_annotations_and_evidence(client: TestClient, s
     assert next(i["name"] for i in body["metadata"] if i["kind"] == "attribute") == "sample_name"
     fields = list(dict.fromkeys(a["field"] for a in body["annotations"]))
     assert fields == ["cell_line", "disease", "tissue", "drug", "chip_antigen"]
+    assert any(annotation["evidence"] for annotation in body["annotations"])
     for annotation in body["annotations"]:
-        if annotation["value"]:
-            assert annotation["evidence"], annotation
-            evidence = annotation["evidence"][0]
+        for evidence in annotation["evidence"]:
             item = body["metadata"][evidence["metadataIndex"]]
             assert item["name"] == evidence["name"]
-            assert item["value"][evidence["start"] : evidence["end"]].lower() == annotation["value"].lower()
+            text = item["name"] if evidence["inName"] else item["value"]
+            assert 0 <= evidence["start"] < evidence["end"] <= len(text)
+            if evidence["strategy"] == "exact":
+                assert text[evidence["start"] : evidence["end"]] == annotation["value"].strip()
     assert {e["accession"] for e in body["experiments"]} == {srx for srx, _ in synthetic.truth.experiments[accession]}
     missing = client.get("/api/entries/biosample/SAMN_NONE")
     assert missing.status_code == 404
@@ -701,7 +703,8 @@ def test_entry_returns_no_omitted_attribute_and_its_evidence_points_into_the_ret
             for evidence in annotation["evidence"]:
                 item = body["metadata"][evidence["metadataIndex"]]
                 assert item["name"] == evidence["name"]
-                assert evidence["end"] <= len(item["value"])
+                assert evidence["end"] <= len(item["name"] if evidence["inName"] else item["value"])
+                assert not evidence["inName"] or item["kind"] == "attribute"
                 checked += 1
                 disease_evidence += item["name"] == "study disease"
     assert checked > 0
@@ -712,6 +715,26 @@ def test_keyword_does_not_match_the_value_of_an_omitted_attribute(client: TestCl
     accession = synthetic.accessions[0]
     total = client.get("/api/entries/biosample", params={"q": f"GSM{accession[4:]}"}).json()["pagination"]["total"]
     assert total == 0
+
+
+def test_entry_returns_every_stored_piece_of_evidence_of_each_field(
+    client: TestClient, store_con: duckdb.DuckDBPyConnection
+) -> None:
+    stored: dict[str, dict[str, int]] = {}
+    for biosample, field, count in store_con.execute(
+        "SELECT biosample, field, count(*) FROM evidence GROUP BY biosample, field"
+    ).fetchall():
+        stored.setdefault(str(biosample), {})[str(field)] = int(count)
+    checked = 0
+    for accession in sorted(stored)[:40]:
+        body = client.get(f"/api/entries/biosample/{accession}").json()
+        returned: dict[str, int] = {}
+        for annotation in body["annotations"]:
+            if annotation["evidence"]:
+                returned[annotation["field"]] = returned.get(annotation["field"], 0) + len(annotation["evidence"])
+        assert returned == stored[accession]
+        checked += sum(returned.values())
+    assert checked > 0
 
 
 def test_entry_leaves_out_a_filter_key_attribute_only_where_no_evidence_of_the_biosample_points_to_it(

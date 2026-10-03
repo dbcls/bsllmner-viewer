@@ -35,7 +35,7 @@ from bsllmner_viewer.store.version import write_meta
 log = logging.getLogger(__name__)
 
 _CHUNK_ROWS = 500_000
-_RUN_TABLES = ("run", "field", "entry", "entry_annotation")
+_RUN_TABLES = ("run", "field", "entry", "entry_annotation", "entry_evidence")
 
 
 class BuildError(Exception):
@@ -185,8 +185,13 @@ def _ingest_runs(
             )
             con.execute("INSERT INTO entry SELECT * FROM read_parquet(?)", [str(result.entries_parquet)])
             con.execute("INSERT INTO entry_annotation SELECT * FROM read_parquet(?)", [str(result.annotations_parquet)])
+            con.execute("INSERT INTO entry_evidence SELECT * FROM read_parquet(?)", [str(result.evidence_parquet)])
             log.info(
-                "ingested run %s: %d entries, %d annotations", run.name, result.entry_count, result.annotation_count
+                "ingested run %s: %d entries, %d annotations, %d pieces of evidence",
+                run.name,
+                result.entry_count,
+                result.annotation_count,
+                result.evidence_count,
             )
 
 

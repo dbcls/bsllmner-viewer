@@ -3,15 +3,33 @@
 from __future__ import annotations
 
 import duckdb
+import orjson
+import pyarrow as pa
 
-from bsllmner_viewer.api.queries.evidence import find_spans
+from bsllmner_viewer.build.convert import metadata_groups
+from bsllmner_viewer.build.evidence import Text, trace_term
+from bsllmner_viewer.build.inputs import Attribute
 from bsllmner_viewer.build.mk2_filter_keys import MK2_FILTER_KEYS
 from bsllmner_viewer.dsl.fields import STATUS_GROUPS
+from bsllmner_viewer.store.metadata import ATTRIBUTE, description_items
 from bsllmner_viewer.store.organisms import ORGANISM_NAMES
 from bsllmner_viewer.store.schema import drop_derived_tables
 
 _ATTRIBUTES = '[{"name": "VARCHAR", "value": "VARCHAR", "harmonized_name": "VARCHAR"}]'
 _FETCH_ROWS = 10_000
+_EVIDENCE_SCHEMA = pa.schema(
+    [
+        ("biosample", pa.string()),
+        ("field", pa.string()),
+        ("value_index", pa.int32()),
+        ("kind", pa.string()),
+        ("item", pa.int32()),
+        ("in_name", pa.bool_()),
+        ("span_start", pa.int32()),
+        ("span_end", pa.int32()),
+        ("strategy", pa.string()),
+    ]
+)
 
 
 def derive(con: duckdb.DuckDBPyConnection, target_assays: list[str]) -> None:
@@ -36,8 +54,6 @@ def derive(con: duckdb.DuckDBPyConnection, target_assays: list[str]) -> None:
         ORDER BY a.field, a.status, a.accession
         """
     )
-    _omit_attributes(con)
-    con.execute("CREATE UNIQUE INDEX biosample_accession ON biosample (accession)")
     con.execute(
         """
         CREATE TABLE term AS
@@ -62,6 +78,9 @@ def derive(con: duckdb.DuckDBPyConnection, target_assays: list[str]) -> None:
         ORDER BY term_id
         """
     )
+    _derive_evidence(con)
+    _omit_attributes(con)
+    con.execute("CREATE UNIQUE INDEX biosample_accession ON biosample (accession)")
     con.execute(
         """
         CREATE TABLE term_parent AS
@@ -267,40 +286,104 @@ def _derive_whole_population_counts(con: duckdb.DuckDBPyConnection, target_assay
     )
 
 
-def _omit_attributes(con: duckdb.DuckDBPyConnection) -> None:
-    """Leave out of every BioSample the attributes under the mk2 filter keys in which no extracted value occurs.
+def _derive_evidence(con: duckdb.DuckDBPyConnection) -> None:
+    """The evidence of the selected run of each BioSample, and the evidence through the names of terms.
 
-    A key stays as soon as one of its attributes holds an extracted value of its BioSample, by the rule that evidence
-    uses, so that leaving the other keys out removes no evidence.
+    The names of terms come from the reference data, so a value is traced with them here, and only if it has a term and
+    no evidence from its own text. The record is not searched: a name of a term in an identifier of the record is a
+    coincidence. Evidence in the attributes points to the attributes of the input entry.
+    """
+    con.execute(
+        """
+        CREATE TABLE evidence AS
+        SELECT e.accession AS biosample, e.field, e.value_index, e.kind, e.item, e.in_name, e.span_start, e.span_end,
+               e.strategy
+        FROM entry_evidence e JOIN biosample b ON b.accession = e.accession AND b.run_id = e.run_id
+        """
+    )
+    con.execute(
+        """
+        SELECT a.biosample, a.field, a.value_index,
+               list_filter([t.label, a.term_label], x -> x IS NOT NULL)
+                   || coalesce((SELECT list(s.synonym ORDER BY s.synonym) FROM term_synonym s
+                                WHERE s.term_id = a.term_id), []) AS names,
+               b.title, b.description, b.attributes
+        FROM annotation a
+        JOIN term t ON t.term_id = a.term_id
+        JOIN biosample b ON b.accession = a.biosample
+        WHERE NOT EXISTS (
+            SELECT 1 FROM evidence v
+            WHERE v.biosample = a.biosample AND v.field = a.field AND v.value_index = a.value_index
+        )
+        ORDER BY a.biosample
+        """
+    )
+    found: list[tuple[object, ...]] = []
+    current: str | None = None
+    items: list[list[tuple[str, int, bool]]] = []
+    texts: list[list[Text]] = []
+    while batch := con.fetchmany(_FETCH_ROWS):
+        for biosample, field, value_index, names, title, description, attributes in batch:
+            if biosample != current:
+                current = biosample
+                items, texts = _searched_before_the_record(title, description, attributes)
+            traced = trace_term(names, texts)
+            if traced is None:
+                continue
+            for match in traced.matches:
+                kind, item, in_name = items[traced.group][match.text]
+                start, end = match.span.start, match.span.end
+                found.append((biosample, field, value_index, kind, item, in_name, start, end, traced.strategy))
+    names = _EVIDENCE_SCHEMA.names
+    columns = list(zip(*found, strict=True)) if found else [() for _ in names]
+    table = pa.table({name: list(c) for name, c in zip(names, columns, strict=True)}, schema=_EVIDENCE_SCHEMA)
+    con.register("term_evidence", table)
+    con.execute("INSERT INTO evidence SELECT * FROM term_evidence")
+    con.unregister("term_evidence")
+
+
+def _searched_before_the_record(
+    title: str | None, description: str, attributes: str
+) -> tuple[list[list[tuple[str, int, bool]]], list[list[Text]]]:
+    described = description_items(title, ((str(d["name"]), str(d["value"])) for d in orjson.loads(description)))
+    parsed = [Attribute(str(a.get("name") or ""), str(a.get("value") or "")) for a in orjson.loads(attributes)]
+    return metadata_groups(described, parsed)
+
+
+def _omit_attributes(con: duckdb.DuckDBPyConnection) -> None:
+    """Leave out of every BioSample the attributes under the mk2 filter keys that no evidence points to.
+
+    A key stays as soon as evidence of one BioSample points to an attribute under it, so leaving the other keys out
+    removes no evidence. Evidence in the attributes then points to the attributes that remain.
     """
     candidates = sorted(MK2_FILTER_KEYS)
-    con.execute(
-        f"""
-        CREATE TEMP TABLE candidate_attribute AS
-        WITH attribute AS (
-            SELECT accession, unnest(from_json(attributes, '{_ATTRIBUTES}')) AS a FROM biosample
-        ),
-        extracted AS (
-            SELECT biosample, list(DISTINCT extracted_value) AS extracted_values FROM annotation
-            WHERE extracted_value IS NOT NULL AND extracted_value <> '' GROUP BY biosample
-        )
-        SELECT attribute.a.name AS name, attribute.a.value AS value, extracted.extracted_values
-        FROM attribute JOIN extracted ON extracted.biosample = attribute.accession
-        WHERE list_contains(?, attribute.a.name) AND attribute.a.value IS NOT NULL
-        """,
-        [candidates],
-    )
-    held: set[str] = set()
-    for name in candidates:
-        con.execute("SELECT value, extracted_values FROM candidate_attribute WHERE name = ?", [name])
-        while batch := con.fetchmany(_FETCH_ROWS):
-            if any(find_spans(value, extracted) for value, values in batch for extracted in values):
-                held.add(name)
-                break
-    con.execute("DROP TABLE candidate_attribute")
+    held = {
+        str(row[0])
+        for row in con.execute(
+            f"""
+            SELECT DISTINCT from_json(b.attributes, '{_ATTRIBUTES}')[v.item + 1].name
+            FROM evidence v JOIN biosample b ON b.accession = v.biosample
+            WHERE v.kind = ?
+            """,
+            [ATTRIBUTE],
+        ).fetchall()
+    }
     omitted = [name for name in candidates if name not in held]
     con.execute("CREATE TABLE omitted_attribute (name VARCHAR PRIMARY KEY)")
     con.executemany("INSERT INTO omitted_attribute VALUES (?)", [[name] for name in omitted])
+    con.execute(
+        f"""
+        CREATE OR REPLACE TABLE evidence AS
+        SELECT v.biosample, v.field, v.value_index, v.kind,
+               CASE WHEN v.kind = ? THEN v.item - len(list_filter(
+                   list_slice(from_json(b.attributes, '{_ATTRIBUTES}'), 1, v.item), x -> list_contains(?, x.name)
+               )) ELSE v.item END AS item,
+               v.in_name, v.span_start, v.span_end, v.strategy
+        FROM evidence v JOIN biosample b ON b.accession = v.biosample
+        ORDER BY v.biosample, v.field, v.value_index, v.kind, item, v.span_start
+        """,
+        [ATTRIBUTE, omitted],
+    )
     con.execute(
         f"""
         UPDATE biosample

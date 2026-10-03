@@ -7,10 +7,11 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from bsllmner_viewer.api.queries.evidence import find_spans
+from bsllmner_viewer.build.evidence import ONTOLOGY_SYNONYM, Text, trace, trace_term
 from bsllmner_viewer.build.ingest import BuildError, build_full
 from bsllmner_viewer.build.manifest import load_manifest
 from bsllmner_viewer.build.mk2_filter_keys import MK2_FILTER_KEYS
+from bsllmner_viewer.store.metadata import ATTRIBUTE, DESCRIPTION, RECORD, description_items
 from bsllmner_viewer.store.version import read_version
 from tests.synthetic import TARGET_ASSAYS, Synthetic
 
@@ -35,25 +36,16 @@ def _omitted(con: duckdb.DuckDBPyConnection) -> set[str]:
     return {str(r[0]) for r in _rows(con, "SELECT name FROM omitted_attribute")}
 
 
-def test_derivation_omits_exactly_the_mk2_filter_keys_under_which_no_extracted_value_occurs(
+def test_derivation_omits_exactly_the_mk2_filter_keys_that_no_evidence_points_to(
     store_con: duckdb.DuckDBPyConnection,
 ) -> None:
-    rows = _rows(
-        store_con,
-        "SELECT b.accession, e.attributes FROM biosample b JOIN entry e USING (accession, run_id)",
-    )
-    values: dict[str, list[str]] = {}
-    for accession, value in _rows(
-        store_con, "SELECT biosample, extracted_value FROM annotation WHERE extracted_value IS NOT NULL"
-    ):
-        values.setdefault(str(accession), []).append(str(value))
-    held: set[str] = set()
-    for accession, raw in rows:
-        for attribute in json.loads(str(raw)):
-            if attribute["name"] in MK2_FILTER_KEYS and any(
-                find_spans(attribute["value"], v) for v in values.get(str(accession), [])
-            ):
-                held.add(attribute["name"])
+    attributes = {
+        str(a): json.loads(str(raw)) for a, raw in _rows(store_con, "SELECT accession, attributes FROM biosample")
+    }
+    held = {
+        attributes[str(biosample)][int(str(item))]["name"]
+        for biosample, item in _rows(store_con, "SELECT biosample, item FROM evidence WHERE kind = ?", ATTRIBUTE)
+    }
     assert "study disease" in held
     assert _omitted(store_con) == MK2_FILTER_KEYS - held
     assert "GEO Accession" in _omitted(store_con)
@@ -256,25 +248,99 @@ def test_build_rejects_entries_missing_from_the_input(synthetic: Synthetic, tmp_
         inputs.write_text(original)
 
 
-def test_entry_keeps_exactly_the_record_items_in_which_an_extracted_value_of_the_entry_occurs(
+def test_entry_keeps_exactly_the_record_items_that_its_evidence_points_to(
     store_con: duckdb.DuckDBPyConnection,
 ) -> None:
-    values: dict[tuple[int, str], list[str]] = {}
-    for run_id, accession, value in store_con.execute(
-        "SELECT run_id, accession, extracted_value FROM entry_annotation WHERE extracted_value IS NOT NULL"
+    pointed: dict[tuple[int, str], set[int]] = {}
+    for run_id, accession, item in store_con.execute(
+        "SELECT run_id, accession, item FROM entry_evidence WHERE kind = ?", [RECORD]
     ).fetchall():
-        values.setdefault((run_id, accession), []).append(value)
-    kept = 0
+        pointed.setdefault((run_id, accession), set()).add(item)
+    kept = owners = 0
     for run_id, accession, record in store_con.execute("SELECT run_id, accession, record FROM entry").fetchall():
         items = json.loads(record)
-        extracted = values.get((run_id, accession), [])
-        for item in items:
-            assert not item["path"].startswith("Owner.Contacts")
-            assert any(find_spans(item["value"], v) for v in extracted)
+        assert pointed.get((run_id, accession), set()) == set(range(len(items)))
+        assert not any(item["path"].startswith("Owner.Contacts") for item in items)
         kept += len(items)
-        if int(accession[4:]) % 5 == 0 and extracted:
-            assert any(item["path"] == "Owner.Name" for item in items), accession
+        owners += any(item["path"] == "Owner.Name" for item in items)
     assert kept > 0
+    assert owners > 0
+
+
+def _names_of_terms(con: duckdb.DuckDBPyConnection) -> dict[str, list[str]]:
+    names: dict[str, list[str]] = {str(t): [str(label)] for t, label in _rows(con, "SELECT term_id, label FROM term")}
+    for term_id, synonym in _rows(con, "SELECT term_id, synonym FROM term_synonym ORDER BY synonym"):
+        names[str(term_id)].append(str(synonym))
+    return names
+
+
+def test_evidence_is_the_trace_of_each_extracted_value_over_the_original_metadata_of_its_biosample(
+    store_con: duckdb.DuckDBPyConnection,
+) -> None:
+    """The stored evidence, recomputed from the stored metadata: evidence in an item that build leaves out (an omitted
+    attribute, or an item of the record that no evidence points to) would have stopped the trace there."""
+    names = _names_of_terms(store_con)
+    stored: dict[tuple[str, str, int], set[tuple[object, ...]]] = {}
+    for biosample, field, value_index, *piece in _rows(
+        store_con,
+        "SELECT biosample, field, value_index, kind, item, in_name, span_start, span_end, strategy FROM evidence",
+    ):
+        stored.setdefault((str(biosample), str(field), int(str(value_index))), set()).add(tuple(piece))
+    metadata = {
+        str(r[0]): r[1:]
+        for r in _rows(store_con, "SELECT accession, title, description, attributes, record FROM biosample")
+    }
+    traced = with_term = 0
+    for biosample, field, value_index, value, term_id, term_label in _rows(
+        store_con,
+        "SELECT biosample, field, value_index, extracted_value, term_id, term_label FROM annotation "
+        "WHERE extracted_value IS NOT NULL",
+    ):
+        title, description, attributes, record = metadata[str(biosample)]
+        described = description_items(
+            None if title is None else str(title), ((d["name"], d["value"]) for d in json.loads(str(description)))
+        )
+        parsed = json.loads(str(attributes))
+        values = [((DESCRIPTION, at, False), Text(v)) for at, (_, v) in enumerate(described)]
+        values += [((ATTRIBUTE, at, False), Text(a["value"])) for at, a in enumerate(parsed)]
+        attribute_names = [((ATTRIBUTE, at, True), Text(a["name"])) for at, a in enumerate(parsed)]
+        records = [((RECORD, at, False), Text(r["value"])) for at, r in enumerate(json.loads(str(record)))]
+        groups = [values, attribute_names, records]
+        expected: set[tuple[object, ...]] = set()
+        result = trace(str(value), [[t for _, t in g] for g in groups])
+        if result is None and term_id is not None:
+            term_names = [
+                *names[str(term_id)][:1],
+                *([str(term_label)] if term_label else []),
+                *names[str(term_id)][1:],
+            ]
+            result = trace_term(term_names, [[t for _, t in g] for g in groups[:2]])
+            with_term += result is not None
+        if result is not None:
+            for m in result.matches:
+                expected.add((*groups[result.group][m.text][0], m.span.start, m.span.end, result.strategy))
+        assert stored.get((str(biosample), str(field), int(str(value_index))), set()) == expected, (biosample, field)
+        traced += bool(expected)
+    assert traced > 0
+    assert with_term > 0
+
+
+def test_all_evidence_of_a_value_has_one_strategy_and_is_in_one_group_and_term_names_are_not_traced_in_the_record(
+    store_con: duckdb.DuckDBPyConnection,
+) -> None:
+    rows = _rows(
+        store_con,
+        "SELECT count(DISTINCT strategy), "
+        "count(DISTINCT CASE WHEN kind = 'record' THEN 2 WHEN in_name THEN 1 ELSE 0 END) "
+        "FROM evidence GROUP BY biosample, field, value_index",
+    )
+    assert rows
+    assert all(r == (1, 1) for r in rows)
+    strategies = {str(r[0]) for r in _rows(store_con, "SELECT DISTINCT strategy FROM evidence")}
+    assert {"exact", "normalized", ONTOLOGY_SYNONYM} <= strategies
+    assert _rows(
+        store_con, "SELECT count(*) FROM evidence WHERE strategy = ? AND kind = ?", ONTOLOGY_SYNONYM, RECORD
+    ) == [(0,)]
 
 
 def test_derived_biosample_carries_the_description_and_record_of_its_selected_entry(

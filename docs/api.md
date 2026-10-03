@@ -69,7 +69,7 @@ Compatibility covers the grammar and the AST shape. The set of fields and the ev
 
 ### Keywords
 
-A term without a field is a keyword, such as `hypoxia organoid` or `"breast cancer"`. A keyword matches an entry whose searchable text contains it. The searchable text of a BioSample is defined in [data-model.md](data-model.md): its title, its organism name, the values of its attributes, and the extracted values and term labels of its annotations. Matching follows the free-text search of the DDBJ Search API wherever the two can be compared.
+A term without a field is a keyword, such as `hypoxia organoid` or `"breast cancer"`. A keyword matches an entry whose searchable text contains it. The searchable text of a BioSample is defined in [data-model.md](data-model.md#condition-evaluation). Matching follows the free-text search of the DDBJ Search API wherever the two can be compared.
 
 - Letters are compared case-insensitively. Every character other than a letter or a digit separates words.
 - Every word of a keyword must occur in the text, in any order and in any part of the text. `breast cancer` matches a BioSample whose title says "breast" and whose disease is "cancer".
@@ -88,7 +88,7 @@ An entry is a BioSample. `GET /api/entries/biosample` lists the BioSamples that 
 
 `GET /api/entries/biosample/{accession}` returns one BioSample with its original metadata ([data-model.md](data-model.md#entities)), its annotations with evidence, its experiments, and its BioProjects. The BioSample does not have to be in the population; its experiments show which of them are. Each annotation with a term also has the clause on its field and term, so that a client can make a condition from it.
 
-The original metadata is a list of items. Each item has its kind (`description`, `record`, or `attribute`), a name to show, and a value. The items come in this order of their kinds, so that the attributes come last and the items that describe the BioSample as a whole come first. Evidence identifies an item by its position in the list (`metadataIndex`).
+The original metadata is a list of items. Each item has its kind (`description`, `record`, or `attribute`), a name to show, and a value. The items come in this order of their kinds, so that the attributes come last and the items that describe the BioSample as a whole come first. Evidence identifies an item by its position in the list (`metadataIndex`). `inName` is true if the evidence is in the name of an attribute, and false if it is in the value of the item. `start` and `end` are character positions in that name or value. `strategy` is the matching strategy that found the evidence ([provenance.md](provenance.md#matching-strategies)).
 
 - The description is always returned: the title, the description paragraphs, the sample name, and the synonyms, named `Title`, `Description`, `Sample name`, and `Synonym`.
 - An item of the record is returned only when evidence of the BioSample points to it. It is named by a short name for its path in the input entry, such as `Owner` for `Owner.Name` and `Status` for `Status.when`. A path without a short name is its own name.

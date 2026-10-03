@@ -14,6 +14,7 @@ ClauseJson = TypedDict(
 type Unit = Literal["biosample", "sra-experiment", "bioproject"]
 type EntryType = Literal["biosample"]
 type AccessionType = Literal["biosample", "sra-experiment", "sra-run", "bioproject"]
+type EvidenceStrategy = Literal["exact", "case_insensitive", "normalized", "bag_of_words", "fuzzy", "ontology_synonym"]
 
 
 class ApiModel(BaseModel):
@@ -286,9 +287,10 @@ class EntriesResponse(ApiModel):
 class Evidence(ApiModel):
     name: str = Field(description="Name of the item of the original metadata that the evidence is in")
     metadata_index: int = Field(description="Position of that item in `metadata`")
-    start: int
-    end: int
-    method: str
+    in_name: bool = Field(description="True if the evidence is in the name of an attribute, false if in the value")
+    start: int = Field(description="Position of the first character of the match in that name or value")
+    end: int = Field(description="Position after the last character of the match in that name or value")
+    strategy: EvidenceStrategy = Field(description="The matching strategy that found the evidence")
 
 
 class EntryAnnotation(ApiModel):

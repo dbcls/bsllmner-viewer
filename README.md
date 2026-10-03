@@ -23,10 +23,15 @@ bsllmner-mk2 extracts biological entities (cell line, cell type, tissue, disease
 - [docs/architecture.md](docs/architecture.md) — Components, their responsibilities, and invariants that span them
 - [docs/data-model.md](docs/data-model.md) — Datasets, population, entities, annotation status, and counting semantics
 - [docs/build.md](docs/build.md) — Build inputs, validation, operations, and dataset version information
+- [docs/provenance.md](docs/provenance.md) — Provenance tracing: how build links each extracted value to evidence in the original metadata
 - [docs/api.md](docs/api.md) — API conventions, condition DSL, entries, aggregation semantics, correspondence between API queries and UI views, and compatibility policy
 - [docs/development.md](docs/development.md) — Running the containers, tests, and checks
 - [docs/testing.md](docs/testing.md) — Kinds of tests, what is tested, test doubles, and the end-to-end policy
 - [docs/operations.md](docs/operations.md) — Building, updating, publishing, and deploying a dataset, health monitoring, and crawler settings
+
+## Provenance tracing
+
+For each extracted value, bsllmner-viewer shows the evidence in the original metadata of the BioSample. The rules that find this evidence are based on the provenance tracing that Núria Fàbrega developed at DBCLS BioHackathon 2026: [nuriafari/BH26_BioSample_bsllmner_mk2_value_provenance](https://github.com/nuriafari/BH26_BioSample_bsllmner_mk2_value_provenance). That work traces the values that bsllmner-mk2 extracted to their source text in the BioSample records, and analyzes which submitted field names contain them. bsllmner-viewer uses the deterministic matching strategies of that work. [docs/provenance.md](docs/provenance.md) specifies the rules that bsllmner-viewer implements.
 
 ## License
 

@@ -28,14 +28,16 @@ A BioSample analyzed by a run but linked to no experiment of a target assay is k
 | SRA Run | Accession | N:1 with SRA Experiment |
 | BioProject | Accession, title | N:M with BioSample |
 | Annotation | Field, extracted value, status, term | N:1 with BioSample |
-| Evidence | Attribute name, character range, method | N:1 with Annotation |
+| Evidence | Item of the original metadata, name or value of the item, character range, matching strategy | N:1 with Annotation |
 | Ontology term | ID, label, synonyms, parent terms | Parent–child relations form a DAG |
 
 The **original metadata** of a BioSample is what its input entry gives the LLM, in three kinds:
 
 - the description: the title, the description paragraphs, the sample name, and the synonyms,
 - the attributes, except some attributes that record how the BioSample was submitted and archived ([build.md](build.md#runs)), and
-- the record of the entry: its IDs, status, dates, owner, links, model, package, and organism. Only the items of the record in which an extracted value of the BioSample occurs are kept, because the rest are identifiers and dates that no annotation was derived from. The contacts of the owner, which name people, are not kept.
+- the record of the entry: its IDs, status, dates, owner, links, model, package, and organism. Only the items of the record that evidence points to are kept, because the rest are identifiers and dates that no annotation was derived from. The contacts of the owner, which name people, are not kept.
+
+Evidence locates an extracted value in the original metadata of its BioSample, so that users can check what an annotation was derived from. How build finds evidence is specified in [provenance.md](provenance.md).
 
 Input entries do not always agree on the name of an organism: some give `human` or `9606` for `Homo sapiens`. Where the api names an organism by its NCBI Taxonomy ID, as in aggregations, condition labels, and the dataset description, it uses the name that most BioSamples of the dataset give for the ID, and of names that equally many BioSamples give, the first in character order. A BioSample and its entries keep the name that its own input entry gives.
 
@@ -58,14 +60,6 @@ Annotations are LLM-derived and may be wrong. Every annotation carries a status.
 - `no_value` means that nothing was extracted; it does not mean the sample lacks the property. A sample without an extracted drug is not necessarily untreated.
 - `unmapped_no_candidate` indicates that the ontology has no label or synonym resembling the value. `unmapped_rejected` indicates that similar terms exist but none was adopted, typically because the LLM judged them inconsistent with the BioSample metadata.
 - In a multi-valued field, a BioSample can hold several statuses at once.
-
-## Evidence
-
-Evidence locates an extracted value in the original metadata of its BioSample, so that users can check what an annotation was derived from. For example, the knockout gene `Whsc1` of a BioSample whose description says "ChIPseq and RNAseq in Whsc1KO E12.5 heart" has its evidence in that description.
-
-- Each piece of evidence identifies an item of the original metadata, the character range of the match within the value of the item, and the method that produced it. Evidence from different methods can coexist for one extracted value.
-- The `string_match` method finds the extracted value in the values of the items after Unicode NFKC normalization and case folding. Whitespace, hyphens, underscores, slashes, and periods are treated as interchangeable separators that may also be absent, so `MCF7` matches `MCF-7`. An extracted value of fewer than three characters, counted after this normalization, has no evidence, because a value such as `S` or `CD` also occurs in unrelated text, such as `https`.
-- Evidence is best-effort. An extracted value without evidence may still have been derived from the original metadata, for example when the LLM changed its spelling.
 
 ## Term hierarchy
 

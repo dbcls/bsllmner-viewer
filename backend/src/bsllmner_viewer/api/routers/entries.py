@@ -14,7 +14,6 @@ from bsllmner_viewer.api.queries import entries as rq
 from bsllmner_viewer.api.queries.core import population
 from bsllmner_viewer.api.queries.dimensions import clauses_for, dimension
 from bsllmner_viewer.api.queries.entries import attributes_of, organism_of
-from bsllmner_viewer.api.queries.evidence import STRING_MATCH, find_spans
 from bsllmner_viewer.api.record_names import record_name
 from bsllmner_viewer.api.schemas import (
     EntriesResponse,
@@ -28,6 +27,7 @@ from bsllmner_viewer.api.schemas import (
     Pagination,
 )
 from bsllmner_viewer.build.mk2_filter_keys import MK2_FILTER_KEYS
+from bsllmner_viewer.store.metadata import ATTRIBUTE, DESCRIPTION, RECORD, description_items
 
 router = APIRouter(tags=["Entries"])
 
@@ -79,8 +79,13 @@ def get_entry(store: StoreDep, accession: str) -> EntryResponse:
         if row is None:
             raise ApiError(None, 404, f"BioSample {accession} is not in the dataset")
         annotation_rows = cur.execute(
-            "SELECT field, extracted_value, status, term_id, term_label FROM annotation WHERE biosample = ? "
-            "ORDER BY field, value_index",
+            "SELECT field, value_index, extracted_value, status, term_id, term_label FROM annotation "
+            "WHERE biosample = ? ORDER BY field, value_index",
+            [accession],
+        ).fetchall()
+        evidence_rows = cur.execute(
+            "SELECT field, value_index, kind, item, in_name, span_start, span_end, strategy FROM evidence "
+            "WHERE biosample = ?",
             [accession],
         ).fetchall()
         experiments = cur.execute(
@@ -100,42 +105,35 @@ def get_entry(store: StoreDep, accession: str) -> EntryResponse:
             "LEFT JOIN bioproject b ON b.accession = bb.bioproject WHERE bb.biosample = ? ORDER BY bb.bioproject",
             [accession],
         ).fetchall()
+    described = description_items(row[1], ((str(d["name"]), str(d["value"])) for d in orjson.loads(row[7])))
+    record = orjson.loads(row[8])
+    attributes = attributes_of(row[5])
     items = [
-        *([MetadataItem(kind="description", name="Title", value=row[1], harmonized_name=None)] if row[1] else []),
+        *(MetadataItem(kind=DESCRIPTION, name=name, value=value, harmonized_name=None) for name, value in described),
         *(
-            MetadataItem(kind="description", name=str(d["name"]), value=str(d["value"]), harmonized_name=None)
-            for d in orjson.loads(row[7])
-        ),
-        *(
-            MetadataItem(kind="record", name=record_name(str(r["path"])), value=str(r["value"]), harmonized_name=None)
-            for r in orjson.loads(row[8])
+            MetadataItem(kind=RECORD, name=record_name(str(r["path"])), value=str(r["value"]), harmonized_name=None)
+            for r in record
         ),
         *(
             MetadataItem(
-                kind="attribute",
+                kind=ATTRIBUTE,
                 name=str(a.get("name")),
                 value=str(a.get("value")),
                 harmonized_name=a.get("harmonized_name"),
             )
-            for a in attributes_of(row[5])
+            for a in attributes
         ),
     ]
-    field_order = {f.name: f.position for f in store.fields}
-    found: list[tuple[str, str | None, str, str | None, str | None, list[tuple[int, int, int]]]] = []
-    for field, value, status, term_id, label in sorted(annotation_rows, key=lambda r: field_order.get(str(r[0]), 99)):
-        spans = (
-            [
-                (index, span.start, span.end)
-                for index, item in enumerate(items)
-                for span in find_spans(item.value, value)
-            ]
-            if value
-            else []
+    # Evidence identifies an item by its kind and its position among the items of that kind.
+    offset = {DESCRIPTION: 0, RECORD: len(described), ATTRIBUTE: len(described) + len(record)}
+    found: dict[tuple[str, int], list[tuple[int, bool, int, int, str]]] = {}
+    for field, value_index, kind, item, in_name, start, end, strategy in evidence_rows:
+        found.setdefault((str(field), int(value_index)), []).append(
+            (offset[str(kind)] + int(item), bool(in_name), int(start), int(end), str(strategy))
         )
-        found.append((str(field), value, str(status), term_id, label, spans))
     # An attribute under a name that bsllmner-mk2 drops records how the BioSample was submitted and archived, and so
     # does an item of the record; they are shown only when evidence of the BioSample points to them.
-    evidenced = {index for *_, spans in found for index, _, _ in spans}
+    evidenced = {index for pieces in found.values() for index, *_ in pieces}
     shown = [
         index
         for index, item in enumerate(items)
@@ -144,22 +142,30 @@ def get_entry(store: StoreDep, accession: str) -> EntryResponse:
         or index in evidenced
     ]
     position = {index: at for at, index in enumerate(shown)}
+    field_order = {f.name: f.position for f in store.fields}
     annotations = [
         EntryAnnotation(
-            field=field,
+            field=str(field),
             value=value,
-            status=status,
+            status=str(status),
             term_id=term_id,
             label=label,
-            clauses=[] if term_id is None else clauses_for(dimension(store.field_set, field), term_id),
+            clauses=[] if term_id is None else clauses_for(dimension(store.field_set, str(field)), term_id),
             evidence=[
                 Evidence(
-                    name=items[index].name, metadata_index=position[index], start=start, end=end, method=STRING_MATCH
+                    name=items[index].name,
+                    metadata_index=position[index],
+                    in_name=in_name,
+                    start=start,
+                    end=end,
+                    strategy=strategy,
                 )
-                for index, start, end in spans
+                for index, in_name, start, end, strategy in sorted(found.get((str(field), int(value_index)), []))
             ],
         )
-        for field, value, status, term_id, label, spans in found
+        for field, value_index, value, status, term_id, label in sorted(
+            annotation_rows, key=lambda r: field_order.get(str(r[0]), 99)
+        )
     ]
     return EntryResponse(
         dataset_version=version_ref(store),

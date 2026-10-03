@@ -683,13 +683,26 @@ export interface components {
              * @description Position of that item in `metadata`
              */
             metadataIndex: number;
-            /** Start */
+            /**
+             * Inname
+             * @description True if the evidence is in the name of an attribute, false if in the value
+             */
+            inName: boolean;
+            /**
+             * Start
+             * @description Position of the first character of the match in that name or value
+             */
             start: number;
-            /** End */
+            /**
+             * End
+             * @description Position after the last character of the match in that name or value
+             */
             end: number;
-            /** Method */
-            method: string;
+            /** @description The matching strategy that found the evidence */
+            strategy: components["schemas"]["EvidenceStrategy"];
         };
+        /** @enum {string} */
+        EvidenceStrategy: "exact" | "case_insensitive" | "normalized" | "bag_of_words" | "fuzzy" | "ontology_synonym";
         /** FieldDescription */
         FieldDescription: {
             /** Name */

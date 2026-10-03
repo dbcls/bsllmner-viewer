@@ -9,7 +9,7 @@ import { backHref } from "~/lib/back-link"
 import { fieldLabel, STATUS_ORDER, statusInfo } from "~/lib/labels"
 import { Card, cn, ExternalLink, HelpHint, PageHeading, Pager, SectionHeading, Skeleton, StatusPill, Tag } from "~/ui"
 
-import { segmentText } from "./evidence"
+import { segmentText, type Span } from "./evidence"
 import { taxonomyHref } from "./links"
 import { TermPopover } from "./term-popover"
 
@@ -306,42 +306,56 @@ type MetadataRowProps = {
 }
 
 /**
- * One item of the metadata, with the evidence of every annotation marked in its value. An attribute is named as it was
- * submitted, in a monospace font; the description and the record are named by the api in words.
+ * One item of the metadata, with the evidence of every annotation marked in its value, or in its name when the evidence
+ * is in the name of an attribute. An attribute is named as it was submitted, in a monospace font; the description and
+ * the record are named by the api in words.
  */
 const MetadataRow = ({ item, index, annotations, highlighted }: MetadataRowProps) => {
-  const evidenceOf = (annotation: EntryAnnotation) => annotation.evidence.filter((evidence) => evidence.metadataIndex === index)
-  const active = annotations.filter((annotation) => annotation.field === highlighted).flatMap(evidenceOf)
-  const segments = segmentText(item.value, annotations.flatMap(evidenceOf), active)
+  const marks = (inName: boolean) => {
+    const evidenceOf = (annotation: EntryAnnotation) =>
+      annotation.evidence.filter((evidence) => evidence.metadataIndex === index && evidence.inName === inName)
+    return {
+      spans: annotations.flatMap(evidenceOf),
+      active: annotations.filter((annotation) => annotation.field === highlighted).flatMap(evidenceOf),
+    }
+  }
+  const name = marks(true)
+  const value = marks(false)
   return (
     <div
       className={cn(
         "grid grid-cols-[130px_1fr] gap-2.5 rounded-tag px-1.5 py-1.5 text-fs-body-sm",
         ROW_RULE,
-        active.length > 0 && "bg-selection-soft",
+        (name.active.length > 0 || value.active.length > 0) && "bg-selection-soft",
       )}
     >
-      <span className={cn("text-fs-label wrap-anywhere text-ink-soft", item.kind === "attribute" && "font-mono")}>{item.name}</span>
+      <span className={cn("text-fs-label wrap-anywhere text-ink-soft", item.kind === "attribute" && "font-mono")}>
+        <MarkedText text={item.name} {...name} />
+      </span>
       <span className="text-pretty">
-        {segments.map((segment, index) =>
-          segment.matched ? (
-            <mark
-              key={index}
-              className={cn(
-                "rounded-badge border-b-2 px-0.5 font-semibold text-ink",
-                segment.active ? "border-selection bg-selection-mid" : "border-brand-light bg-brand-tint",
-              )}
-            >
-              {segment.text}
-            </mark>
-          ) : (
-            <span key={index}>{segment.text}</span>
-          ),
-        )}
+        <MarkedText text={item.value} {...value} />
       </span>
     </div>
   )
 }
+
+/** Text with evidence marked in it, in yellow where the evidence of the annotation under the pointer is. */
+const MarkedText = ({ text, spans, active }: { text: string; spans: Span[]; active: Span[] }) =>
+  segmentText(text, spans, active).map((segment, index) =>
+    segment.matched ? (
+      <mark
+        key={index}
+        className={cn(
+          "rounded-badge border-b-2 px-0.5 font-semibold text-ink",
+          segment.active ? "border-selection bg-selection-mid" : "border-brand-light bg-brand-tint",
+        )}
+      >
+        {segment.text}
+      </mark>
+    ) : (
+      <Fragment key={index}>{segment.text}</Fragment>
+    ),
+  )
 
 type AnnotationsProps = {
   entry: EntryResponse

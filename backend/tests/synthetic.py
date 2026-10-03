@@ -55,6 +55,11 @@ ONTOLOGIES: dict[str, list[tuple[str, str, list[str], list[str]]]] = {
     ],
 }
 
+# The first synonym of each term that has one. Every seventh BioSample writes it in place of an extracted value with
+# the term, so that the value has evidence only through the names of its term, or through its own text with a strategy
+# after `exact` (`Hep G2` for `HepG2`).
+SYNONYM_OF = {term_id: synonyms[0] for terms in ONTOLOGIES.values() for term_id, _, synonyms, _ in terms if synonyms}
+
 # Leaf-ish terms the generator annotates with, per field.
 ANNOTATED: dict[str, list[tuple[str, str]]] = {
     "cell_line": [(t, label) for t, label, _, _ in ONTOLOGIES["cellosaurus"]],
@@ -198,8 +203,9 @@ def _write_run(root: Path, name: str, members: list[str], rng: random.Random, tr
     entries: list[dict[str, object]] = []
     inputs: list[str] = []
     for accession in members:
+        number = int(accession[4:])
         organism = rng.choice(ORGANISMS)
-        organism_name = ORGANISM_VARIANTS[organism[0]] if int(accession[4:]) % 7 == 0 else organism[1]
+        organism_name = ORGANISM_VARIANTS[organism[0]] if number % 7 == 0 else organism[1]
         modified = datetime.datetime(2020, 1, 1) + datetime.timedelta(days=rng.randrange(2000))
         roll = rng.random()
         if roll < 0.05:
@@ -246,12 +252,15 @@ def _write_run(root: Path, name: str, members: list[str], rng: random.Random, tr
                 truth.annotations[key] = [(None, "not_stated", None)]
                 continue
             values: list[str] = []
+            written: list[str] = []
             rows: list[tuple[str | None, str, str | None]] = []
             for term_id, label in rng.sample(ANNOTATED[field_name], k=min(n_values, len(ANNOTATED[field_name]))):
                 status = rng.choice(STATUS_KINDS[:4])
                 value = label if status == "mapped_exact" else f"{label} ({rng.randrange(100)})"
                 values.append(value)
-                attributes.append({"attribute_name": field_name, "content": f"{value} treated"})
+                mapped = status.startswith("mapped")
+                written.append(SYNONYM_OF[term_id] if number % 7 == 0 and mapped and term_id in SYNONYM_OF else value)
+                attributes.append({"attribute_name": field_name, "content": f"{written[-1]} treated"})
                 if status.startswith("mapped"):
                     results[field_name].append(
                         {
@@ -277,12 +286,12 @@ def _write_run(root: Path, name: str, members: list[str], rng: random.Random, tr
                     rows.append((value, status, None))
             extracted[field_name] = values if multi else values[0]
             truth.annotations[key] = rows
-            mentions.append(values[0])
+            mentions.append(written[0])
             if field_name == "disease":
                 # Attributes among the names that bsllmner-mk2 drops. `study disease` always holds an extracted
                 # value, and `Submitter Id` holds one only in every other BioSample.
-                attributes.append({"attribute_name": "study disease", "content": values[0]})
-                submitter = values[0] if int(accession[4:]) % 2 == 0 else f"submitter {accession}"
+                attributes.append({"attribute_name": "study disease", "content": written[0]})
+                submitter = written[0] if number % 2 == 0 else f"submitter {accession}"
                 attributes.append({"attribute_name": "Submitter Id", "content": submitter})
         entries.append(
             {
@@ -299,13 +308,17 @@ def _write_run(root: Path, name: str, members: list[str], rng: random.Random, tr
                 "ambiguous_fields": {},
             }
         )
-        number = int(accession[4:])
+        # In every fifth BioSample, only the name of the owner holds the last mention, so that its evidence is in the
+        # record. A contact always holds a mention and is never kept.
+        only_in_record = mentions[-1] if number % 5 == 0 and mentions else None
+        if only_in_record is not None:
+            attributes = [a for a in attributes if only_in_record not in a["content"]]
         description: dict[str, object] = {
             "Title": title,
             "Organism": {"taxonomy_id": str(organism[0]), "OrganismName": organism_name},
         }
         # A paragraph that holds an extracted value, or a list of paragraphs that hold none.
-        if number % 3 == 0 and mentions:
+        if number % 3 == 0 and mentions and mentions[0] != only_in_record:
             description["Comment"] = {"Paragraph": f"Profiling of {mentions[0]} samples"}
         elif number % 3 == 1:
             description["Comment"] = {"Paragraph": [f"first paragraph of {accession}", "second paragraph"]}
@@ -313,8 +326,7 @@ def _write_run(root: Path, name: str, members: list[str], rng: random.Random, tr
             description["SampleName"] = f"name of {accession}"
         if number % 11 == 0:
             description["Synonym"] = [{"db": "SYN", "content": f"synonym of {accession}"}]
-        # The name of the owner holds an extracted value in a few entries; a contact always does and is never kept.
-        owner_name = f"Laboratory of {mentions[-1]}" if number % 5 == 0 and mentions else "Synthetic Institute"
+        owner_name = f"Laboratory of {only_in_record}" if only_in_record is not None else "Synthetic Institute"
         contact = mentions[0] if mentions else "Ann"
         body: dict[str, object] = {
             "access": "public",

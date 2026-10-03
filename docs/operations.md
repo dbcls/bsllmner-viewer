@@ -12,7 +12,7 @@ docker compose run --rm --no-deps api uv run bsllmner-viewer-build full \
 ```
 
 - `full` reads every run and reference source of the manifest and writes a new store file. The output path must not exist.
-- `--workers` is the number of processes that read run results in parallel. Each worker holds one result file in memory (up to a few GB for the largest files).
+- `--workers` is the number of processes that read run results and find their evidence in parallel. Each worker holds one result file in memory (up to a few GB for the largest files).
 - The command prints the verification result as JSON and exits with status 1 when verification fails.
 
 A manifest looks like this. Paths are relative to the manifest's directory.

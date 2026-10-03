@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import duckdb
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8
 
 RAW_TABLES: tuple[str, ...] = (
     "store_meta",
@@ -16,6 +16,7 @@ RAW_TABLES: tuple[str, ...] = (
     "field",
     "entry",
     "entry_annotation",
+    "entry_evidence",
     "ref_ontology",
     "ref_term",
     "ref_term_synonym",
@@ -31,6 +32,7 @@ RAW_TABLES: tuple[str, ...] = (
 DERIVED_TABLES: tuple[str, ...] = (
     "biosample",
     "annotation",
+    "evidence",
     "omitted_attribute",
     "term",
     "term_synonym",
@@ -99,6 +101,21 @@ CREATE TABLE entry_annotation (
     status VARCHAR NOT NULL,
     term_id VARCHAR,
     term_label VARCHAR
+);
+
+-- Evidence that build finds when it ingests a run. `item` is the position of the item in the description (title
+-- first), in the record as the entry stores it, or in the attributes as the input entry gives them.
+CREATE TABLE entry_evidence (
+    run_id INTEGER NOT NULL,
+    accession VARCHAR NOT NULL,
+    field VARCHAR NOT NULL,
+    value_index INTEGER NOT NULL,
+    kind VARCHAR NOT NULL,
+    item INTEGER NOT NULL,
+    in_name BOOLEAN NOT NULL,
+    span_start INTEGER NOT NULL,
+    span_end INTEGER NOT NULL,
+    strategy VARCHAR NOT NULL
 );
 
 CREATE TABLE ref_ontology (
