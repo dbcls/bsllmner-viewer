@@ -29,7 +29,7 @@ export const barsSvg = (title: string, unit: string, rows: BarDatum[]): string =
     const total = (row.count / max) * barWidth
     parts.push(`<text x="${x}" y="${y + 10}" fill="${token("--color-ink")}">${escape(row.label)}</text>`)
     parts.push(`<rect x="${x}" y="${y + 15}" width="${barWidth}" height="8" rx="2" fill="${token("--color-brand-soft")}"/>`)
-    parts.push(`<rect x="${x}" y="${y + 15}" width="${total.toFixed(1)}" height="8" rx="2" fill="${token("--color-brand")}"/>`)
+    parts.push(`<rect x="${x}" y="${y + 15}" width="${total.toFixed(1)}" height="8" rx="2" fill="${token("--color-brand-light")}"/>`)
     parts.push(`<text x="${width - 12}" y="${y + 22}" text-anchor="end" font-family="IBM Plex Mono, monospace" fill="${token("--color-ink-mid")}">${formatCount(row.count)}</text>`)
   })
   parts.push("</svg>")

@@ -1,7 +1,8 @@
-import { TABLE_PER_PAGE } from "~/lib/workspace-state"
 import { FrozenTd, Skeleton } from "~/ui"
 
 type SkeletonTableRowsProps = {
+  /** The rows that a page of the table holds. */
+  rows: number
   /** The width class of the skeleton in each column, near the width of the column's values. */
   columns: readonly string[]
   /** The first column stays put when the table scrolls sideways, as the first column of the table's rows does. */
@@ -9,9 +10,9 @@ type SkeletonTableRowsProps = {
 }
 
 /** A page of skeleton rows of a table, each as tall as a row of the table, while the first page of a condition loads. */
-export const SkeletonTableRows = ({ columns, frozen = false }: SkeletonTableRowsProps) => (
+export const SkeletonTableRows = ({ rows, columns, frozen = false }: SkeletonTableRowsProps) => (
   <>
-    {Array.from({ length: TABLE_PER_PAGE }, (_, index) => (
+    {Array.from({ length: rows }, (_, index) => (
       <tr key={index} aria-hidden="true" className="group">
         {columns.map((width, column) =>
           frozen && column === 0 ? (

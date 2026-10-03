@@ -3,7 +3,6 @@ import { type ReactNode, useEffect, useState } from "react"
 import { apiUrl, exportAccessionsUrl, exportEntriesUrl } from "~/lib/api/client"
 import { copyText } from "~/lib/export"
 import { formatCount } from "~/lib/format"
-import { TABLE_PER_PAGE } from "~/lib/workspace-state"
 import { ACTION_ICON, CopyButton, DownloadLink, Icon, Modal } from "~/ui"
 
 import type { WorkspaceState } from "./state"
@@ -83,10 +82,10 @@ export const ExportMenu = ({ open, onClose, q, totalEntries }: ExportMenuProps) 
       <MenuGroup title="Entries" note="all annotation fields">
         <MenuItem
           href={exportEntriesUrl("biosample", q, "tsv")}
-          label="Entries · TSV"
+          label="TSV"
           {...(totalEntries === undefined ? {} : { hint: `${formatCount(totalEntries)} rows` })}
         />
-        <MenuItem href={exportEntriesUrl("biosample", q, "ndjson")} label="Entries · JSON lines" />
+        <MenuItem href={exportEntriesUrl("biosample", q, "ndjson")} label="JSON lines" />
       </MenuGroup>
       <MenuGroup title="Accession lists" note="one per line">
         {ACCESSION_TYPES.map(({ type, label, hint }) => (
@@ -117,7 +116,7 @@ export const apiRequestFor = (state: WorkspaceState): string => {
   const q = state.q ?? undefined
   switch (state.tab) {
     case "samples":
-      return apiUrl("/api/entries/biosample", { q, page: state.page, perPage: TABLE_PER_PAGE })
+      return apiUrl("/api/entries/biosample", { q, page: state.page, perPage: state.perPage })
     case "distribution":
       return apiUrl("/api/distribution", { q, field: "disease", unit: state.unit, facetSelfExclude: "true" })
     case "heatmap":
@@ -133,7 +132,7 @@ export const apiRequestFor = (state: WorkspaceState): string => {
     case "trend":
       return apiUrl("/api/trend", { q, field: state.trendField ?? undefined, unit: state.unit, facetSelfExclude: "true", elements: state.trendTerms?.join(",") })
     case "projects":
-      return apiUrl("/api/projects", { q, facetSelfExclude: "true", sort: state.sort, page: state.page, perPage: TABLE_PER_PAGE })
+      return apiUrl("/api/projects", { q, facetSelfExclude: "true", sort: state.sort, page: state.page, perPage: state.perPage })
   }
 }
 

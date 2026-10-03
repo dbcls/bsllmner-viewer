@@ -6,7 +6,7 @@ export type Clause = { field: string; value?: string; from?: string; to?: string
 
 export type Element = { value: string; label: string; clauses: Clause[]; count: number }
 
-export type TermElement = Element & { countExact: number; countSelected: number; hasChildren: boolean }
+export type TermElement = Element & { countExact: number; countSelected: number; hasChildren: boolean; parents: string[] }
 
 export type Distribution = { q: string | null; populationQ: string | null; total: number; elements: TermElement[]; withoutTerm: number | null }
 
@@ -16,7 +16,7 @@ export type Crosstab = {
   total: number
   rows: TermElement[]
   cols: TermElement[]
-  cells: { row: string; col: string; count: number; residual: number | null; classification: string | null }[]
+  cells: { row: string; col: string; count: number; ratio: number | null; residual: number | null; classification: string | null }[]
 }
 
 export type TrendPoint = { year: number; count: number; clauses: Clause[] }

@@ -28,7 +28,7 @@ ONTOLOGIES: dict[str, list[tuple[str, str, list[str], list[str]]]] = {
     ],
     "mondo": [
         ("MONDO:0000001", "disease", [], []),
-        ("MONDO:0004992", "cancer", ["malignant neoplasm"], ["MONDO:0000001"]),
+        ("MONDO:0004992", "cancer", ["malignant neoplasm", "carcinoma"], ["MONDO:0000001"]),
         ("MONDO:0007254", "breast cancer", ["mammary cancer"], ["MONDO:0004992", "MONDO:0002657"]),
         ("MONDO:0002657", "breast disorder", [], ["MONDO:0000001"]),
         ("MONDO:0004989", "breast carcinoma", [], ["MONDO:0007254"]),

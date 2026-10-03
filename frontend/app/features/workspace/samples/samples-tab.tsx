@@ -4,10 +4,11 @@ import { useNavigate } from "react-router"
 import { useDataset, useEntries } from "~/lib/api/queries"
 import type { AnnotationValue, EntryItem } from "~/lib/api/types"
 import { fieldLabel, STATUS_ORDER, statusInfo } from "~/lib/labels"
-import { TABLE_PER_PAGE } from "~/lib/workspace-state"
+import type { TablePerPage } from "~/lib/workspace-state"
 import { Card, CardFooter, CardHeader, cn, ExternalLink, FrozenTd, FrozenTh, HelpHint, InlineLabel, Pager, StatusGlyph, StatusPill, TableScroller } from "~/ui"
 
 import { AssayTags } from "../assay-tags"
+import { PerPageChooser } from "../per-page-chooser"
 import { SkeletonTableRows } from "../skeleton-rows"
 import type { WorkspaceState } from "../state"
 import { useTableTop } from "../use-table-top"
@@ -33,15 +34,16 @@ const TD = "border-b border-brand-soft px-2.5 py-1.5 group-last:border-b-0"
 type SamplesTabProps = {
   state: WorkspaceState
   onPage: (page: number) => void
+  onPerPage: (perPage: TablePerPage) => void
   search: string
 }
 
 /** The entry list: one row per BioSample, filtered by the full condition. */
-export const SamplesTab = ({ state, onPage, search }: SamplesTabProps) => {
+export const SamplesTab = ({ state, onPage, onPerPage, search }: SamplesTabProps) => {
   const navigate = useNavigate()
   const dataset = useDataset()
   const fields = dataset.data?.fields.map((f) => f.name) ?? []
-  const entries = useEntries({ q: state.q, page: state.page, perPage: TABLE_PER_PAGE })
+  const entries = useEntries({ q: state.q, page: state.page, perPage: state.perPage })
   const total = entries.data?.pagination.total
   const table = useTableTop(onPage)
 
@@ -55,8 +57,9 @@ export const SamplesTab = ({ state, onPage, search }: SamplesTabProps) => {
           ))}
           <HelpHint label="About the status marks">{STATUS_HELP}</HelpHint>
         </div>
-        <div className="ml-auto">
-          <Pager page={state.page} perPage={TABLE_PER_PAGE} total={total} onChange={onPage} />
+        <div className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-2">
+          <PerPageChooser value={state.perPage} onChange={onPerPage} />
+          <Pager page={state.page} perPage={state.perPage} total={total} onChange={onPage} />
         </div>
       </CardHeader>
       <TableScroller>
@@ -78,7 +81,7 @@ export const SamplesTab = ({ state, onPage, search }: SamplesTabProps) => {
             </tr>
           </thead>
           <tbody>
-            {entries.data === undefined && <SkeletonTableRows columns={[...LEAD_SKELETONS, ...fields.map(() => "w-24"), "w-20"]} frozen />}
+            {entries.data === undefined && <SkeletonTableRows rows={state.perPage} columns={[...LEAD_SKELETONS, ...fields.map(() => "w-24"), "w-20"]} frozen />}
             {(entries.data?.items ?? []).map((row) => (
               <tr
                 key={row.identifier}
@@ -115,7 +118,7 @@ export const SamplesTab = ({ state, onPage, search }: SamplesTabProps) => {
       </TableScroller>
       <CardFooter>
         <div className="ml-auto">
-          <Pager page={state.page} perPage={TABLE_PER_PAGE} total={total} onChange={table.onFootPage} />
+          <Pager page={state.page} perPage={state.perPage} total={total} onChange={table.onFootPage} />
         </div>
       </CardFooter>
     </Card>
@@ -184,7 +187,7 @@ const annotationTitle = (field: string, values: AnnotationValue[]): string =>
   values
     .map((value) => {
       const target = value.termId ? `${value.label ?? ""} (${value.termId})` : "no term"
-      return `${fieldLabel(field)}: extracted “${value.value ?? ""}” → ${target} · ${statusInfo(value.status).label}`
+      return `${fieldLabel(field)}: extracted “${value.value ?? ""}” → ${target}, ${statusInfo(value.status).label}`
     })
     .join("\n")
 
@@ -199,9 +202,8 @@ const BioProjectLinks = ({ accessions }: { accessions: string[] }) =>
 
 /** The pages of the row's BioSample in DDBJ Search and NCBI. */
 const RowLinks = ({ row }: { row: EntryItem }) => (
-  <>
+  <span className="inline-flex gap-3">
     <ExternalLink href={`https://ddbj.nig.ac.jp/search/entry/biosample/${row.identifier}`}>DDBJ</ExternalLink>
-    {" · "}
     <ExternalLink href={`https://www.ncbi.nlm.nih.gov/biosample/${row.identifier}`}>NCBI</ExternalLink>
-  </>
+  </span>
 )

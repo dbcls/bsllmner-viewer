@@ -1,12 +1,16 @@
 import type { ReactNode } from "react"
 
 import type { Unit } from "~/lib/api/types"
-import { Card, InlineLabel, Segmented } from "~/ui"
+import { Card, HelpHint, InlineLabel, Segmented } from "~/ui"
 
 type ViewControlsProps = {
   unit: Unit
   onUnit: (unit: Unit) => void
-  /** Legends and notes of the view, after the controls. */
+  /** What the counts of the view mean, in a "?" after the control. */
+  help?: ReactNode
+  /** More inline controls after the counting unit, in the same row. */
+  controls?: ReactNode
+  /** Content under the row, in the same card and separated by a line. */
   children?: ReactNode
 }
 
@@ -15,7 +19,7 @@ type ViewControlsProps = {
  * so that the control does not move when the view changes. The unit belongs to the workspace, so a view opens with the
  * unit of the previous one. Chart views always count with self-exclusion, so they have no control for it.
  */
-export const ViewControls = ({ unit, onUnit, children }: ViewControlsProps) => (
+export const ViewControls = ({ unit, onUnit, help, controls, children }: ViewControlsProps) => (
   <div className="mb-4">
     <Card padding="sm">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-fs-label text-ink-soft">
@@ -31,9 +35,15 @@ export const ViewControls = ({ unit, onUnit, children }: ViewControlsProps) => (
             value={unit}
             onChange={onUnit}
           />
+          {help && (
+            <span className="ml-1 inline-flex">
+              <HelpHint label="About the counts">{help}</HelpHint>
+            </span>
+          )}
         </span>
-        {children}
+        {controls}
       </div>
+      {children && <div className="mt-3 border-t border-border-soft pt-3">{children}</div>}
     </Card>
   </div>
 )

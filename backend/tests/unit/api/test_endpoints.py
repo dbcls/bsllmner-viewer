@@ -194,6 +194,8 @@ def test_crosstab_returns_cells_with_expected_counts(client: TestClient) -> None
     r = next(x for x in body["rows"] if x["value"] == cell["row"])["count"]
     c = next(x for x in body["cols"] if x["value"] == cell["col"])["count"]
     assert cell["expected"] == r * c / body["total"]
+    for each in body["cells"]:
+        assert each["ratio"] == (None if not each["expected"] else each["count"] / each["expected"])
     assert cell["classification"] in (None, "gap", "under", "over")
 
 
@@ -260,6 +262,18 @@ def test_trend_rejects_the_year_as_its_dimension(client: TestClient) -> None:
     response = client.get("/api/trend", params={"field": "date_published"})
     assert response.status_code == 400
     assert response.json()["type"] == "https://ddbj.nig.ac.jp/problems/invalid-dimension"
+
+
+def test_crosstab_rejects_the_same_dimension_on_both_axes(client: TestClient) -> None:
+    response = client.get("/api/crosstab", params={"row": "disease", "col": "disease"})
+    assert response.status_code == 400
+    assert response.json()["type"] == "https://ddbj.nig.ac.jp/problems/invalid-dimension"
+
+
+def test_crosstab_a_field_and_its_status_are_different_dimensions_accepted(client: TestClient) -> None:
+    response = client.get("/api/crosstab", params={"row": "disease", "col": "disease_status"})
+    assert response.status_code == 200
+    assert response.json()["colField"] == "disease_status"
 
 
 def test_select_narrow_builds_the_documented_condition(client: TestClient) -> None:

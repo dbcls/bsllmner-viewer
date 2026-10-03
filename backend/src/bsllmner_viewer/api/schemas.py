@@ -135,7 +135,12 @@ class Element(ApiModel):
 class TermElement(Element):
     count_exact: int
     count_selected: int
-    has_children: bool
+    has_children: bool = Field(
+        description="Whether a direct child term has a count above 0 in the population of the list, in the unit"
+    )
+    parents: list[str] = Field(
+        description="The elements of the same list that are direct parents of the term, in the order of the list"
+    )
 
 
 class DistributionResponse(ApiModel):
@@ -161,6 +166,9 @@ class Cell(ApiModel):
     col: str
     count: int
     expected: float | None
+    ratio: float | None = Field(
+        description="The count divided by the expected count; null when the expected count is null or zero"
+    )
     residual: float | None
     classification: Literal["gap", "under", "over"] | None
 
@@ -318,7 +326,10 @@ class TermHit(ApiModel):
     descendant_count: int = Field(description="Descendant terms annotated in the population")
     count: int
     matched_synonym: str | None = Field(
-        description="The synonym that contains the query, when neither the label nor the ID contains it"
+        description=(
+            "The synonym that decides the match: a synonym equal to the query, or the synonym that contains the query "
+            "when neither the label nor the ID contains it"
+        )
     )
     clauses: list[Clause]
 

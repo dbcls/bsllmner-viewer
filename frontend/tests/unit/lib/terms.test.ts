@@ -30,7 +30,7 @@ describe("termDetail", () => {
   })
 
   it("adds the number of descendant terms after the path", () => {
-    expect(termDetail(hit({ path: ["gland"], descendantCount: 1234 }))).toBe("gland › liver · includes 1,234 descendant terms")
+    expect(termDetail(hit({ path: ["gland"], descendantCount: 1234 }))).toBe("gland › liver\nincludes 1,234 descendant terms")
   })
 
   it("uses the term ID when the term has no label", () => {

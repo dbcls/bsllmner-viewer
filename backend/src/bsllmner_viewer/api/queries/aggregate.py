@@ -13,6 +13,7 @@ from bsllmner_viewer.api.schemas import Unit
 from bsllmner_viewer.dsl.fields import FieldDef
 
 EXPECTED_MIN = 5.0
+RATIO_THRESHOLD = 2.0
 RESIDUAL_THRESHOLD = 2.0
 
 
@@ -61,19 +62,42 @@ def term_status_counts(
     return {e: found.get(e, (0, 0)) for e in elements}
 
 
-def has_children(cur: duckdb.DuckDBPyConnection, dim: FieldDef, elements: list[str]) -> dict[str, bool]:
-    """Whether a term has child terms that are annotated in the population."""
+def has_children(
+    cur: duckdb.DuckDBPyConnection, pop: Population, dim: FieldDef, elements: list[str], unit: Unit
+) -> dict[str, bool]:
+    """Whether a term has a direct child term with a count above 0 in the population, in the unit."""
     if not elements or dim.kind != "term":
         return dict.fromkeys(elements, False)
     placeholders = ", ".join("?" for _ in elements)
+    # Counting BioProjects needs a linked BioProject; the other units count every match of the population.
+    linked = "JOIN biosample_bioproject bp ON bp.biosample = p.biosample" if unit == "bioproject" else ""
+    # A direct child has a count exactly when a BioSample of the population has a term strictly below the term: every
+    # such term is under one of the direct children.
     rows = cur.execute(
-        f"SELECT DISTINCT tp.parent_id FROM term_parent tp "
-        "JOIN field_term_count c ON c.term_id = tp.term_id AND c.field = ? "
-        f"WHERE tp.parent_id IN ({placeholders})",
-        [dim.annotation_field, *elements],
+        f"WITH {pop.cte()}, below AS ("
+        "SELECT DISTINCT a.biosample, tc.ancestor FROM term_closure tc "
+        "JOIN annotation a ON a.term_id = tc.descendant AND a.field = ? "
+        f"WHERE tc.ancestor IN ({placeholders}) AND tc.depth > 0) "
+        f"SELECT DISTINCT below.ancestor FROM below JOIN pop p ON p.biosample = below.biosample {linked}",
+        [*pop.params, dim.annotation_field, *elements],
     ).fetchall()
     found = {str(r[0]) for r in rows}
     return {e: e in found for e in elements}
+
+
+def parents_within(cur: duckdb.DuckDBPyConnection, elements: list[str]) -> dict[str, list[str]]:
+    """For each term, the elements that are its direct parents, in the order of the elements."""
+    found: dict[str, set[str]] = {e: set() for e in elements}
+    if len(elements) > 1:
+        placeholders = ", ".join("?" for _ in elements)
+        rows = cur.execute(
+            f"SELECT term_id, parent_id FROM term_parent "
+            f"WHERE term_id IN ({placeholders}) AND parent_id IN ({placeholders})",
+            [*elements, *elements],
+        ).fetchall()
+        for term_id, parent_id in rows:
+            found[str(term_id)].add(str(parent_id))
+    return {e: [p for p in elements if p in found[e]] for e in elements}
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,16 +146,27 @@ def expected_and_residual(observed: int, row: int, col: int, total: int) -> tupl
     return expected, (observed - expected) / math.sqrt(denominator)
 
 
-def classify(observed: int, expected: float | None, residual: float | None) -> str | None:
+def ratio_to_expected(observed: int, expected: float | None) -> float | None:
+    """The count of a cell divided by its expected count."""
+    if not expected:
+        return None
+    return observed / expected
+
+
+def classify(observed: int, expected: float | None, ratio: float | None, residual: float | None) -> str | None:
+    """
+    The class of a cell. Under and over need both a ratio of at most half or at least twice the expected count and a
+    residual beyond the threshold: the ratio is the size of the difference, and the residual grows with the population.
+    """
     if expected is None or expected < EXPECTED_MIN:
         return None
     if observed == 0:
         return "gap"
-    if residual is None:
+    if ratio is None or residual is None:
         return None
-    if residual <= -RESIDUAL_THRESHOLD:
+    if ratio <= 1 / RATIO_THRESHOLD and residual <= -RESIDUAL_THRESHOLD:
         return "under"
-    if residual >= RESIDUAL_THRESHOLD:
+    if ratio >= RATIO_THRESHOLD and residual >= RESIDUAL_THRESHOLD:
         return "over"
     return None
 

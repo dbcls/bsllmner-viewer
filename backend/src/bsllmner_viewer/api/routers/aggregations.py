@@ -107,7 +107,8 @@ def get_distribution(
         out: list[TermElement | Element] = []
         if dim.kind == "term":
             statuses = aggregate.term_status_counts(cur, pop, dim, chosen, unit)
-            children = aggregate.has_children(cur, dim, chosen)
+            children = aggregate.has_children(cur, pop, dim, chosen, unit)
+            parents = aggregate.parents_within(cur, chosen)
             for e in chosen:
                 exact, selected = statuses.get(e, (0, 0))
                 out.append(
@@ -119,6 +120,7 @@ def get_distribution(
                         count_exact=exact,
                         count_selected=selected,
                         has_children=children.get(e, False),
+                        parents=parents.get(e, []),
                     )
                 )
         else:
@@ -168,6 +170,8 @@ def get_crosstab(
 ) -> CrosstabResponse:
     row_dim = dimension(store.field_set, row)
     col_dim = dimension(store.field_set, col)
+    if row_dim.name == col_dim.name:
+        raise ApiError("invalid-dimension", 400, f"the row and the column cannot both be {row_dim.name}")
     ast = parse_condition(store, q)
     pop_ast = aggregation_population(ast, [row_dim.name, col_dim.name], facet_self_exclude)
     pop = population(pop_ast, store.field_set)
@@ -186,14 +190,16 @@ def get_crosstab(
             expected, residual = aggregate.expected_and_residual(
                 observed, result.row_counts.get(r, 0), result.col_counts.get(c, 0), result.total
             )
+            ratio = aggregate.ratio_to_expected(observed, expected)
             cells.append(
                 Cell(
                     row=r,
                     col=c,
                     count=observed,
                     expected=expected,
+                    ratio=ratio,
                     residual=residual,
-                    classification=aggregate.classify(observed, expected, residual),
+                    classification=aggregate.classify(observed, expected, ratio, residual),
                 )
             )
     return CrosstabResponse(
@@ -220,14 +226,15 @@ def _axis_elements(
     labels: dict[str, str],
     counts: dict[str, int],
 ) -> list[TermElement | Element]:
-    """Axis elements; term dimensions carry status counts and whether child terms exist."""
+    """Axis elements; term dimensions carry status counts, whether child terms have counts, and parents on the axis."""
     if dim.kind != "term":
         return [
             Element(value=e, label=labels.get(e, e), clauses=clauses_for(dim, e), count=counts.get(e, 0))
             for e in chosen
         ]
     statuses = aggregate.term_status_counts(cur, pop, dim, chosen, unit)
-    children = aggregate.has_children(cur, dim, chosen)
+    children = aggregate.has_children(cur, pop, dim, chosen, unit)
+    parents = aggregate.parents_within(cur, chosen)
     out: list[TermElement | Element] = []
     for e in chosen:
         exact, selected = statuses.get(e, (0, 0))
@@ -240,6 +247,7 @@ def _axis_elements(
                 count_exact=exact,
                 count_selected=selected,
                 has_children=children.get(e, False),
+                parents=parents.get(e, []),
             )
         )
     return out

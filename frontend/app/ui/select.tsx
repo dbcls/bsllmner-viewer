@@ -1,8 +1,10 @@
 import { type KeyboardEvent, useEffect, useId, useLayoutEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 
+import { BOX_FOCUS, BOX_SIZE, type BoxSize } from "./box"
 import { cn } from "./cn"
 import { ACTION_ICON, Icon } from "./icons"
+import { type PanelPosition,panelPosition } from "./panel-position"
 
 export type SelectOption = { value: string; label: string }
 
@@ -10,27 +12,20 @@ type SelectProps = {
   options: readonly SelectOption[]
   value: string
   onChange: (value: string) => void
-  size?: "sm" | "md"
+  size?: BoxSize
   block?: boolean
-  /** Squares the right corners, so that a control placed after the select shares its right edge. */
+  /**
+   * Squares the right corners, so that a control placed after the select shares its right edge. The select draws over
+   * that control while its edge is colored (hovered, focused, or open), so that the shared edge shows the color.
+   */
   attached?: boolean
   /** The label of an extra first option whose value is the empty string, such as "None" or "Choose…". */
   placeholder?: string
   "aria-label": string
 }
 
-/** Where the open list sits: under the button, or over it when there is more room above. Fixed, so no scrolling box clips it. */
-type ListPosition = { left: number; minWidth: number } & ({ top: number } | { bottom: number })
-
-const GAP = 4
-
-const place = (trigger: HTMLElement, listHeight: number): ListPosition => {
-  const rect = trigger.getBoundingClientRect()
-  const below = window.innerHeight - rect.bottom
-  const above = rect.top
-  const base = { left: rect.left, minWidth: rect.width }
-  return listHeight + GAP > below && above > below ? { ...base, bottom: window.innerHeight - rect.top + GAP } : { ...base, top: rect.bottom + GAP }
-}
+/** The list starts at the left edge of the button and is at least as wide as the button. */
+const LIST_PLACE = { align: "left", matchWidth: true } as const
 
 /**
  * A choice of one option from a list: a button that shows the chosen option and opens the list under it.
@@ -43,7 +38,7 @@ export const Select = ({ options, value, onChange, size = "md", block, attached,
   const selected = items[selectedIndex]
   const [open, setOpen] = useState(false)
   const [active, setActive] = useState(0)
-  const [position, setPosition] = useState<ListPosition | null>(null)
+  const [position, setPosition] = useState<PanelPosition | null>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const listRef = useRef<HTMLUListElement>(null)
   const listId = useId()
@@ -53,7 +48,7 @@ export const Select = ({ options, value, onChange, size = "md", block, attached,
     const trigger = triggerRef.current
     if (!trigger || items.length === 0) return
     setActive(Math.min(Math.max(index, 0), items.length - 1))
-    setPosition(place(trigger, 0))
+    setPosition(panelPosition(trigger, 0, LIST_PLACE))
     setOpen(true)
   }
 
@@ -115,7 +110,7 @@ export const Select = ({ options, value, onChange, size = "md", block, attached,
   useLayoutEffect(() => {
     if (!open) return
     const measure = () => {
-      if (triggerRef.current) setPosition(place(triggerRef.current, listRef.current?.offsetHeight ?? 0))
+      if (triggerRef.current) setPosition(panelPosition(triggerRef.current, listRef.current?.offsetHeight ?? 0, LIST_PLACE))
     }
     measure()
     window.addEventListener("scroll", measure, true)
@@ -194,9 +189,12 @@ export const Select = ({ options, value, onChange, size = "md", block, attached,
         onKeyDown={onKeyDown}
         className={cn(
           "cursor-pointer items-center gap-1.5 border bg-surface text-left hover:border-brand-light",
-          attached ? "rounded-l-button" : "rounded-button",
+          BOX_FOCUS,
+          attached ? "relative rounded-l-button rounded-r-none hover:z-10 focus-visible:z-10" : "rounded-button",
+          attached && open && "z-10",
           open ? "border-brand" : "border-border-soft",
-          size === "sm" ? "py-1 pr-1.5 pl-2 text-fs-label" : "py-1.5 pr-2 pl-2.5 text-fs-body",
+          BOX_SIZE[size],
+          size === "sm" ? "pr-1.5 pl-2" : "pr-2 pl-2.5",
           block ? "flex w-full" : "inline-flex shrink-0",
           value === "" && placeholder !== undefined ? "text-ink-soft" : "text-ink",
         )}

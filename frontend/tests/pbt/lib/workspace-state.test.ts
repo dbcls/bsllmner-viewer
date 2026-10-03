@@ -1,7 +1,7 @@
 import { fc, test } from "@fast-check/vitest"
 import { describe, expect } from "vitest"
 
-import { DEFAULTS, PROJECT_SORTS, readState, TABS, type WorkspaceState, writeState } from "~/lib/workspace-state"
+import { DEFAULTS, PROJECT_SORTS, readState, TABLE_PER_PAGES, TABS, type WorkspaceState, writeState } from "~/lib/workspace-state"
 
 const term = fc.stringMatching(/^[A-Z]{2,5}:[0-9]{3,7}$/)
 const state: fc.Arbitrary<WorkspaceState> = fc.record({
@@ -9,12 +9,13 @@ const state: fc.Arbitrary<WorkspaceState> = fc.record({
   tab: fc.constantFrom(...TABS),
   unit: fc.constantFrom("biosample", "sra-experiment", "bioproject"),
   page: fc.integer({ min: 1, max: 9999 }),
+  perPage: fc.constantFrom(...TABLE_PER_PAGES),
   sort: fc.constantFrom(...PROJECT_SORTS),
   row: fc.constantFrom("cell_line", "disease", "library_strategy"),
   col: fc.constantFrom("tissue", "drug", "date_published"),
   rowTerms: fc.option(fc.uniqueArray(term, { minLength: 1, maxLength: 5 }), { nil: null }),
   colTerms: fc.option(fc.uniqueArray(term, { minLength: 1, maxLength: 5 }), { nil: null }),
-  color: fc.constantFrom("count", "residual"),
+  color: fc.constantFrom("count", "ratio"),
   trendField: fc.option(fc.constantFrom("disease", "tissue"), { nil: null }),
   trendTerms: fc.option(fc.uniqueArray(term, { minLength: 1, maxLength: 3 }), { nil: null }),
 })
@@ -33,15 +34,46 @@ describe("workspace state in the URL", () => {
     }
   })
 
-  test.prop({ tab: fc.string(), unit: fc.string(), page: fc.string(), sort: fc.string() })(
+  test.prop({ tab: fc.string(), unit: fc.string(), page: fc.string(), perPage: fc.string(), sort: fc.string() })(
     "falls back to defaults for unknown values",
-    ({ tab, unit, page, sort }) => {
-      const params = new URLSearchParams({ tab, unit, page, sort })
+    ({ tab, unit, page, perPage, sort }) => {
+      const params = new URLSearchParams({ tab, unit, page, perPage, sort })
       const parsed = readState(params)
       expect(TABS).toContain(parsed.tab)
       expect(["biosample", "sra-experiment", "bioproject"]).toContain(parsed.unit)
       expect(parsed.page).toBeGreaterThanOrEqual(1)
+      expect(TABLE_PER_PAGES).toContain(parsed.perPage)
       expect(PROJECT_SORTS).toContain(parsed.sort)
+    },
+  )
+
+  /** Dimensions that include both defaults, so that a URL can name either default for both axes. */
+  const dimension = fc.constantFrom(DEFAULTS.row, DEFAULTS.col, "disease", "tissue")
+
+  test.prop({ row: fc.option(dimension, { nil: null }), col: fc.option(dimension, { nil: null }), colTerms: fc.uniqueArray(term, { minLength: 1, maxLength: 3 }) })(
+    "never reads rows and columns of one dimension, and keeps the columns and their terms that the URL names otherwise",
+    ({ row, col, colTerms }) => {
+      const params = new URLSearchParams({ col_terms: colTerms.join(",") })
+      if (row !== null) params.set("row", row)
+      if (col !== null) params.set("col", col)
+      const parsed = readState(params)
+      expect(parsed.row).toBe(row ?? DEFAULTS.row)
+      expect(parsed.col).not.toBe(parsed.row)
+      const named = col ?? DEFAULTS.col
+      if (named !== parsed.row) {
+        expect(parsed.col).toBe(named)
+        expect(parsed.colTerms).toEqual(colTerms)
+      } else {
+        expect([DEFAULTS.col, DEFAULTS.row]).toContain(parsed.col)
+        expect(parsed.colTerms).toBeNull()
+      }
+    },
+  )
+
+  test.prop({ perPage: fc.integer({ min: -1000, max: 1000 }).filter((n) => !(TABLE_PER_PAGES as readonly number[]).includes(n)) })(
+    "reads a number of rows per page that the tables do not offer as the default",
+    ({ perPage }) => {
+      expect(readState(new URLSearchParams({ perPage: String(perPage) })).perPage).toBe(DEFAULTS.perPage)
     },
   )
 })

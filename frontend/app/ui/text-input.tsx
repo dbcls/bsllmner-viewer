@@ -1,5 +1,6 @@
 import type { InputHTMLAttributes } from "react"
 
+import { BOX_FOCUS, BOX_SIZE, type BoxSize } from "./box"
 import { cn } from "./cn"
 import { Icon, type IconName } from "./icons"
 
@@ -8,24 +9,17 @@ type TextInputProps = Omit<InputHTMLAttributes<HTMLInputElement>, "className" | 
   onChange: (value: string) => void
   onEnter?: () => void
   mono?: boolean
-  /** `lg` is the box that starts a search: taller, with a darker edge, so that it is found first. */
-  size?: "sm" | "md" | "lg"
+  size?: BoxSize
   block?: boolean
   widthClass?: string
   /** A glyph inside the start of the box, such as the search glyph of a search box. */
   icon?: IconName
 }
 
-type Size = NonNullable<TextInputProps["size"]>
-
-const SIZE_CLASS: Record<Size, string> = {
-  sm: "py-1 pr-2 text-fs-label",
-  md: "py-1.5 pr-2.5 text-fs-body",
-  lg: "h-10 pr-3 text-fs-body",
-}
-const PLAIN_START: Record<Size, string> = { sm: "pl-2", md: "pl-2.5", lg: "pl-3" }
-const ICON_START: Record<Size, string> = { sm: "pl-7", md: "pl-8", lg: "pl-9" }
-const ICON_AT: Record<Size, string> = { sm: "left-2", md: "left-2.5", lg: "left-3" }
+const PADDING: Record<BoxSize, string> = { sm: "px-2", md: "px-2.5" }
+/** The text starts after the glyph, which sits where the text starts in a box without one. */
+const PADDING_WITH_ICON: Record<BoxSize, string> = { sm: "pr-2 pl-7", md: "pr-2.5 pl-8" }
+const ICON_AT: Record<BoxSize, string> = { sm: "left-2", md: "left-2.5" }
 
 export const TextInput = ({ value, onChange, onEnter, mono, size = "md", block, widthClass, icon, ...rest }: TextInputProps) => {
   const input = (
@@ -40,10 +34,10 @@ export const TextInput = ({ value, onChange, onEnter, mono, size = "md", block, 
         }
       }}
       className={cn(
-        "rounded-button border bg-surface text-ink placeholder:text-ink-soft",
-        size === "lg" ? "border-ink-softer focus-visible:border-brand" : "border-border-soft",
-        SIZE_CLASS[size],
-        icon === undefined ? PLAIN_START[size] : ICON_START[size],
+        "rounded-button border border-border-soft bg-surface text-ink placeholder:text-ink-soft",
+        BOX_FOCUS,
+        BOX_SIZE[size],
+        icon === undefined ? PADDING[size] : PADDING_WITH_ICON[size],
         mono && "font-mono",
         block && "w-full",
         widthClass,

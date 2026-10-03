@@ -17,6 +17,16 @@ const ARBITRARY_CLASSNAME_RULE = {
   message: "Tailwind arbitrary values are not allowed. Reference a design token through a utility class instead. Add a token to @theme if one does not exist yet.",
 }
 
+const MIDDLE_DOT_MESSAGE =
+  "The middle dot (U+00B7) is not used in text that the app shows. Separate items with a comma, parentheses, a line break, or space between elements."
+
+/** Strings, template text, and JSX text that contain a middle dot. Comments are not checked. */
+const MIDDLE_DOT_RULES = [
+  { selector: "Literal[value=/\\u00B7/]", message: MIDDLE_DOT_MESSAGE },
+  { selector: "TemplateElement[value.raw=/\\u00B7/]", message: MIDDLE_DOT_MESSAGE },
+  { selector: "JSXText[value=/\\u00B7/]", message: MIDDLE_DOT_MESSAGE },
+]
+
 export default tseslint.config(
   {
     ignores: [
@@ -121,9 +131,16 @@ export default tseslint.config(
   },
 
   {
+    files: ["app/*.{ts,tsx}", "app/lib/**/*.{ts,tsx}"],
+    rules: {
+      "no-restricted-syntax": ["error", ...MIDDLE_DOT_RULES],
+    },
+  },
+
+  {
     files: ["app/{features,routes}/**/*.{ts,tsx}"],
     rules: {
-      "no-restricted-syntax": ["error", HEX_LITERAL_RULE, ARBITRARY_CLASSNAME_RULE],
+      "no-restricted-syntax": ["error", HEX_LITERAL_RULE, ARBITRARY_CLASSNAME_RULE, ...MIDDLE_DOT_RULES],
       "react/forbid-elements": ["error", {
         forbid: [
           { element: "button", message: "Raw <button> is not allowed. Use <Button> from ~/ui instead." },
@@ -139,7 +156,7 @@ export default tseslint.config(
   {
     files: ["app/{ui,shell}/**/*.{ts,tsx}"],
     rules: {
-      "no-restricted-syntax": ["error", HEX_LITERAL_RULE],
+      "no-restricted-syntax": ["error", HEX_LITERAL_RULE, ...MIDDLE_DOT_RULES],
     },
   },
 

@@ -212,7 +212,7 @@ export interface paths {
         };
         /**
          * Search the terms annotated in a field, or in every annotation field
-         * @description Hits are ordered by how they match `query`: a label or an ID equal to it, then a label or an ID that contains it, then only a synonym that contains it (`matchedSynonym`). Within each of these, hits are ordered by `count`. The hits within `limit` are the terms assigned directly to the most BioSamples, so that a broad term counted only through its descendants does not crowd out the terms in use. Each hit is counted in the population of its own field: with `facetSelfExclude`, the condition without the conjuncts on that field.
+         * @description Hits are ordered by how they match `query`: a label or an ID equal to it, then a synonym equal to it, then a label or an ID that contains it, then only a synonym that contains it. Within each of these, hits are ordered by `count`. Each hit is counted in the population of its own field: with `facetSelfExclude`, the condition without the conjuncts on that field. The hits are chosen in the same population. With an empty `query`, they are the terms assigned directly to the most BioSamples of the population. With a `query`, every term that matches it is a candidate, and the hits within `limit` are the best matches, then the terms assigned directly to the most BioSamples of the population, then of the whole dataset. A broad term counted only through its descendants is therefore still found by a `query`.
          */
         get: operations["searchTerms"];
         put?: never;
@@ -328,6 +328,11 @@ export interface components {
             count: number;
             /** Expected */
             expected: number | null;
+            /**
+             * Ratio
+             * @description The count divided by the expected count; null when the expected count is null or zero
+             */
+            ratio: number | null;
             /** Residual */
             residual: number | null;
             /** Classification */
@@ -828,8 +833,16 @@ export interface components {
             countExact: number;
             /** Countselected */
             countSelected: number;
-            /** Haschildren */
+            /**
+             * Haschildren
+             * @description Whether a direct child term has a count above 0 in the population of the list, in the unit
+             */
             hasChildren: boolean;
+            /**
+             * Parents
+             * @description The elements of the same list that are direct parents of the term, in the order of the list
+             */
+            parents: string[];
         };
         /** TermHit */
         TermHit: {
@@ -855,7 +868,7 @@ export interface components {
             count: number;
             /**
              * Matchedsynonym
-             * @description The synonym that contains the query, when neither the label nor the ID contains it
+             * @description The synonym that decides the match: a synonym equal to the query, or the synonym that contains the query when neither the label nor the ID contains it
              */
             matchedSynonym: string | null;
             /** Clauses */

@@ -6,11 +6,8 @@ from typing import Any, NamedTuple
 
 import duckdb
 
-from bsllmner_viewer.api.queries.aggregate import element_counts, has_children, term_status_counts
 from bsllmner_viewer.api.queries.core import Population
-from bsllmner_viewer.api.schemas import Unit
 from bsllmner_viewer.dsl.compile import like_pattern
-from bsllmner_viewer.dsl.fields import FieldDef
 
 MAX_PATH = 8
 
@@ -23,57 +20,125 @@ class Candidate(NamedTuple):
     label: str | None
     ontology: str
     tier: int
-    """How the term matches: 0 when its label or ID is the query, 1 when one of them contains it, 2 otherwise."""
+    """How the term matches: 0 when its label or ID is the query, 1 when a synonym is, 2 when its label or ID contains
+    the query, and 3 when only a synonym does."""
     synonym: str | None
-    """For tier 2, the synonym that contains the query."""
+    """For tiers 1 and 3, the synonym that decides the match."""
 
 
-def search_terms(cur: duckdb.DuckDBPyConnection, fields: list[str], query: str, limit: int) -> list[Candidate]:
-    """Annotated terms of the fields whose label, synonym, or ID contains the query, best tier first.
+SYNONYM_TIERS = (1, 3)
 
-    Within a tier, the terms assigned directly to the most BioSamples come first. A broad term that is counted only
-    through its descendants is therefore not chosen ahead of the terms in use.
+
+def search_terms(
+    cur: duckdb.DuckDBPyConnection, populations: dict[str, Population | None], query: str, limit: int
+) -> list[Candidate]:
+    """The terms of the fields that a search lists, best first. Each field has its population; None is the whole one.
+
+    Without a query, the terms are those assigned directly to the most BioSamples of the population, as the default
+    elements of a distribution. With a query, every annotated term whose label, synonym, or ID contains it is a
+    candidate, so that a broad term counted only through its descendants is still found. The candidates are ordered by
+    tier, then by the BioSamples assigned directly in the population, then in the whole dataset.
     """
-    if not fields:
-        return []
+    groups: dict[tuple[str, tuple[Any, ...]] | None, list[str]] = {}
+    for name, pop in populations.items():
+        groups.setdefault(None if pop is None else (pop.sql, pop.params), []).append(name)
     text = query.strip()
-    marks = ", ".join("?" for _ in fields)
-    order = "c.n_direct DESC, c.n_biosample DESC, t.term_id, f.position"
-    if not text:
-        rows = cur.execute(
+    rows: list[tuple[Any, ...]] = []
+    for key, names in groups.items():
+        pop = None if key is None else Population(*key)
+        rows += _listed(cur, names, pop, limit) if not text else _matched(cur, names, pop, text, limit)
+    rows.sort(key=(lambda r: (r[4], -r[5], -r[6], -r[7], r[1], r[8])) if text else (lambda r: (-r[5], r[1], r[8])))
+    rows = rows[:limit]
+    synonyms = (
+        _matched_synonyms(cur, sorted({str(r[1]) for r in rows if r[4] in SYNONYM_TIERS}), like_pattern(text))
+        if text
+        else {}
+    )
+    return [
+        Candidate(str(f), str(t), label, str(o), int(tier), synonyms.get(str(t)) if tier in SYNONYM_TIERS else None)
+        for f, t, label, o, tier, *_ in rows
+    ]
+
+
+# Every row: field, term ID, label, ontology, tier, BioSamples assigned directly in the population, BioSamples
+# assigned directly in the whole dataset, BioSamples counted with descendants in the whole dataset, and the position of
+# the field.
+_COLUMNS = "c.field, t.term_id, t.label, t.ontology"
+_DATASET = "c.n_direct, c.n_biosample, f.position"
+
+
+def _listed(
+    cur: duckdb.DuckDBPyConnection, names: list[str], pop: Population | None, limit: int
+) -> list[tuple[Any, ...]]:
+    marks = ", ".join("?" for _ in names)
+    if pop is None:
+        return cur.execute(
             f"""
-            SELECT c.field, t.term_id, t.label, t.ontology, 0 AS tier
+            SELECT {_COLUMNS}, 0, c.n_direct, {_DATASET}
             FROM field_term_count c JOIN term t ON t.term_id = c.term_id JOIN field f ON f.name = c.field
-            WHERE c.field IN ({marks})
-            ORDER BY {order} LIMIT ?
+            WHERE c.field IN ({marks}) AND c.n_direct > 0
+            ORDER BY c.n_direct DESC, t.term_id, f.position LIMIT ?
             """,
-            [*fields, limit],
+            [*names, limit],
         ).fetchall()
-        return [Candidate(str(f), str(t), label, str(o), 0, None) for f, t, label, o, _ in rows]
+    return cur.execute(
+        f"""
+        WITH {pop.cte()},
+        d AS (
+            SELECT a.field, a.term_id, count(DISTINCT p.biosample) AS n FROM pop p
+            JOIN annotation a ON a.biosample = p.biosample AND a.term_id IS NOT NULL AND a.field IN ({marks})
+            GROUP BY 1, 2
+        )
+        SELECT {_COLUMNS}, 0, d.n, {_DATASET}
+        FROM d JOIN field_term_count c ON c.field = d.field AND c.term_id = d.term_id
+        JOIN term t ON t.term_id = d.term_id JOIN field f ON f.name = d.field
+        ORDER BY d.n DESC, t.term_id, f.position LIMIT ?
+        """,
+        [*pop.params, *names, limit],
+    ).fetchall()
+
+
+def _matched(
+    cur: duckdb.DuckDBPyConnection, names: list[str], pop: Population | None, text: str, limit: int
+) -> list[tuple[Any, ...]]:
+    marks = ", ".join("?" for _ in names)
     exact = text.casefold()
     pattern = like_pattern(text)
-    rows = cur.execute(
+    tier = """CASE WHEN lower(t.label) = ? OR lower(t.term_id) = ? THEN 0
+                   WHEN EXISTS (
+                       SELECT 1 FROM term_synonym y WHERE y.term_id = t.term_id AND lower(y.synonym) = ?
+                   ) THEN 1
+                   WHEN lower(t.label) LIKE ? ESCAPE '\\' OR lower(t.term_id) LIKE ? ESCAPE '\\' THEN 2
+                   ELSE 3 END"""
+    matched = f"SELECT DISTINCT field, term_id FROM term_search WHERE field IN ({marks}) AND text LIKE ? ESCAPE '\\'"
+    if pop is None:
+        return cur.execute(
+            f"""
+            WITH s AS ({matched})
+            SELECT {_COLUMNS}, {tier} AS tier, coalesce(c.n_direct, 0) AS n, {_DATASET}
+            FROM s JOIN field_term_count c ON c.field = s.field AND c.term_id = s.term_id
+            JOIN term t ON t.term_id = s.term_id JOIN field f ON f.name = s.field
+            ORDER BY tier, n DESC, c.n_direct DESC, c.n_biosample DESC, t.term_id, f.position LIMIT ?
+            """,
+            [*names, pattern, exact, exact, exact, pattern, pattern, limit],
+        ).fetchall()
+    return cur.execute(
         f"""
-        SELECT c.field, t.term_id, t.label, t.ontology,
-               CASE WHEN lower(t.label) = ? OR lower(t.term_id) = ? THEN 0
-                    WHEN lower(t.label) LIKE ? ESCAPE '\\' OR lower(t.term_id) LIKE ? ESCAPE '\\' THEN 1
-                    ELSE 2 END AS tier
-        FROM (
-            SELECT DISTINCT field, term_id FROM term_search
-            WHERE field IN ({marks}) AND text LIKE ? ESCAPE '\\'
-        ) s
-        JOIN field_term_count c ON c.field = s.field AND c.term_id = s.term_id
-        JOIN term t ON t.term_id = s.term_id
-        JOIN field f ON f.name = c.field
-        ORDER BY tier, {order} LIMIT ?
+        WITH {pop.cte()}, s AS ({matched}),
+        d AS (
+            SELECT a.field, a.term_id, count(DISTINCT p.biosample) AS n FROM pop p
+            JOIN annotation a ON a.biosample = p.biosample
+            JOIN s ON s.field = a.field AND s.term_id = a.term_id
+            GROUP BY 1, 2
+        )
+        SELECT {_COLUMNS}, {tier} AS tier, coalesce(d.n, 0) AS n, {_DATASET}
+        FROM s JOIN field_term_count c ON c.field = s.field AND c.term_id = s.term_id
+        LEFT JOIN d ON d.field = s.field AND d.term_id = s.term_id
+        JOIN term t ON t.term_id = s.term_id JOIN field f ON f.name = s.field
+        ORDER BY tier, n DESC, c.n_direct DESC, c.n_biosample DESC, t.term_id, f.position LIMIT ?
         """,
-        [exact, exact, pattern, pattern, *fields, pattern, limit],
+        [*pop.params, *names, pattern, exact, exact, exact, pattern, pattern, limit],
     ).fetchall()
-    synonyms = _matched_synonyms(cur, sorted({str(t) for _, t, _, _, tier in rows if tier == 2}), pattern)
-    return [
-        Candidate(str(f), str(t), label, str(o), int(tier), synonyms.get(str(t)) if tier == 2 else None)
-        for f, t, label, o, tier in rows
-    ]
 
 
 def _matched_synonyms(cur: duckdb.DuckDBPyConnection, term_ids: list[str], pattern: str) -> dict[str, str]:
@@ -169,13 +234,3 @@ def path_labels(cur: duckdb.DuckDBPyConnection, term_ids: list[str]) -> dict[str
             advanced[origin] = step[1]
         current = advanced
     return {t: list(reversed(labels)) for t, labels in chains.items()}
-
-
-def counted_elements(
-    cur: duckdb.DuckDBPyConnection, pop: Population, dim: FieldDef, term_ids: list[str], unit: Unit
-) -> tuple[dict[str, int], dict[str, tuple[int, int]], dict[str, bool]]:
-    return (
-        element_counts(cur, pop, dim, term_ids, unit),
-        term_status_counts(cur, pop, dim, term_ids, unit),
-        has_children(cur, dim, term_ids),
-    )

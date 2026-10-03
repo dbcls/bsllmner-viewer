@@ -250,7 +250,6 @@ const KeywordSearch = ({ condition }: { condition: Condition }) => {
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}
         icon={ACTION_ICON.search}
-        size="lg"
         block
         spellCheck={false}
         placeholder="Keyword or accession"

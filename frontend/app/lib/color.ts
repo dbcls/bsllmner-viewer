@@ -9,9 +9,9 @@ const FALLBACKS: Record<string, string> = {
   "--color-brand-soft": "#F4F2FA",
   "--color-brand-deeper": "#3A1F52",
   "--color-brand-tint": "#E7DDF4",
-  "--color-under": "#004098",
-  "--color-under-soft": "#DFEBFB",
   "--color-surface": "#FFFFFF",
+  "--color-ink": "#1A1726",
+  "--color-ink-soft": "#6E6A7B",
   "--color-skeleton": "#ECE9F2",
 }
 
@@ -62,15 +62,14 @@ export const countScale = (t: number): string => {
 export const countScaleIsDark = (t: number): boolean => t > 0.55
 
 /**
- * Diverging scale for adjusted standardized residuals: under-represented in blue,
- * over-represented in purple, with steps at ±2 and ±4.
+ * Scale for the ratio of a count to its expected count, in the brand purple: the higher the ratio, the darker the cell,
+ * as on the count scale. Half or less of the expected count is not colored, so that the cells below it read as holes in
+ * the table. The steps are at half, twice, and four times; a cell without a ratio is not colored.
  */
-export const residualScale = (residual: number | null): string => {
-  if (residual === null || Math.abs(residual) < 2) return token("--color-surface")
-  const strong = Math.abs(residual) >= 4
-  if (residual < 0) return strong ? token("--color-under") : token("--color-under-soft")
-  return strong ? token("--color-brand") : token("--color-brand-tint")
+export const ratioScale = (ratio: number | null): string => {
+  if (ratio === null || ratio <= 0.5) return token("--color-surface")
+  if (ratio < 2) return token("--color-brand-tint")
+  return ratio >= 4 ? token("--color-brand") : token("--color-brand-light")
 }
 
-export const residualScaleIsDark = (residual: number | null): boolean =>
-  residual !== null && Math.abs(residual) >= 4
+export const ratioScaleIsDark = (ratio: number | null): boolean => ratio !== null && ratio >= 4

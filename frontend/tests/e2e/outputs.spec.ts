@@ -16,8 +16,8 @@ test.describe("outputs of the condition", () => {
     const menu = page.getByRole("menu")
     await expect(menu).toBeVisible()
     const expected = [
-      { name: /Entries · TSV/, path: "/api/export/entries/biosample", format: "tsv" },
-      { name: /Entries · JSON lines/, path: "/api/export/entries/biosample", format: "ndjson" },
+      { name: /^TSV/, path: "/api/export/entries/biosample", format: "tsv" },
+      { name: /^JSON lines/, path: "/api/export/entries/biosample", format: "ndjson" },
       { name: /BioSample/, path: "/api/export/accessions/biosample", format: null },
       { name: /SRA Experiment/, path: "/api/export/accessions/sra-experiment", format: null },
       { name: /SRA Run/, path: "/api/export/accessions/sra-run", format: null },
@@ -30,7 +30,7 @@ test.describe("outputs of the condition", () => {
       expect(url.searchParams.get("q")).toBe(q)
       expect(url.searchParams.get("format")).toBe(format)
     }
-    await expect(menu.getByRole("menuitem", { name: /Entries · TSV/ })).toContainText(`${formatCount(await countOf(request, q))} rows`)
+    await expect(menu.getByRole("menuitem", { name: /^TSV/ })).toContainText(`${formatCount(await countOf(request, q))} rows`)
     await page.keyboard.press("Escape")
     await expect(menu).toBeHidden()
   })
@@ -52,8 +52,8 @@ test.describe("outputs of the condition", () => {
       const path = await download.path()
       return (await readFile(path, "utf8")).split("\n").filter((line) => line !== "" && !line.startsWith("#"))
     }
-    expect((await read(/Entries · TSV/)).length).toBe(total + 1)
-    expect((await read(/Entries · JSON lines/)).length).toBe(total)
+    expect((await read(/^TSV/)).length).toBe(total + 1)
+    expect((await read(/^JSON lines/)).length).toBe(total)
     expect(await read(/BioProject/)).toEqual([project.identifier])
     expect((await read(/BioSample/)).length).toBe(total)
   })

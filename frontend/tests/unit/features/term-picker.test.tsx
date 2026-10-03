@@ -37,22 +37,13 @@ vi.mock("~/lib/api/client", async (importOriginal) => {
   return { ...original, api: { ...original.api, GET } }
 })
 
-import { ALL_FIELDS, TermPicker } from "~/features/workspace/term-picker/term-picker"
+import { TermPicker } from "~/features/workspace/term-picker/term-picker"
 
 const renderPicker = () => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   render(
     <QueryClientProvider client={client}>
-      <TermPicker
-        request={{ field: ALL_FIELDS, mode: "condition" }}
-        onClose={vi.fn()}
-        fields={["tissue", "disease"]}
-        dimensions={[]}
-        q={null}
-        isSelected={() => false}
-        onPick={vi.fn()}
-        onField={vi.fn()}
-      />
+      <TermPicker open onClose={vi.fn()} fields={["tissue", "disease"]} q={null} isSelected={() => false} onPick={vi.fn()} />
     </QueryClientProvider>,
   )
   const list = screen.getByRole("dialog").querySelector<HTMLElement>(".max-h-picker-list")

@@ -39,7 +39,7 @@ export const SortChooser = ({ keys, value, direction, onChange }: SortChooserPro
           onClick={() => onChange(value, reversed)}
           aria-label={action}
           title={action}
-          className="-ml-px inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-r-button border border-border-soft bg-surface text-ink-mid hover:bg-brand-soft"
+          className="-ml-px inline-flex h-box-sm w-box-sm cursor-pointer items-center justify-center rounded-r-button border border-border-soft bg-surface text-ink-mid hover:bg-brand-soft"
         >
           <Icon name={direction === "asc" ? ACTION_ICON.ascendingOrder : ACTION_ICON.descendingOrder} />
         </button>

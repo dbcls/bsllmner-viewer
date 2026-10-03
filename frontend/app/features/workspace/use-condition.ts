@@ -54,6 +54,21 @@ export const useCondition = (q: string | null, update: (patch: Patch) => void) =
     [select],
   )
 
+  /**
+   * Narrow the condition to what an element counts, as `narrowed`. If the condition already has the element's clauses,
+   * widen it back to the population instead, so that selecting the element again undoes the selection.
+   */
+  const toggleNarrow = useCallback(
+    async (populationQ: string | null, clauses: Clause[]) => {
+      if (hasClauses(ast, clauses)) {
+        update({ q: populationQ })
+        return
+      }
+      apply(await select.mutateAsync({ q: populationQ, clauses, mode: "narrow" }))
+    },
+    [ast, select, apply, update],
+  )
+
   /** Replace the keywords of the condition with the keywords of typed text. Empty text removes them. */
   const setKeyword = useCallback(
     async (text: string) => {
@@ -68,7 +83,21 @@ export const useCondition = (q: string | null, update: (patch: Patch) => void) =
 
   const isSelected = useCallback((clauses: Clause[]) => hasClauses(ast, clauses), [ast])
 
-  return { ast, labels, parsing: q !== null && parsed.isPending, parseError: parsed.error, toggle, replaceField, setKeyword, narrowed, clear, applyText, isSelected, pending: select.isPending }
+  return {
+    ast,
+    labels,
+    parsing: q !== null && parsed.isPending,
+    parseError: parsed.error,
+    toggle,
+    replaceField,
+    setKeyword,
+    narrowed,
+    toggleNarrow,
+    clear,
+    applyText,
+    isSelected,
+    pending: select.isPending,
+  }
 }
 
 export type Condition = ReturnType<typeof useCondition>

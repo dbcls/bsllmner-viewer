@@ -15,5 +15,5 @@ export const termDetail = (hit: TermHit): string => {
   const parts: string[] = []
   if (hit.path.length) parts.push(`${shortPath(hit.path)} › ${hit.label ?? hit.termId}`)
   if (hit.descendantCount > 0) parts.push(`includes ${formatCount(hit.descendantCount)} descendant terms`)
-  return parts.join(" · ")
+  return parts.join("\n")
 }

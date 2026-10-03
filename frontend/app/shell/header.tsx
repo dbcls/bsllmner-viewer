@@ -2,7 +2,8 @@ import { Link } from "react-router"
 
 import { ACTION_ICON, ExternalLink } from "~/ui"
 
-const REPOSITORY_URL = "https://github.com/dbcls/bsllmner-viewer"
+/** The repositories of the viewer and of the pipeline that produces its annotations, each named by its GitHub path. */
+const REPOSITORIES = ["dbcls/bsllmner-viewer", "dbcls/bsllmner-mk2"]
 const API_URL = "/api"
 
 export const Header = () => (
@@ -11,9 +12,11 @@ export const Header = () => (
       bsllmner-viewer
     </Link>
     <nav aria-label="Primary" className="flex gap-2">
-      <ExternalLink kind="button" href={REPOSITORY_URL} icon={ACTION_ICON.openRepository}>
-        GitHub
-      </ExternalLink>
+      {REPOSITORIES.map((repository) => (
+        <ExternalLink key={repository} kind="button" href={`https://github.com/${repository}`} icon={ACTION_ICON.openRepository}>
+          {repository}
+        </ExternalLink>
+      ))}
       <ExternalLink kind="button" href={API_URL} icon={ACTION_ICON.openApiDocs}>
         API
       </ExternalLink>

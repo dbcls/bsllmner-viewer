@@ -1,5 +1,4 @@
 import { useRef } from "react"
-import { useNavigate } from "react-router"
 
 import { useDataset, useTrend } from "~/lib/api/queries"
 import type { Clause, Unit } from "~/lib/api/types"
@@ -7,9 +6,10 @@ import { token } from "~/lib/color"
 import { downloadPng, downloadSvg, downloadTsv } from "~/lib/export"
 import { formatCount } from "~/lib/format"
 import { fieldLabel, organismLabel, unitLabel } from "~/lib/labels"
-import { Card, InlineLabel, LinkButton, Select, Skeleton, Tag } from "~/ui"
+import { Card, InlineLabel, Select, Skeleton } from "~/ui"
 
-import { workspaceSearch, type WorkspaceState } from "../state"
+import { FigureExport } from "../figure-export"
+import type { WorkspaceState } from "../state"
 import type { Condition } from "../use-condition"
 import { ViewControls } from "../view-controls"
 import { splitFieldOf, trendFields } from "./field"
@@ -31,7 +31,6 @@ type TrendTabProps = {
 /** Counts of the condition per BioSample publication year, optionally split by the elements of one field. */
 export const TrendTab = ({ state, condition, onSplit, onUnit }: TrendTabProps) => {
   const svgRef = useRef<SVGSVGElement>(null)
-  const navigate = useNavigate()
   const dataset = useDataset()
   const fields = dataset.data?.fields.map((f) => f.name) ?? []
   const split = splitFieldOf(state.trendField, fields)
@@ -52,8 +51,6 @@ export const TrendTab = ({ state, condition, onSplit, onUnit }: TrendTabProps) =
   const unit = unitLabel(state.unit)
   const totalLabel = state.q ? "Condition" : "All entries"
 
-  const yearUnfiltered = data !== undefined && data.totalPopulationQ !== data.q
-  const splitUnfiltered = data !== undefined && split !== null && data.populationQ !== data.totalPopulationQ
   const splitOptions = trendFields(fields).map((f) => ({ value: f, label: fieldLabel(f) }))
   const seriesColors = [
     token("--color-series-1"),
@@ -66,11 +63,12 @@ export const TrendTab = ({ state, condition, onSplit, onUnit }: TrendTabProps) =
   const totalColor = token("--color-brand")
   const seriesLabel = (value: string, label: string): string => (split === "organism_id" ? organismLabel(value, label) : label)
 
-  /** Open the entry list narrowed to one element and year: the population of the series plus the point's clauses. */
-  const openPoint = async (clauses: Clause[]) => {
-    if (!data) return
-    const q = await condition.narrowed(data.populationQ, clauses)
-    await navigate(`/entries${workspaceSearch({ ...state, q, tab: "samples", page: 1 })}`)
+  /**
+   * Narrow the condition to one element and year: the population of the series plus the point's clauses. The view
+   * stays, and selecting the point again widens the condition back to the population of the series.
+   */
+  const narrowPoint = (clauses: Clause[]) => {
+    if (data) void condition.toggleNarrow(data.populationQ, clauses)
   }
 
   const exportTsv = () =>
@@ -93,11 +91,9 @@ export const TrendTab = ({ state, condition, onSplit, onUnit }: TrendTabProps) =
     <div>
       <ViewControls unit={state.unit} onUnit={onUnit} />
       <Card padding="sm" busy={trend.isPlaceholderData}>
-        <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-semibold">{state.unit === "biosample" ? "Per BioSample publication year" : `${unit} per BioSample publication year`}</span>
-            {yearUnfiltered && <Tag kind="warn">Not filtered by Year</Tag>}
-            {splitUnfiltered && split && <Tag kind="warn">Split lines are not filtered by {fieldLabel(split)}</Tag>}
             <span className="inline-flex items-center gap-1.5 text-fs-label text-ink-soft">
               <InlineLabel>Split by</InlineLabel>
               <Select
@@ -110,11 +106,7 @@ export const TrendTab = ({ state, condition, onSplit, onUnit }: TrendTabProps) =
               />
             </span>
           </div>
-          <div className="flex shrink-0 items-center gap-3">
-            <LinkButton mono tone="soft" onClick={exportTsv}>TSV</LinkButton>
-            <LinkButton mono tone="soft" onClick={exportSvg}>SVG</LinkButton>
-            <LinkButton mono tone="soft" onClick={exportPng}>PNG</LinkButton>
-          </div>
+          <FigureExport figure="trend" onTsv={exportTsv} onSvg={exportSvg} onPng={exportPng} />
         </div>
         {years.length > 0 ? (
           <>
@@ -155,21 +147,41 @@ export const TrendTab = ({ state, condition, onSplit, onUnit }: TrendTabProps) =
                 return (
                   <g key={s.value} data-series={s.value}>
                     <polyline points={points.map(({ x, y }) => `${x},${y}`).join(" ")} fill="none" stroke={color} strokeWidth={2} />
-                    {points.map(({ point, x, y }) => (
-                      <circle
-                        key={point.year}
-                        cx={x}
-                        cy={y}
-                        r={4}
-                        fill={token("--color-surface")}
-                        stroke={color}
-                        strokeWidth={2}
-                        className={point.count > 0 ? "cursor-pointer" : undefined}
-                        onClick={point.count > 0 ? () => void openPoint(point.clauses) : undefined}
-                      >
-                        <title>{`${seriesLabel(s.value, s.label)} · ${point.year}: ${formatCount(point.count)} ${unit}`}</title>
-                      </circle>
-                    ))}
+                    {points.map(({ point, x, y }) => {
+                      const name = `${seriesLabel(s.value, s.label)}, ${point.year}: ${formatCount(point.count)} ${unit}`
+                      if (point.count === 0) {
+                        return (
+                          <circle key={point.year} cx={x} cy={y} r={4} fill={token("--color-surface")} stroke={color} strokeWidth={2}>
+                            <title>{name}</title>
+                          </circle>
+                        )
+                      }
+                      const selected = condition.isSelected(point.clauses)
+                      return (
+                        <circle
+                          key={point.year}
+                          cx={x}
+                          cy={y}
+                          r={selected ? 6 : 4}
+                          fill={selected ? token("--color-selection") : token("--color-surface")}
+                          stroke={color}
+                          strokeWidth={2}
+                          className="cursor-pointer"
+                          role="button"
+                          tabIndex={0}
+                          aria-pressed={selected}
+                          aria-label={`${name}. Narrow the condition to this point`}
+                          onClick={() => narrowPoint(point.clauses)}
+                          onKeyDown={(event) => {
+                            if (event.key !== "Enter" && event.key !== " ") return
+                            event.preventDefault()
+                            narrowPoint(point.clauses)
+                          }}
+                        >
+                          <title>{name}</title>
+                        </circle>
+                      )
+                    })}
                   </g>
                 )
               })}
@@ -194,7 +206,7 @@ export const TrendTab = ({ state, condition, onSplit, onUnit }: TrendTabProps) =
                       className="cursor-pointer"
                       onClick={() => void condition.toggle(point.clauses)}
                     >
-                      <title>{`${totalLabel} · ${point.year}: ${formatCount(point.count)} ${unit}`}</title>
+                      <title>{`${totalLabel}, ${point.year}: ${formatCount(point.count)} ${unit}`}</title>
                     </circle>
                   )
                 })}

@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test"
 
-import { distribution, projects, select } from "./_api"
-import { choose, expectParam, expectQ, formatCount, pageRangeText, TABLE_PER_PAGE, workspaceUrl } from "./_helpers"
+import { distribution, entries, projects, select } from "./_api"
+import { choose, expectParam, expectQ, formatCount, pageRangeText, TABLE_PER_PAGE, viewTabs, workspaceUrl } from "./_helpers"
 
 test.describe("projects", () => {
   test("the count and the rows of the first page are those of the API, in the order of the chosen sort", async ({ page, request }) => {
@@ -37,6 +37,24 @@ test.describe("projects", () => {
     await expectParam(page, "page", "2")
     await expect(main).toContainText(pageRangeText(first.pagination.total, 2))
     await expect(main.locator("tbody tr").first().locator("td").first()).toContainText(second.items[0]?.identifier ?? "")
+  })
+
+  test("choosing the rows per page shows that many rows from the first page, and Samples keeps the choice", async ({ page, request }) => {
+    const perPage = 50
+    const first = await projects(request, null, "biosampleCount:desc", perPage)
+    test.skip(first.pagination.total <= TABLE_PER_PAGE, "the dataset has a single page of BioProjects")
+    await page.goto(workspaceUrl({ tab: "projects", page: "2" }))
+    const main = page.getByRole("main")
+    await choose(main.getByRole("combobox", { name: "Rows per page" }), String(perPage))
+    await expectParam(page, "perPage", String(perPage))
+    await expectParam(page, "page", null)
+    await expect(main).toContainText(pageRangeText(first.pagination.total, 1, perPage))
+    await expect(main.locator("tbody tr")).toHaveCount(first.items.length)
+    await expect(main.locator("tbody tr").first().locator("td").first()).toContainText(first.items[0]?.identifier ?? "")
+    const samples = await entries(request, "", perPage)
+    await viewTabs(page).getByRole("link", { name: "Samples" }).click()
+    await expect(main).toContainText(pageRangeText(samples.pagination.total, 1, perPage))
+    await expect(main.locator("tbody tr")).toHaveCount(samples.items.length)
   })
 
   test("Add puts a project into the condition and keeps the other projects, and Remove takes it out", async ({ page, request }) => {

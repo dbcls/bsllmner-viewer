@@ -12,7 +12,7 @@ type LinkButtonProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "className"
   icon?: IconName
 }
 
-/** Text that acts as a button: "+ Add", "Clear all", "TSV". */
+/** Text that acts as a button: "+ Add", "Clear all", "Export". */
 export const LinkButton = ({ children, tone = "brand", mono, size = "sm", icon, type = "button", ...rest }: LinkButtonProps) => (
   <button
     {...rest}

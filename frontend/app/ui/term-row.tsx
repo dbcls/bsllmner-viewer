@@ -17,7 +17,13 @@ type TermRowProps = {
   note?: string
   selected?: boolean
   onClick: () => void
+  /** `lg` lines the row's content up with the `px-6` content of a dialog. */
+  padding?: RowPadding
 }
+
+type RowPadding = "sm" | "lg"
+
+const ROW_PADDING: Record<RowPadding, string> = { sm: "px-3.5", lg: "px-6" }
 
 export type TextPart = { text: string; match: boolean }
 
@@ -56,13 +62,14 @@ const Marked = ({ text, highlight }: { text: string; highlight: string | undefin
  * search matched, and ID, with its count at the right edge. The unit of the count is named once, by the list around the
  * rows.
  */
-export const TermRow = ({ label, id, detail, count, field, synonym, highlight, note, selected, onClick }: TermRowProps) => (
+export const TermRow = ({ label, id, detail, count, field, synonym, highlight, note, selected, onClick, padding = "sm" }: TermRowProps) => (
   <button
     type="button"
     onClick={onClick}
     title={detail || undefined}
     className={cn(
-      "flex w-full cursor-pointer items-baseline gap-2 border-b border-brand-soft px-3.5 py-1.5 text-left hover:bg-brand-soft",
+      "flex w-full cursor-pointer items-baseline gap-2 border-b border-brand-soft py-1.5 text-left hover:bg-brand-soft",
+      ROW_PADDING[padding],
       selected && "bg-brand-soft",
     )}
   >
@@ -82,8 +89,8 @@ export const TermRow = ({ label, id, detail, count, field, synonym, highlight, n
 )
 
 /** A term row before the search result arrives, as tall as a `TermRow`. */
-export const TermRowSkeleton = () => (
-  <div aria-hidden="true" className="flex items-baseline gap-2 border-b border-brand-soft px-3.5 py-1.5">
+export const TermRowSkeleton = ({ padding = "sm" }: { padding?: RowPadding }) => (
+  <div aria-hidden="true" className={cn("flex items-baseline gap-2 border-b border-brand-soft py-1.5", ROW_PADDING[padding])}>
     <span className="min-w-0 flex-1">
       <Skeleton className="w-48" />
     </span>

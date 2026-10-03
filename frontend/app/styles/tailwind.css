@@ -77,9 +77,6 @@
   --color-assay-2:      #85B56A;
   --color-assay-3:      #DB86AF;
 
-  /* The under-represented side of the residual scale. */
-  --color-under:        #004098;
-  --color-under-soft:   #DFEBFB;
 
   --color-overlay: rgba(26, 23, 38, 0.35);
 
@@ -104,7 +101,6 @@
   --tracking-h1:     -0.015em;
   --tracking-h3:      0.01em;
   --tracking-mono:    0.02em;
-  --tracking-tag:     0.04em;
   --tracking-label:   0.06em;
   --tracking-eyebrow: 0.1em;
   --tracking-brand:   0.03em;  /* the wordmark in the header */
@@ -126,6 +122,8 @@
   --spacing-sidebar:      256px;
   --spacing-workspace-gutter: 24px;
   --spacing-header:        52px;
+  --spacing-box-md:        35px;  /* a box that a search is typed into, and the Select that chooses what it searches */
+  --spacing-box-sm:        28px;  /* a box that filters or sets a view */
   --spacing-modal:        640px;
   --spacing-modal-wide:   760px;
   --spacing-matrix-max:   620px;
@@ -159,6 +157,7 @@
   --shadow-card:       0 1px 2px rgba(26, 23, 38, 0.04);
   --shadow-card-hover: 0 4px 16px -4px rgba(80, 46, 107, 0.12);
   --shadow-modal:      0 20px 50px -10px rgba(20, 15, 30, 0.35);
+  --shadow-box-focus:  0 0 0 2px var(--color-brand-tint);  /* halo of a focused box, around its brand edge */
 }
 
 /* Trims a line of text to the height of its capitals, so a flex container that centers the text centers the
@@ -194,7 +193,7 @@
     outline: none;
     border-color: var(--color-brand);
     border-radius: var(--radius-button);
-    box-shadow: 0 0 0 2px var(--color-brand-tint);
+    box-shadow: var(--shadow-box-focus);
   }
 }
 

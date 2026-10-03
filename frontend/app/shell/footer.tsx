@@ -1,12 +1,29 @@
 import { useDataset } from "~/lib/api/queries"
 import { buildCommit } from "~/lib/build-info"
 import { formatCount } from "~/lib/format"
-import { ExternalLink } from "~/ui"
+import { cn, ExternalLink } from "~/ui"
 
-const COPYRIGHT_YEAR = 2026
-const BSI_URL = "https://bsi.rois.ac.jp/"
+const CRATE_URL = "https://biosampleplus.s3.ap-northeast-1.amazonaws.com/index.html"
+const SUPERCOMPUTER_URL = "https://sc.ddbj.nig.ac.jp/en/"
+const REPOSITORY_URL = "https://github.com/dbcls/bsllmner-viewer"
 
-/** Dataset information (population, model, and build time), the copyright, and the commit of the frontend, always visible. */
+/**
+ * The organizations that develop and run bsllmner-mk2 and bsllmner-viewer, in the order of their logos. Each logo has its
+ * own height, so that the logos look equally large: a tall logo with small lettering (DBCLS) is drawn taller, and a wide
+ * one (Chiba University) shorter.
+ */
+const ORGANIZATIONS = [
+  { name: "BioData Science Initiative (BSI)", url: "https://bsi.rois.ac.jp/", logo: "/logos/bsi.svg", height: "h-6" },
+  { name: "DNA Data Bank of Japan (DDBJ)", url: "https://www.ddbj.nig.ac.jp/index-e.html", logo: "/logos/ddbj.svg", height: "h-6.25" },
+  { name: "Database Division for Life Science (DBCLS)", url: "https://dbcls.rois.ac.jp/index-en.html", logo: "/logos/dbcls.svg", height: "h-7.5" },
+  { name: "Chiba University", url: "https://www.chiba-u.ac.jp/e/", logo: "/logos/chiba-u.svg", height: "h-5" },
+]
+
+/**
+ * Two lines of text on the left, the dataset and where its annotations are published with their license, and the
+ * logos of the organizations on the right across both lines, always visible. The items of a line are set apart by
+ * space, not by a separator character.
+ */
 export const Footer = () => {
   const dataset = useDataset()
   const commit = buildCommit()
@@ -14,26 +31,46 @@ export const Footer = () => {
   const assays = data?.targetAssays ?? []
   const assayText = assays.length > 1 ? `${assays.slice(0, -1).join(", ")}, or ${assays.at(-1)}` : assays.join("")
   return (
-    <footer className="flex shrink-0 justify-between gap-6 border-t border-border-soft bg-surface px-workspace-gutter py-2.5 text-fs-label text-ink-soft">
-      <span>
-        {data ? (
-          <>
-            Dataset: BioSamples with {assayText} experiments · {formatCount(data.totals.biosample)} BioSamples ·
-            Annotations by <span className="font-mono">{data.datasetVersion.model}</span> · Built{" "}
-            <span className="font-mono">{data.datasetVersion.createdAt.slice(0, 10)}</span>
-          </>
-        ) : (
-          "Dataset information is loading"
-        )}
-      </span>
-      <span>
-        © {COPYRIGHT_YEAR} <ExternalLink href={BSI_URL}>BioData Science Initiative (BSI)</ExternalLink>
-        {commit && (
-          <>
-            {" "}· Commit <span className="font-mono">{commit}</span>
-          </>
-        )}
-      </span>
+    <footer className="flex shrink-0 items-center justify-between gap-6 border-t border-border-soft bg-surface px-workspace-gutter py-2.5 text-fs-label text-ink-soft">
+      <div className="min-w-0">
+        <p className="flex flex-wrap gap-x-4">
+          {data ? (
+            <>
+              <span>Dataset: BioSamples with {assayText} experiments</span>
+              <span>{formatCount(data.totals.biosample)} BioSamples</span>
+              <span>
+                Annotations by <span className="font-mono">{data.datasetVersion.model}</span>
+              </span>
+            </>
+          ) : (
+            <span>Dataset information is loading</span>
+          )}
+        </p>
+        <p className="flex flex-wrap gap-x-4">
+          <span>
+            RO-Crate: <ExternalLink href={CRATE_URL}>BioSample Plus</ExternalLink> (CC BY 4.0)
+          </span>
+          <span>
+            Computed on the <ExternalLink href={SUPERCOMPUTER_URL}>NIG supercomputer</ExternalLink>
+          </span>
+          {commit && (
+            <span>
+              Version{" "}
+              <ExternalLink href={`${REPOSITORY_URL}/commit/${commit}`}>
+                <span className="font-mono">{commit}</span>
+              </ExternalLink>
+            </span>
+          )}
+        </p>
+      </div>
+      <div className="flex shrink-0 items-center gap-5">
+        {ORGANIZATIONS.map((organization) => (
+          <a key={organization.name} href={organization.url} target="_blank" rel="noreferrer" className="shrink-0">
+            <img src={organization.logo} alt={organization.name} className={cn("w-auto", organization.height)} />
+            <span className="sr-only">(opens in a new tab)</span>
+          </a>
+        ))}
+      </div>
     </footer>
   )
 }

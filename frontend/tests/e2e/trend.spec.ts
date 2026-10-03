@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test"
 
 import { dataset, distribution, select, trend } from "./_api"
-import { choose, expectChosen, expectParam, expectQ, formatCount, pageRangeText, viewTabs, workspaceUrl } from "./_helpers"
+import { choose, expectChosen, expectParam, expectQ, formatCount, workspaceUrl } from "./_helpers"
 
 const topDisease = async (request: Parameters<typeof distribution>[0]) => {
   const [first] = (await distribution(request, "disease")).elements
@@ -26,7 +26,7 @@ test.describe("trend", () => {
     const points = main.locator('svg g[data-series="condition"] circle title')
     await expect(points).toHaveCount(total.length)
     for (const [index, point] of total.entries()) {
-      await expect(points.nth(index)).toHaveText(`Condition · ${point.year}: ${formatCount(point.count)} BioSamples`)
+      await expect(points.nth(index)).toHaveText(`Condition, ${point.year}: ${formatCount(point.count)} BioSamples`)
     }
   })
 
@@ -44,7 +44,6 @@ test.describe("trend", () => {
       await expect(main.getByText(s.label, { exact: true })).toBeVisible()
     }
     await expect(main.locator("svg polyline")).toHaveCount(series.length + 1)
-    await expect(main.getByText("Split lines are not filtered by Disease")).toBeVisible()
     await expect(main.getByText(disease.value, { exact: true })).toBeVisible()
     await expect(main).toContainText("✓ in condition")
     await choose(page.getByRole("combobox", { name: "Split by" }), "None")
@@ -62,13 +61,12 @@ test.describe("trend", () => {
     const point = page.getByRole("main").locator('svg g[data-series="condition"] circle').first()
     await point.click()
     await expectQ(page, withYear)
-    await expect(page.getByRole("main").getByText("Not filtered by Year")).toBeVisible()
     await expectParam(page, "tab", "trend")
     await point.click()
     await expectQ(page, q)
   })
 
-  test("a point of a split line opens the entry list narrowed to the element and the year", async ({ page, request }) => {
+  test("a point of a split line narrows the condition to the element and the year and stays, and selecting it again widens back", async ({ page, request }) => {
     const disease = await topDisease(request)
     const assay = (await dataset(request)).targetAssays[0]
     if (!assay) throw new Error("the dataset has no target assay")
@@ -83,12 +81,15 @@ test.describe("trend", () => {
     const point = page
       .getByRole("main")
       .locator(`svg g[data-series="${target.series.value}"] circle.cursor-pointer`)
-      .filter({ has: page.locator("title", { hasText: `· ${target.point.year}:` }) })
+      .filter({ has: page.locator("title", { hasText: `, ${target.point.year}:` }) })
+    await expect(point).toHaveAttribute("aria-pressed", "false")
     // Circles of different lines can overlap on the plot, so the click is sent to this circle itself.
     await point.dispatchEvent("click")
     await expectQ(page, narrowed)
-    await expectParam(page, "tab", null)
-    await expect(viewTabs(page).getByRole("link", { name: "Samples" })).toHaveAttribute("aria-current", "page")
-    await expect(page.getByRole("main")).toContainText(pageRangeText(target.point.count))
+    await expectParam(page, "tab", "trend")
+    await expect(point).toHaveAttribute("aria-pressed", "true")
+    await point.dispatchEvent("click")
+    await expectQ(page, data.populationQ)
+    await expect(point).toHaveAttribute("aria-pressed", "false")
   })
 })

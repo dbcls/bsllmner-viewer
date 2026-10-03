@@ -5,7 +5,7 @@ const POLL = { timeout: 15_000 }
 /** A count as the UI writes it. */
 export const formatCount = (value: number): string => value.toLocaleString("en-US")
 
-/** The rows on one page of the tables (Samples and Projects). */
+/** The rows on one page of the tables (Samples and Projects) when no other number is chosen. */
 export const TABLE_PER_PAGE = 20
 
 /** The range of a page of a table as the pager writes it, for example `1–20 / 4,100,500`. */
@@ -48,7 +48,7 @@ export const expectCounted = async (page: Page): Promise<void> => {
 
 export const conditionPanel = (page: Page): Locator => page.getByRole("complementary")
 
-export const termPicker = (page: Page): Locator => page.getByRole("dialog", { name: /^Add (an annotation term|row terms|column terms)$/ })
+export const termPicker = (page: Page): Locator => page.getByRole("dialog", { name: "Add an annotation term" })
 
 export const viewTabs = (page: Page): Locator => page.getByRole("navigation", { name: "Views" })
 
@@ -60,15 +60,21 @@ export const bar = (page: Page, label: string): Locator =>
   page.getByRole("main").getByRole("button").filter({ has: page.getByText(label, { exact: true }) })
 
 /** A cell of the heatmap, found by its row and column labels. */
-export const cell = (page: Page, row: string, col: string): Locator => page.getByTitle(new RegExp(`^${escapeRegExp(row)} × ${escapeRegExp(col)}:`))
+export const cell = (page: Page, row: string, col: string): Locator =>
+  page.getByRole("cell", { name: new RegExp(`^${escapeRegExp(row)} × ${escapeRegExp(col)}:`) })
 
 /** The button of a populated heatmap cell. */
 export const cellButton = (page: Page, row: string, col: string): Locator =>
   page.getByRole("button", { name: new RegExp(`^${escapeRegExp(row)} × ${escapeRegExp(col)}:`) })
 
-/** The header row of one axis card of the heatmap. */
-export const axisHeader = (page: Page, side: "Row" | "Column"): Locator =>
-  page.getByRole("main").locator("div").filter({ has: page.getByRole("combobox", { name: `${side} dimension` }) }).last()
+/** The controls of one axis of the heatmap: its name, its dimension, and the button that opens its terms. */
+export const axisControls = (page: Page, side: "Rows" | "Columns"): Locator => page.getByRole("group", { name: side })
+
+/** The button of a heatmap axis that shows the number of its terms and opens them. */
+export const axisTermsButton = (page: Page, side: "Rows" | "Columns"): Locator => axisControls(page, side).getByRole("button", { name: /^\d+ terms?$/ })
+
+/** The dialog of the terms of a heatmap axis, with the ways to change them. */
+export const axisTerms = (page: Page, side: "Rows" | "Columns"): Locator => page.getByRole("dialog", { name: side === "Rows" ? "Row terms" : "Column terms" })
 
 /** Checks the label that a Select shows for its chosen option. The labels of the other options are in the button but hidden. */
 export const expectChosen = async (combobox: Locator, label: string): Promise<void> => {

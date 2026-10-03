@@ -234,7 +234,7 @@ const Annotations = ({ entry, highlighted, onHighlight }: AnnotationsProps) => (
     <div className="mb-2 flex items-center justify-between">
       <span className="font-semibold">Annotations</span>
       <span className="text-fs-micro text-ink-soft">
-        bsllmner-mk2 · <span className="font-mono">{entry.run}</span>
+        bsllmner-mk2 run <span className="font-mono">{entry.run}</span>
       </span>
     </div>
     {entry.annotations.map((annotation) => (
@@ -344,13 +344,12 @@ const ExperimentsCard = ({ experiments, targetAssays }: { experiments: EntryExpe
             </td>
             <td className="border-b border-brand-soft px-2 py-1.5 text-right font-mono text-fs-label">{experiment.runs.length}</td>
             <td className="border-b border-brand-soft px-2 py-1.5 text-fs-label">
-              <ExternalLink href={`https://ddbj.nig.ac.jp/search/entry/sra-experiment/${experiment.accession}`}>DDBJ</ExternalLink>
-              {experiment.chipAtlas.length > 0 && (
-                <>
-                  {" · "}
+              <span className="inline-flex gap-3">
+                <ExternalLink href={`https://ddbj.nig.ac.jp/search/entry/sra-experiment/${experiment.accession}`}>DDBJ</ExternalLink>
+                {experiment.chipAtlas.length > 0 && (
                   <ExternalLink href={`https://chip-atlas.org/view?id=${experiment.accession}`}>ChIP-Atlas</ExternalLink>
-                </>
-              )}
+                )}
+              </span>
             </td>
           </tr>
         ))}

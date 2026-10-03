@@ -94,7 +94,11 @@ The exports return every matching entry as TSV or as newline-delimited JSON (`ap
 
 An aggregation counts the matches of `q` per element along one or two **dimensions**, in a counting unit. A dimension is a DSL field, such as `disease`, `disease_status`, `library_strategy`, `date_published`, or `bioproject`. Every element carries a clause on each dimension of the aggregation that represents it, for example `disease:"MONDO:0007254"` for a bar of a distribution, or one clause per axis for a cell of a cross-tabulation.
 
+The two dimensions of a cross-tabulation are different fields, and the dimension of a trend is not `date_published`, because the trend already counts per year. `disease` and `disease_status` are different dimensions. A request that breaks either rule is rejected with status 400 and slug `invalid-dimension`.
+
 The bucket of an element has `value`, `label`, and `count`, as a facet bucket of the DDBJ Search API, and the element's `clauses` in addition.
+
+An element of an annotation term dimension also tells where the term sits in the ontology, so that a client can show the elements of a list as a tree. `parents` has every element of the same list that is a direct parent of the term. A term can have several parents in a list. `hasChildren` is true if a direct child term of the term has a count above 0 in the population of the list, in the same counting unit. `GET /api/terms/children` returns exactly those child terms. To get the children of a term element of a cross-tabulation, call it with the `populationQ` of the cross-tabulation as `q`, so that both use the same population.
 
 A distribution on an annotation term dimension also returns `withoutTerm`, the count of its population that has no term of the field: the population combined by `AND` with `NOT <field>_status:mapped`, in the same counting unit. The elements count only the matches that have a term, so `withoutTerm` shows how much of the population they cannot count. For example, if most BioSamples of a condition state no disease, then the bars of the disease distribution cover a small part of the condition.
 
@@ -116,6 +120,8 @@ If a request does not name the elements of a dimension, then the api chooses the
 - The api adds the elements that `q` names in a top-level clause, or in a top-level disjunction of clauses, on the dimension without `NOT`. A selected element is therefore present even if it is not one of the most frequent elements.
 - The api returns term, assay, and organism elements in descending order of their counts.
 
+The term search (`GET /api/terms`) chooses its terms in the population that it counts them in. If the search text is empty, then it chooses the terms that are assigned directly to the most BioSamples of that population, as for the elements of an annotation term dimension. If the search text is not empty, then every term of the dataset whose label, synonym, or ID contains the text is a candidate. This includes a broad term that is counted only through its descendants, so that a user can find such a term and choose all of its descendants at once. The OpenAPI document describes the order of the hits.
+
 ### Trend
 
 A trend counts the condition for each publication year of the BioSample. It returns every year from the first to the last year in which its population has a match, with a count of 0 for a year without one. With self-exclusion, the population of these counts is `q` without the conjuncts on `date_published`.
@@ -124,20 +130,23 @@ If a request names a dimension, then the trend also counts each element of the d
 
 ### Expected counts in cross-tabulations
 
-For each cell of a cross-tabulation, the api returns the expected count and the adjusted standardized residual of the cell under independence of the two dimensions, in the selected counting unit. With `N` the count of the aggregation population, `R` the count of its row, `C` the count of its column, and `O` the count of the cell:
+For each cell of a cross-tabulation, the api compares the count of the cell with the count that the cell would have if the two dimensions were independent. It returns the expected count, the ratio to the expected count, and the adjusted standardized residual, in the selected counting unit. With `N` the count of the aggregation population, `R` the count of the row, `C` the count of the column, and `O` the count of the cell:
 
-- expected count `E = R × C / N`
+- expected count `E = R × C / N`, or null when `N` is zero
+- ratio to the expected count `O / E`, or null when `E` is null or zero
 - adjusted standardized residual `r = (O − E) / sqrt(E × (1 − R / N) × (1 − C / N))`, or null when the denominator is zero
 
 Row and column counts are counts of the matches of the row or the column, not sums of cell counts.
+
+The ratio and the residual answer different questions. The ratio is the size of the difference: `2` means twice the expected count, and `0.5` means half of it. The residual tells whether chance can explain the difference, and it grows with the population. In a population of millions, a cell whose count is 1% above its expected count can have a residual far above 2. A cell is therefore classified only if both its ratio and its residual pass a threshold.
 
 A cell with `E ≥ 5` is classified as follows. Cells with `E < 5` are not classified.
 
 | Class | Condition |
 |---|---|
 | Gap | `O = 0` |
-| Under-represented | `O > 0` and `r ≤ −2` |
-| Over-represented | `r ≥ 2` |
+| Under-represented | `O > 0`, `O / E ≤ 1/2`, and `r ≤ −2` |
+| Over-represented | `O / E ≥ 2` and `r ≥ 2` |
 
 The thresholds are fixed. Rows and columns overlap and BioProject counts are distinct counts, so `E` and `r` describe how far a cell departs from independence rather than constitute a statistical test.
 

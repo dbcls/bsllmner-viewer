@@ -110,3 +110,39 @@ describe("useCondition toggle", () => {
     expect(result.current.labels).toEqual({ "9606": "Homo sapiens" })
   })
 })
+
+describe("useCondition toggleNarrow", () => {
+  it("narrows the condition to the element's clauses when the condition does not have them", async () => {
+    const update = vi.fn()
+    const { result } = renderHook(() => useCondition(null, update), { wrapper })
+
+    await act(async () => {
+      await result.current.toggleNarrow(null, [HUMAN])
+    })
+
+    expect(state.selects).toEqual([{ q: null, clauses: [HUMAN], mode: "narrow" }])
+    expect(update).toHaveBeenLastCalledWith({ q: HUMAN_Q })
+  })
+
+  it("widens the condition back to the population when the condition has the element's clauses", async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const own = ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    let q: string | null = null
+    const update = vi.fn((patch: { q?: string | null }) => {
+      q = patch.q ?? null
+    })
+    const { result, rerender } = renderHook(() => useCondition(q, update), { wrapper: own })
+    await act(async () => {
+      await result.current.toggleNarrow(null, [HUMAN])
+    })
+    rerender()
+    expect(result.current.isSelected([HUMAN])).toBe(true)
+
+    await act(async () => {
+      await result.current.toggleNarrow(Q, [HUMAN])
+    })
+
+    expect(state.selects).toHaveLength(1)
+    expect(q).toBe(Q)
+  })
+})

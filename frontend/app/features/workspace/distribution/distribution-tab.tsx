@@ -3,10 +3,11 @@ import type { DatasetResponse, Element, TermElement, Unit } from "~/lib/api/type
 import { downloadPngMarkup, downloadSvgMarkup, downloadTsv } from "~/lib/export"
 import { formatCount, formatPercent } from "~/lib/format"
 import { fieldLabel, ontologyLabel, unitLabel } from "~/lib/labels"
-import { Card, Clickable, cn, LinkButton, Skeleton, Tag } from "~/ui"
+import { Card, Clickable, cn, Skeleton } from "~/ui"
 
 import { clausesOfField } from "../ast"
 import { expectedElements } from "../expected-elements"
+import { FigureExport } from "../figure-export"
 import type { WorkspaceState } from "../state"
 import type { Condition } from "../use-condition"
 import { ViewControls } from "../view-controls"
@@ -33,7 +34,7 @@ type DistributionTabProps = {
   onUnit: (unit: Unit) => void
 }
 
-/** One card per dimension: the top elements as bars, with status composition for annotation fields. */
+/** One card per annotation field: the top terms as bars, and the part of the population without a term of the field. */
 export const DistributionTab = ({ state, condition, onUnit }: DistributionTabProps) => {
   const dataset = useDataset()
   const fields = dataset.data?.fields ?? []
@@ -42,9 +43,7 @@ export const DistributionTab = ({ state, condition, onUnit }: DistributionTabPro
   const ontologies = new Map(fields.map((f) => [f.name, f.ontologies.map(ontologyLabel).join(" / ")]))
   return (
     <div>
-      <ViewControls unit={state.unit} onUnit={onUnit}>
-        <span>Each card shows the terms assigned to the most BioSamples. Counts include child terms.</span>
-      </ViewControls>
+      <ViewControls unit={state.unit} onUnit={onUnit} help="Each card shows the terms assigned to the most BioSamples. Counts include child terms." />
       <div className="grid grid-cols-3 gap-4">
         {dataset.data === undefined &&
           Array.from({ length: FIELD_CARDS }, (_, index) => (
@@ -89,7 +88,6 @@ const DistributionCard = ({ field, ontology, dataset, state, condition }: CardPr
   })
   const ownCondition = clausesOfField(condition.ast, field).length > 0
   const data = distribution.data
-  const unfiltered = data !== undefined && data.populationQ !== data.q
   const elements = data?.elements ?? []
   const max = Math.max(1, ...elements.map((e) => e.count))
   const unit = unitLabel(state.unit)
@@ -118,23 +116,8 @@ const DistributionCard = ({ field, ontology, dataset, state, condition }: CardPr
         <div className="min-w-0">
           <span className="font-semibold">{fieldLabel(field)}</span>
           <span className="ml-1 text-fs-micro text-ink-soft">{ontology}</span>
-          {unfiltered && (
-            <span className="ml-1.5">
-              <Tag kind="warn">Not filtered by {fieldLabel(field)}</Tag>
-            </span>
-          )}
         </div>
-        <div className="flex shrink-0 gap-1.5">
-          <LinkButton mono tone="soft" onClick={exportTsv}>
-            TSV
-          </LinkButton>
-          <LinkButton mono tone="soft" onClick={exportSvg}>
-            SVG
-          </LinkButton>
-          <LinkButton mono tone="soft" onClick={exportPng}>
-            PNG
-          </LinkButton>
-        </div>
+        <FigureExport figure={`${fieldLabel(field)} distribution`} onTsv={exportTsv} onSvg={exportSvg} onPng={exportPng} />
       </div>
       <div className="mt-2 flex-1">
         {data === undefined && <SkeletonBars count={expectedElements(field, dataset, LIMIT)} />}
@@ -175,7 +158,7 @@ const SkeletonWithoutTerm = () => (
   </div>
 )
 
-const WITHOUT_TERM_ROW = "mt-1 flex items-center gap-2 border-t border-border-soft px-0.5 pt-1.5 text-fs-body-sm text-ink-soft"
+const WITHOUT_TERM_ROW = "mt-1.5 flex items-center gap-2 border-t border-border-soft px-0.5 pt-3 text-fs-body-sm text-ink-soft"
 
 /** Skeleton bars, each as tall as an element row: its label, its bar, and its count. */
 const SkeletonBars = ({ count }: { count: number }) => (
@@ -215,12 +198,12 @@ const ElementRow = ({ element, max, ownCondition, condition }: ElementRowProps) 
         aria-pressed={selected}
       >
         <span className="min-w-0 flex-1">
-          <span className={cn("flex min-w-0 items-center gap-1 text-fs-body-sm", selected && "font-semibold")}>
-            <span className="truncate">{element.label}</span>
-            {selected && <span className="shrink-0 text-fs-micro font-semibold text-brand">✓ in condition</span>}
-          </span>
+          <span className={cn("block truncate text-fs-body-sm", selected && "font-semibold")}>{element.label}</span>
           <span className={cn("mt-0.5 block h-2 overflow-hidden rounded-badge bg-brand-soft", selected && "ring-2 ring-selection")}>
-            <span className={cn("block h-full rounded-badge", dimmed ? "bg-brand-tint" : "bg-brand")} style={{ width: `${(element.count / max) * 100}%` }} />
+            <span
+              className={cn("block h-full rounded-badge", selected ? "bg-brand" : dimmed ? "bg-brand-tint" : "bg-brand-light")}
+              style={{ width: `${(element.count / max) * 100}%` }}
+            />
           </span>
         </span>
         <span className="w-17 shrink-0 text-right font-mono text-fs-label text-ink-mid">{formatCount(element.count)}</span>

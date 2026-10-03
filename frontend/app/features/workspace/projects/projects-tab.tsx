@@ -3,10 +3,11 @@ import type { ReactNode } from "react"
 import { useDataset, useProjects } from "~/lib/api/queries"
 import type { Project, ProjectSort } from "~/lib/api/types"
 import { formatCount } from "~/lib/format"
-import { TABLE_PER_PAGE } from "~/lib/workspace-state"
+import type { TablePerPage } from "~/lib/workspace-state"
 import { ACTION_ICON, Button, Card, CardFooter, CardHeader, cn, ExternalLink, Pager, SortChooser, type SortDirection, type SortKey, TableScroller } from "~/ui"
 
 import { AssayTags } from "../assay-tags"
+import { PerPageChooser } from "../per-page-chooser"
 import { SkeletonTableRows } from "../skeleton-rows"
 import type { WorkspaceState } from "../state"
 import type { Condition } from "../use-condition"
@@ -27,15 +28,16 @@ type ProjectsTabProps = {
   condition: Condition
   onPage: (page: number) => void
   onSort: (sort: ProjectSort) => void
+  onPerPage: (perPage: TablePerPage) => void
 }
 
 /**
  * The BioProjects of the entries that match the condition without its BioProject clauses, so that the BioProjects added to
  * the condition stay among the others.
  */
-export const ProjectsTab = ({ state, condition, onPage, onSort }: ProjectsTabProps) => {
+export const ProjectsTab = ({ state, condition, onPage, onSort, onPerPage }: ProjectsTabProps) => {
   const table = useTableTop(onPage)
-  const projects = useProjects({ q: state.q, selfExclusion: true, sort: state.sort, page: state.page, perPage: TABLE_PER_PAGE })
+  const projects = useProjects({ q: state.q, selfExclusion: true, sort: state.sort, page: state.page, perPage: state.perPage })
   const targetAssays = useDataset().data?.targetAssays ?? []
   const [sortKey = "biosampleCount", sortDirection = "desc"] = state.sort.split(":") as [ProjectSortKey, SortDirection]
   const total = projects.data?.pagination.total
@@ -45,7 +47,8 @@ export const ProjectsTab = ({ state, condition, onPage, onSort }: ProjectsTabPro
       <CardHeader>
         <div className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-2">
           <SortChooser keys={SORT_KEYS} value={sortKey} direction={sortDirection} onChange={(key, direction) => onSort(projectSort(key, direction))} />
-          <Pager page={state.page} perPage={TABLE_PER_PAGE} total={total} onChange={onPage} />
+          <PerPageChooser value={state.perPage} onChange={onPerPage} />
+          <Pager page={state.page} perPage={state.perPage} total={total} onChange={onPage} />
         </div>
       </CardHeader>
       <TableScroller>
@@ -62,7 +65,7 @@ export const ProjectsTab = ({ state, condition, onPage, onSort }: ProjectsTabPro
             </tr>
           </thead>
           <tbody>
-            {projects.data === undefined && <SkeletonTableRows columns={["w-24", "w-64", "w-12", "w-12", "w-16", "w-20", "w-16"]} />}
+            {projects.data === undefined && <SkeletonTableRows rows={state.perPage} columns={["w-24", "w-64", "w-12", "w-12", "w-16", "w-20", "w-16"]} />}
             {(projects.data?.items ?? []).map((project) => (
               <ProjectRow key={project.identifier} project={project} condition={condition} targetAssays={targetAssays} />
             ))}
@@ -71,7 +74,7 @@ export const ProjectsTab = ({ state, condition, onPage, onSort }: ProjectsTabPro
       </TableScroller>
       <CardFooter>
         <div className="ml-auto">
-          <Pager page={state.page} perPage={TABLE_PER_PAGE} total={total} onChange={table.onFootPage} />
+          <Pager page={state.page} perPage={state.perPage} total={total} onChange={table.onFootPage} />
         </div>
       </CardFooter>
     </Card>
@@ -142,9 +145,8 @@ const ConditionButton = ({ project, selected, onToggle }: { project: Project; se
   )
 
 const ProjectLinks = ({ identifier }: { identifier: string }) => (
-  <>
+  <span className="inline-flex gap-3">
     <ExternalLink href={`https://ddbj.nig.ac.jp/search/entry/bioproject/${identifier}`}>DDBJ</ExternalLink>
-    {" · "}
     <ExternalLink href={`https://www.ncbi.nlm.nih.gov/bioproject/${identifier}`}>NCBI</ExternalLink>
-  </>
+  </span>
 )

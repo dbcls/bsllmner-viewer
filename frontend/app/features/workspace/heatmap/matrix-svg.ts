@@ -8,13 +8,16 @@ export type MatrixCell = {
   background: string
   dark: boolean
   gap: boolean
+  /** The text is in the grey of the page, as on the page: a 0 that is not a gap, or a ratio that is not colored. */
+  soft: boolean
 }
 
 export type MatrixExport = {
   rowLabels: { value: string; label: string; total: number }[]
   colLabels: { value: string; label: string; total: number }[]
   cells: MatrixCell[]
-  corner: string
+  /** The names of the row and the column dimensions, written in the top left corner. */
+  corner: { row: string; col: string }
   total: number
 }
 
@@ -41,7 +44,9 @@ export const matrixSvg = (data: MatrixExport): string => {
   const parts = [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" font-family="Public Sans, sans-serif" font-size="11">`,
     `<rect width="${width}" height="${height}" fill="${token("--color-surface")}"/>`,
-    `<text x="10" y="${top - 12}" font-weight="600" fill="${token("--color-ink-soft")}">${escape(data.corner)}</text>`,
+    // The corner names the axes on one line as the page does, the rows first and the columns after a wide space, in the
+    // grey of the totals so that the names are not read as terms.
+    `<text x="10" y="${top - 12}" font-weight="600" fill="${token("--color-ink-soft")}">${escape(data.corner.row)} ↓<tspan dx="24">${escape(data.corner.col)} →</tspan></text>`,
   ]
   data.colLabels.forEach((col, j) => {
     const x = left + j * (cellW + 2) + cellW / 2
@@ -57,7 +62,13 @@ export const matrixSvg = (data: MatrixExport): string => {
       const fill = cell?.background ?? token("--color-surface")
       const stroke = cell?.gap ? `stroke="${token("--color-critical-fg")}" stroke-dasharray="3 2" stroke-width="1.5"` : ""
       parts.push(`<rect x="${x}" y="${y}" width="${cellW}" height="${cellH}" rx="3" fill="${fill}" ${stroke}/>`)
-      const color = cell?.gap ? token("--color-critical-fg") : cell?.dark ? token("--color-surface") : token("--color-ink")
+      const color = cell?.gap
+        ? token("--color-critical-fg")
+        : cell?.dark
+          ? token("--color-surface")
+          : cell?.soft
+            ? token("--color-ink-soft")
+            : token("--color-ink")
       parts.push(
         `<text x="${x + cellW / 2}" y="${y + cellH / 2 + 4}" text-anchor="middle" font-family="${mono}" fill="${color}">${escape(cell?.text ?? "")}</text>`,
       )

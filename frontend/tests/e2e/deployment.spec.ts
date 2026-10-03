@@ -38,6 +38,6 @@ test.describe("deployment", () => {
     const { version } = (await (await request.get("/api/service-info")).json()) as { version: string }
     expect(version.endsWith(`+${EXPECTED.commit}`)).toBe(true)
     await page.goto("/")
-    await expect(page.locator("footer")).toContainText(`Commit ${EXPECTED.commit}`)
+    await expect(page.locator("footer")).toContainText(`Version ${EXPECTED.commit}`)
   })
 })

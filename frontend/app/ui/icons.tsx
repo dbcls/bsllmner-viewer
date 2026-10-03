@@ -28,6 +28,9 @@ export type IconName =
   | "arrow-up-narrow-wide"
   | "arrow-down-wide-narrow"
   | "plus"
+  | "arrow-left-right"
+  | "circle-chevron-right"
+  | "circle-chevron-down"
 
 const NODES: Record<IconName, ReactNode> = {
   "search": (
@@ -118,6 +121,26 @@ const NODES: Record<IconName, ReactNode> = {
       <path d="M12 5v14" />
     </>
   ),
+  "arrow-left-right": (
+    <>
+      <path d="M8 3 4 7l4 4" />
+      <path d="M4 7h16" />
+      <path d="m16 21 4-4-4-4" />
+      <path d="M20 17H4" />
+    </>
+  ),
+  "circle-chevron-right": (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <path d="m10 8 4 4-4 4" />
+    </>
+  ),
+  "circle-chevron-down": (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <path d="m16 10-4 4-4-4" />
+    </>
+  ),
 }
 
 export const ICON_NAMES = Object.keys(NODES) as IconName[]
@@ -142,6 +165,11 @@ export const ACTION_ICON = {
   /** The order that a sorted list runs in now, on the control that reverses the order. */
   ascendingOrder: "arrow-up-narrow-wide",
   descendingOrder: "arrow-down-wide-narrow",
+  /** Exchanges the two axes of a cross-tabulation. */
+  swapAxes: "arrow-left-right",
+  /** Shows the child terms of a term under it, and hides them again. Circled, as the plain chevrons go to a page and open a list. */
+  showChildren: "circle-chevron-right",
+  hideChildren: "circle-chevron-down",
 } as const satisfies Record<string, IconName>
 
 type IconProps = {

@@ -10,7 +10,7 @@ from bsllmner_viewer.api.common import aggregation_population, q_of, version_ref
 from bsllmner_viewer.api.deps import FacetSelfExcludeParam, QParam, StoreDep, parse_condition
 from bsllmner_viewer.api.problems import ApiError
 from bsllmner_viewer.api.queries import terms as tq
-from bsllmner_viewer.api.queries.aggregate import element_counts
+from bsllmner_viewer.api.queries.aggregate import element_counts, has_children, parents_within, term_status_counts
 from bsllmner_viewer.api.queries.core import population
 from bsllmner_viewer.api.queries.dimensions import clauses_for, dimension
 from bsllmner_viewer.api.schemas import TermChildrenResponse, TermElement, TermHit, TermsResponse, Unit
@@ -31,11 +31,14 @@ def _term_dimension(store: StoreDep, field: str):  # type: ignore[no-untyped-def
     response_model=TermsResponse,
     summary="Search the terms annotated in a field, or in every annotation field",
     description=(
-        "Hits are ordered by how they match `query`: a label or an ID equal to it, then a label or an ID that contains "
-        "it, then only a synonym that contains it (`matchedSynonym`). Within each of these, hits are ordered by "
-        "`count`. The hits within `limit` are the terms assigned directly to the most BioSamples, so that a broad term "
-        "counted only through its descendants does not crowd out the terms in use. Each hit is counted in the "
-        "population of its own field: with `facetSelfExclude`, the condition without the conjuncts on that field."
+        "Hits are ordered by how they match `query`: a label or an ID equal to it, then a synonym equal to it, then a "
+        "label or an ID that contains it, then only a synonym that contains it. Within each of these, hits are ordered "
+        "by `count`. Each hit is counted in the population of its own field: with `facetSelfExclude`, the condition "
+        "without the conjuncts on that field. The hits are chosen in the same population. With an empty `query`, they "
+        "are the terms assigned directly to the most BioSamples of the population. With a `query`, every term that "
+        "matches it is a candidate, and the hits within `limit` are the best matches, then the terms assigned "
+        "directly to the most BioSamples of the population, then of the whole dataset. A broad term counted only "
+        "through its descendants is therefore still found by a `query`."
     ),
 )
 def search_terms(
@@ -54,16 +57,19 @@ def search_terms(
     by_field = {dim.name: dim for dim in dims}
     ast = parse_condition(store, q)
     populations = {name: aggregation_population(ast, [name], facet_self_exclude) for name in by_field}
+    pops = {name: population(pop_ast, store.field_set) for name, pop_ast in populations.items()}
     counts: dict[tuple[str, str], int] = {}
     descendants: dict[tuple[str, str], int] = {}
     with store.cursor() as cur:
-        hits = tq.search_terms(cur, list(by_field), query, limit)
+        hits = tq.search_terms(
+            cur, {name: None if populations[name] is None else pops[name] for name in by_field}, query, limit
+        )
         for name, dim in by_field.items():
             ids = [hit.term_id for hit in hits if hit.field == name]
             if not ids:
                 continue
             assert dim.annotation_field is not None
-            found = element_counts(cur, population(populations[name], store.field_set), dim, ids, unit)
+            found = element_counts(cur, pops[name], dim, ids, unit)
             counts.update({(name, t): n for t, n in found.items()})
             descendants.update({(name, t): n for t, n in tq.descendant_counts(cur, dim.annotation_field, ids).items()})
         paths = tq.path_labels(cur, sorted({hit.term_id for hit in hits}))
@@ -112,9 +118,14 @@ def term_children(
     pop = population(pop_ast, store.field_set)
     assert dim.annotation_field is not None
     with store.cursor() as cur:
-        children = tq.children_of(cur, dim.annotation_field, term_id)
-        ids = [c[0] for c in children]
-        counts, statuses, has_kids = tq.counted_elements(cur, pop, dim, ids, unit)
+        listed = tq.children_of(cur, dim.annotation_field, term_id)
+        counts = element_counts(cur, pop, dim, [t for t, _ in listed], unit)
+        # Only the child terms with a count in the population, as `hasChildren` of the term promises.
+        children = [(t, label) for t, label in listed if counts.get(t, 0) > 0]
+        ids = [t for t, _ in children]
+        statuses = term_status_counts(cur, pop, dim, ids, unit)
+        has_kids = has_children(cur, pop, dim, ids, unit)
+        parents = parents_within(cur, ids)
     return TermChildrenResponse(
         dataset_version=version_ref(store),
         field=dim.name,
@@ -130,6 +141,7 @@ def term_children(
                 count_exact=statuses.get(t, (0, 0))[0],
                 count_selected=statuses.get(t, (0, 0))[1],
                 has_children=has_kids.get(t, False),
+                parents=parents.get(t, []),
             )
             for t, label in children
         ],

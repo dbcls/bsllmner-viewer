@@ -2,11 +2,12 @@ import type { ProjectSort, Unit } from "./api/types"
 
 export const TABS = ["samples", "projects", "distribution", "heatmap", "trend"] as const
 
-/** The rows on one page of the tables (Samples and Projects). */
-export const TABLE_PER_PAGE = 20
+/** The numbers of rows that a page of the tables (Samples and Projects) can hold. The first is the default. */
+export const TABLE_PER_PAGES = [20, 50, 100] as const
+export type TablePerPage = (typeof TABLE_PER_PAGES)[number]
 export type Tab = (typeof TABS)[number]
 
-export type HeatmapColor = "count" | "residual"
+export type HeatmapColor = "count" | "ratio"
 
 // A record rather than a list, so that the type checker reports a sort that the api adds and this list lacks.
 const PROJECT_SORT_SET: Record<ProjectSort, true> = {
@@ -24,6 +25,7 @@ export type WorkspaceState = {
   tab: Tab
   unit: Unit
   page: number
+  perPage: TablePerPage
   sort: ProjectSort
   row: string
   col: string
@@ -39,6 +41,7 @@ export const DEFAULTS: WorkspaceState = {
   tab: "samples",
   unit: "biosample",
   page: 1,
+  perPage: TABLE_PER_PAGES[0],
   sort: "biosampleCount:desc",
   row: "cell_line",
   col: "library_strategy",
@@ -59,17 +62,24 @@ export const readState = (params: URLSearchParams): WorkspaceState => {
   const unit = params.get("unit")
   const sort = params.get("sort")
   const page = Number(params.get("page") ?? "1")
+  const perPage = Number(params.get("perPage"))
+  const row = params.get("row") ?? DEFAULTS.row
+  const named = params.get("col") ?? DEFAULTS.col
+  // A dimension against itself shows nothing and the api rejects it, so the columns of such a URL take the default
+  // column dimension, or the default row dimension when the rows have that, without the terms named for them.
+  const col = named !== row ? named : DEFAULTS.col !== row ? DEFAULTS.col : DEFAULTS.row
   return {
     q: params.get("q")?.trim() || null,
     tab: TABS.includes(tab as Tab) ? (tab as Tab) : DEFAULTS.tab,
     unit: UNITS.includes(unit as Unit) ? (unit as Unit) : DEFAULTS.unit,
     page: Number.isInteger(page) && page >= 1 ? page : 1,
+    perPage: TABLE_PER_PAGES.includes(perPage as TablePerPage) ? (perPage as TablePerPage) : DEFAULTS.perPage,
     sort: PROJECT_SORTS.includes(sort as ProjectSort) ? (sort as ProjectSort) : DEFAULTS.sort,
-    row: params.get("row") ?? DEFAULTS.row,
-    col: params.get("col") ?? DEFAULTS.col,
+    row,
+    col,
     rowTerms: list(params.get("row_terms")),
-    colTerms: list(params.get("col_terms")),
-    color: params.get("color") === "residual" ? "residual" : "count",
+    colTerms: col === named ? list(params.get("col_terms")) : null,
+    color: params.get("color") === "ratio" ? "ratio" : "count",
     trendField: params.get("trend_field"),
     trendTerms: list(params.get("trend_terms")),
   }
@@ -81,6 +91,7 @@ export const writeState = (state: WorkspaceState): URLSearchParams => {
   if (state.tab !== DEFAULTS.tab) params.set("tab", state.tab)
   if (state.unit !== DEFAULTS.unit) params.set("unit", state.unit)
   if (state.page !== 1) params.set("page", String(state.page))
+  if (state.perPage !== DEFAULTS.perPage) params.set("perPage", String(state.perPage))
   if (state.sort !== DEFAULTS.sort) params.set("sort", state.sort)
   if (state.row !== DEFAULTS.row) params.set("row", state.row)
   if (state.col !== DEFAULTS.col) params.set("col", state.col)
