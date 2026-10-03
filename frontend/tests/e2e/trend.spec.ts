@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test"
 
-import { dataset, distribution, select, trend } from "./_api"
-import { choose, expectChosen, expectParam, expectQ, formatCount, workspaceUrl } from "./_helpers"
+import { dataset, distribution, select, terms, trend } from "./_api"
+import { axisTermsButton, choose, expectChosen, expectParam, expectQ, formatCount, workspaceUrl } from "./_helpers"
 
 const topDisease = async (request: Parameters<typeof distribution>[0]) => {
   const [first] = (await distribution(request, "disease")).elements
@@ -10,45 +10,144 @@ const topDisease = async (request: Parameters<typeof distribution>[0]) => {
 }
 
 test.describe("trend", () => {
-  test("without a split, the trend draws only the line of the condition", async ({ page, request }) => {
+  test("the trend draws one line per disease by default, and the line of the condition only when there is a condition", async ({ page, request }) => {
     const disease = await topDisease(request)
     const q = await select(request, null, disease.clauses)
     const main = page.getByRole("main")
+    const whole = await trend(request, { field: "disease" })
     await page.goto(workspaceUrl({ tab: "trend" }))
-    await expectChosen(page.getByRole("combobox", { name: "Split by" }), "None")
-    await expect(main.locator("svg polyline")).toHaveCount(1)
-    await expect(main).toContainText("All entries")
+    await expectChosen(page.getByRole("combobox", { name: "Line dimension" }), "Disease")
+    await expect(axisTermsButton(page, "Lines")).toHaveText(`${whole.series.length} terms`)
+    await expect(main.locator("svg polyline")).toHaveCount(whole.series.length)
+    await expect(page.getByRole("switch", { name: "Condition" })).toBeDisabled()
+    await expect(page.getByRole("switch", { name: "All entries" })).not.toBeChecked()
     await page.goto(workspaceUrl({ tab: "trend", q }))
-    const { total } = await trend(request, { q })
-    await expect(main.locator("svg polyline")).toHaveCount(1)
-    await expect(main).toContainText("Condition")
-    await expect(main).not.toContainText("All entries")
-    const points = main.locator('svg g[data-series="condition"] circle title')
+    const { total, series } = await trend(request, { field: "disease", q })
+    expect(series.map((s) => s.value)).toContain(disease.value)
+    await expect(main.locator("svg polyline")).toHaveCount(series.length + 1)
+    await expect(page.getByRole("switch", { name: "Condition" })).toBeChecked()
+    await expect(main.getByText(disease.value, { exact: true })).toBeVisible()
+    await expect(main).toContainText("✓ in condition")
+    const points = main.locator('svg g[data-series="condition"] circle')
     await expect(points).toHaveCount(total.length)
     for (const [index, point] of total.entries()) {
-      await expect(points.nth(index)).toHaveText(`Condition, ${point.year}: ${formatCount(point.count)} BioSamples`)
+      await expect(points.nth(index)).toHaveAttribute("aria-label", `Condition, ${point.year}: ${formatCount(point.count)} BioSamples. Toggle this year in the condition`)
     }
   })
 
-  test("splitting by a field adds one line per element and records the field in the URL", async ({ page, request }) => {
-    const disease = await topDisease(request)
-    const q = await select(request, null, disease.clauses)
-    const { series } = await trend(request, { field: "disease", q })
-    expect(series.map((s) => s.value)).toContain(disease.value)
-    await page.goto(workspaceUrl({ tab: "trend", q }))
+  test("choosing another dimension for the lines draws its elements and records the dimension in the URL", async ({ page, request }) => {
+    const { series } = await trend(request, { field: "library_strategy" })
+    await page.goto(workspaceUrl({ tab: "trend" }))
     const main = page.getByRole("main")
-    await choose(page.getByRole("combobox", { name: "Split by" }), "Disease")
-    await expectParam(page, "trend_field", "disease")
+    await choose(page.getByRole("combobox", { name: "Line dimension" }), "Assay")
+    await expectParam(page, "trend_field", "library_strategy")
     for (const s of series) {
       await expect(main.locator(`svg g[data-series="${s.value}"] polyline`)).toHaveCount(1)
       await expect(main.getByText(s.label, { exact: true })).toBeVisible()
     }
-    await expect(main.locator("svg polyline")).toHaveCount(series.length + 1)
-    await expect(main.getByText(disease.value, { exact: true })).toBeVisible()
-    await expect(main).toContainText("✓ in condition")
-    await choose(page.getByRole("combobox", { name: "Split by" }), "None")
+    await expect(main.locator("svg polyline")).toHaveCount(series.length)
+    await expect(axisTermsButton(page, "Lines")).toHaveText(`${series.length} terms`)
+    await choose(page.getByRole("combobox", { name: "Line dimension" }), "Disease")
     await expectParam(page, "trend_field", null)
-    await expect(main.locator("svg polyline")).toHaveCount(1)
+  })
+
+  test("hiding the line of the condition keeps the lines of the elements and records it in the URL", async ({ page, request }) => {
+    const disease = await topDisease(request)
+    const q = await select(request, null, disease.clauses)
+    const { series } = await trend(request, { field: "disease", q })
+    await page.goto(workspaceUrl({ tab: "trend", q }))
+    const main = page.getByRole("main")
+    await expect(main.locator("svg polyline")).toHaveCount(series.length + 1)
+    await page.getByRole("switch", { name: "Condition" }).click()
+    await expectParam(page, "trend_condition", "off")
+    await expect(main.locator('svg g[data-series="condition"]')).toHaveCount(0)
+    await expect(main.locator("svg polyline")).toHaveCount(series.length)
+    await page.getByRole("switch", { name: "Condition" }).click()
+    await expectParam(page, "trend_condition", null)
+    await expect(main.locator("svg polyline")).toHaveCount(series.length + 1)
+  })
+
+  test("All entries draws the whole dataset in the years of the condition next to it, and its points do not change the condition", async ({ page, request }) => {
+    const disease = await topDisease(request)
+    const q = await select(request, null, disease.clauses)
+    const { allEntries, total } = await trend(request, { field: "disease", q })
+    const whole = new Map((await trend(request, {})).total.map((point) => [point.year, point.count]))
+    expect(allEntries.map((point) => point.count)).toEqual(allEntries.map((point) => whole.get(point.year) ?? 0))
+    await page.goto(workspaceUrl({ tab: "trend", q }))
+    const main = page.getByRole("main")
+    await expect(main.locator('svg g[data-series="all"]')).toHaveCount(0)
+    await page.getByRole("switch", { name: "All entries" }).click()
+    await expectParam(page, "trend_all", "on")
+    const points = main.locator('svg g[data-series="all"] circle')
+    await expect(points).toHaveCount(allEntries.length)
+    for (const [index, point] of allEntries.entries()) {
+      await expect(points.nth(index)).toHaveAttribute("aria-label", `All entries, ${point.year}: ${formatCount(point.count)} BioSamples`)
+    }
+    await expect(main.locator('svg g[data-series="condition"] circle')).toHaveCount(total.length)
+    await points.first().dispatchEvent("click")
+    await expectQ(page, q)
+  })
+
+  test("the years limit the points to the chosen range as the api returns them, and the first and last years take the limit off", async ({ page, request }) => {
+    const disease = await topDisease(request)
+    const q = await select(request, null, disease.clauses)
+    const whole = await trend(request, { q })
+    if (whole.years.length < 3) throw new Error("the condition matches fewer than three years")
+    const from = whole.years[1] as number
+    const to = whole.years[whole.years.length - 2] as number
+    const limited = await trend(request, { q, yearFrom: from, yearTo: to })
+    await page.goto(workspaceUrl({ tab: "trend", q }))
+    const points = page.getByRole("main").locator('svg g[data-series="condition"] circle')
+    await expect(points).toHaveCount(whole.total.length)
+    await choose(page.getByRole("combobox", { name: "First year" }), String(from))
+    await expectParam(page, "trend_from", String(from))
+    await choose(page.getByRole("combobox", { name: "Last year" }), String(to))
+    await expectParam(page, "trend_to", String(to))
+    await expect(points).toHaveCount(limited.total.length)
+    for (const [index, point] of limited.total.entries()) {
+      await expect(points.nth(index)).toHaveAttribute("aria-label", new RegExp(`^Condition, ${point.year}: ${formatCount(point.count)} BioSamples\\.`))
+    }
+    await choose(page.getByRole("combobox", { name: "First year" }), String(whole.firstYear))
+    await expectParam(page, "trend_from", null)
+    await choose(page.getByRole("combobox", { name: "Last year" }), String(whole.lastYear))
+    await expectParam(page, "trend_to", null)
+    await expect(points).toHaveCount(whole.total.length)
+  })
+
+  test("data labels write the count above every point that has a count", async ({ page, request }) => {
+    const disease = await topDisease(request)
+    const q = await select(request, null, disease.clauses)
+    const { total, series } = await trend(request, { field: "disease", q })
+    await page.goto(workspaceUrl({ tab: "trend", q }))
+    const labels = page.getByRole("main").locator("svg g[data-labels] text")
+    await expect(labels).toHaveCount(0)
+    await page.getByRole("switch", { name: "Data labels" }).click()
+    await expectParam(page, "trend_labels", "on")
+    // The labels of the lines of the elements come first, and those of the line of the condition, drawn over them, last.
+    const counted = [...series.flatMap((s) => s.points), ...total].filter((point) => point.count > 0)
+    await expect(labels).toHaveText(counted.map((point) => formatCount(point.count)))
+  })
+
+  test("the terms dialog refuses a sixth line, and taking a term off makes room for another", async ({ page, request }) => {
+    const { series } = await trend(request, { field: "disease" })
+    const shown = series.map((s) => s.value)
+    if (shown.length < 5) throw new Error("the dataset has fewer than five diseases")
+    const extra = (await terms(request, "disease", "")).find((term) => !shown.includes(term.termId))
+    if (!extra) throw new Error("every listed disease is already a line")
+    await page.goto(workspaceUrl({ tab: "trend" }))
+    await axisTermsButton(page, "Lines").click()
+    const dialog = page.getByRole("dialog", { name: "Line terms" })
+    await dialog.getByRole("textbox", { name: "Search terms" }).fill(extra.termId)
+    await dialog.getByRole("button").filter({ hasText: extra.termId }).click()
+    await expect(page.getByText("A trend shows up to 5 terms")).toBeVisible()
+    await expectParam(page, "trend_terms", null)
+    await dialog.getByRole("button", { name: `Remove ${series[0]?.label ?? ""}`, exact: true }).click()
+    await expectParam(page, "trend_terms", shown.slice(1).join(","))
+    await dialog.getByRole("button").filter({ hasText: extra.termId }).click()
+    await expectParam(page, "trend_terms", [...shown.slice(1), extra.termId].join(","))
+    const chosen = await trend(request, { field: "disease", elements: [...shown.slice(1), extra.termId] })
+    await page.keyboard.press("Escape")
+    await expect(page.getByRole("main").locator("svg polyline")).toHaveCount(chosen.series.length)
   })
 
   test("a point of the condition line toggles its year in the condition", async ({ page, request }) => {
@@ -62,6 +161,7 @@ test.describe("trend", () => {
     await point.click()
     await expectQ(page, withYear)
     await expectParam(page, "tab", "trend")
+    await expect(point).toHaveAttribute("aria-pressed", "true")
     await point.click()
     await expectQ(page, q)
   })
@@ -78,10 +178,7 @@ test.describe("trend", () => {
     if (!target) throw new Error("no other assay matches the condition")
     const narrowed = await select(request, data.populationQ, target.point.clauses, "narrow")
     await page.goto(workspaceUrl({ tab: "trend", trend_field: "library_strategy", q }))
-    const point = page
-      .getByRole("main")
-      .locator(`svg g[data-series="${target.series.value}"] circle.cursor-pointer`)
-      .filter({ has: page.locator("title", { hasText: `, ${target.point.year}:` }) })
+    const point = page.getByRole("main").locator(`svg g[data-series="${target.series.value}"] circle[role="button"][aria-label*=", ${target.point.year}: "]`)
     await expect(point).toHaveAttribute("aria-pressed", "false")
     // Circles of different lines can overlap on the plot, so the click is sent to this circle itself.
     await point.dispatchEvent("click")

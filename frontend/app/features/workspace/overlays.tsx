@@ -100,7 +100,7 @@ type ApiModalProps = {
   open: boolean
   onClose: () => void
   state: WorkspaceState
-  onToast: (message: string) => void
+  onAlert: (message: string) => void
 }
 
 const TAB_LABELS: Record<WorkspaceState["tab"], string> = {
@@ -130,7 +130,15 @@ export const apiRequestFor = (state: WorkspaceState): string => {
         colElements: state.colTerms?.join(","),
       })
     case "trend":
-      return apiUrl("/api/trend", { q, field: state.trendField ?? undefined, unit: state.unit, facetSelfExclude: "true", elements: state.trendTerms?.join(",") })
+      return apiUrl("/api/trend", {
+        q,
+        field: state.trendField,
+        unit: state.unit,
+        facetSelfExclude: "true",
+        elements: state.trendTerms?.join(","),
+        yearFrom: state.trendFrom ?? undefined,
+        yearTo: state.trendTo ?? undefined,
+      })
     case "projects":
       return apiUrl("/api/projects", { q, facetSelfExclude: "true", sort: state.sort, page: state.page, perPage: state.perPage })
   }
@@ -159,7 +167,7 @@ export const responseExcerpt = (text: string): string => {
 
 const BLOCK_HEADING = "mb-1.5 text-fs-body-sm font-semibold text-ink"
 
-export const ApiModal = ({ open, onClose, state, onToast }: ApiModalProps) => {
+export const ApiModal = ({ open, onClose, state, onAlert }: ApiModalProps) => {
   const [response, setResponse] = useState<string>("")
   const request = apiRequestFor(state)
   const url = typeof window === "undefined" ? request : `${window.location.origin}${request}`
@@ -196,7 +204,7 @@ export const ApiModal = ({ open, onClose, state, onToast }: ApiModalProps) => {
               kind="inverse"
               onCopy={async () => {
                 const ok = await copyText(curl)
-                if (!ok) onToast("Copy failed")
+                if (!ok) onAlert("Copy failed")
                 return ok
               }}
             >

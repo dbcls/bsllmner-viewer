@@ -11,6 +11,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from bsllmner_viewer.build.inputs import plausible_publication_date, read_input
+from bsllmner_viewer.build.record import evidenced_record
 from bsllmner_viewer.build.selectresult import RunMetadata, iter_entries, load_select_result
 
 ENTRY_SCHEMA = pa.schema(
@@ -22,6 +23,8 @@ ENTRY_SCHEMA = pa.schema(
         ("title", pa.string()),
         ("date_published", pa.date32()),
         ("attributes", pa.string()),
+        ("description", pa.string()),
+        ("record", pa.string()),
     ]
 )
 
@@ -90,6 +93,9 @@ def convert_run(task: ConvertTask) -> ConvertResult:
                 [{"name": a.name, "value": a.value, "harmonized_name": a.harmonized_name} for a in doc.attributes]
             ).decode()
         )
+        entries["description"].append(orjson.dumps([{"name": n, "value": v} for n, v in doc.description]).decode())
+        record = evidenced_record(doc.record, (row.extracted_value or "" for row in entry.annotations))
+        entries["record"].append(orjson.dumps([{"path": p, "value": v} for p, v in record]).decode())
         for row in entry.annotations:
             annotations["run_id"].append(task.run_id)
             annotations["accession"].append(entry.accession)

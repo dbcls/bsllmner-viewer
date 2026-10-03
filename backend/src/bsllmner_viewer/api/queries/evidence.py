@@ -8,6 +8,9 @@ from dataclasses import dataclass
 
 _SEPARATORS = re.compile(r"[\s\-_/.]+")
 STRING_MATCH = "string_match"
+# An extracted value shorter than this, counted in the characters that matching compares, has no evidence: a value
+# such as `S` or `CD` occurs in unrelated text, such as `https`.
+MIN_EVIDENCE_LENGTH = 3
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,10 +42,11 @@ def find_spans(attribute_value: str, extracted_value: str) -> list[Span]:
     """Character ranges of the extracted value inside the attribute value.
 
     Matching ignores case, applies NFKC normalization, and treats whitespace, hyphens, underscores, slashes,
-    and periods as separators that may be present or absent on either side.
+    and periods as separators that may be present or absent on either side. A value of fewer than
+    `MIN_EVIDENCE_LENGTH` compared characters is not matched.
     """
     needle, _ = _fold(extracted_value)
-    if not needle:
+    if len(needle) < MIN_EVIDENCE_LENGTH:
         return []
     hay, origin = _fold(attribute_value)
     spans: list[Span] = []

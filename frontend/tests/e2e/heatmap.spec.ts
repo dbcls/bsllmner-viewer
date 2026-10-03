@@ -87,7 +87,7 @@ test.describe("heatmap", () => {
     await dialog.getByRole("button").filter({ hasText: extra.termId }).click()
     await expectParam(page, "row_terms", [...shown, extra.termId].join(","))
     await expect(dialog).toBeVisible()
-    await expect(dialog.getByTitle(extra.termId)).toBeVisible()
+    await expect(dialog.getByRole("button", { name: `Remove ${extra.label ?? extra.termId}`, exact: true })).toBeVisible()
     await dialog.getByRole("button", { name: "Reset to top 10" }).click()
     await expectParam(page, "row_terms", null)
     await page.keyboard.press("Escape")

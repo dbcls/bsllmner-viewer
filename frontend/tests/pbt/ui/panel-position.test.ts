@@ -74,8 +74,31 @@ describe("panelPositionIn", () => {
     else expect(position).not.toHaveProperty("minWidth")
   })
 
+  test.prop([scene, fc.integer({ min: 1, max: 1200 })])(
+    "keeps a panel lined up with the left edge inside the viewport on the right, by lining it up with the right edge when it fits there",
+    (s, panelWidth) => {
+      const position = panelPositionIn(s.box, s.viewport, s.panelHeight, { align: "left", matchWidth: s.matchWidth }, panelWidth)
+      const fitsLeft = s.box.left + panelWidth <= s.viewport.width
+      const fitsRight = s.box.right - panelWidth >= 0
+      if (fitsLeft || !fitsRight) {
+        expect(position).toMatchObject({ left: s.box.left })
+        expect(position).not.toHaveProperty("right")
+      } else {
+        expect(position).toMatchObject({ right: s.viewport.width - s.box.right })
+        expect(position).not.toHaveProperty("left")
+        if ("right" in position) expect(s.viewport.width - position.right - panelWidth).toBeGreaterThanOrEqual(0)
+      }
+    },
+  )
+
   const viewport = { width: 1000, height: 800 }
   const options = { align: "left", matchWidth: false } as const
+
+  it("lines the panel up with the left edge when it ends exactly at the right edge of the viewport", () => {
+    const box = { top: 100, bottom: 120, left: 640, right: 700, width: 60 }
+    expect(panelPositionIn(box, viewport, 200, options, 360)).toMatchObject({ left: 640 })
+    expect(panelPositionIn(box, viewport, 200, options, 361)).toMatchObject({ right: 300 })
+  })
 
   it("opens under the control when the panel and the gap fill the room under it exactly", () => {
     const box = { top: 400, bottom: 428, left: 40, right: 200, width: 160 }

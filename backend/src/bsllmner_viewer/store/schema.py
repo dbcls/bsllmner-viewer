@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import duckdb
 
-SCHEMA_VERSION = 5
+SCHEMA_VERSION = 7
 
 RAW_TABLES: tuple[str, ...] = (
     "store_meta",
@@ -31,6 +31,7 @@ RAW_TABLES: tuple[str, ...] = (
 DERIVED_TABLES: tuple[str, ...] = (
     "biosample",
     "annotation",
+    "omitted_attribute",
     "term",
     "term_synonym",
     "term_parent",
@@ -48,6 +49,9 @@ DERIVED_TABLES: tuple[str, ...] = (
     "term_search",
     "field_status_count",
     "population_count",
+    "assay_count",
+    "organism_count",
+    "field_mapped_count",
 )
 
 _RAW_DDL = """
@@ -81,7 +85,9 @@ CREATE TABLE entry (
     organism_name VARCHAR,
     title VARCHAR,
     date_published DATE,
-    attributes JSON NOT NULL
+    attributes JSON NOT NULL,
+    description JSON NOT NULL,
+    record JSON NOT NULL
 );
 
 CREATE TABLE entry_annotation (

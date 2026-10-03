@@ -164,6 +164,55 @@ def test_trend_points_match_counts(
             assert point["count"] == _count(client, _narrow(client, body["populationQ"], point["clauses"]), unit)
 
 
+@settings(max_examples=25)
+@given(conditions, st.sampled_from(UNITS), st.booleans(), st.sampled_from([None, "disease"]))
+def test_trend_all_entries_count_the_whole_population_in_the_years_of_the_trend(
+    client: TestClient, ast: Node | None, unit: str, excl: bool, field: str | None
+) -> None:
+    params = {"unit": unit, "q": _q(ast) or "", "facetSelfExclude": str(excl).lower(), "limit": 2}
+    if field:
+        params["field"] = field
+    body = client.get("/api/trend", params=params).json()
+    whole = client.get("/api/trend", params={"unit": unit}).json()
+    whole_counts = {p["year"]: p["count"] for p in whole["total"]}
+    assert [p["year"] for p in body["allEntries"]] == body["years"]
+    for point in body["allEntries"]:
+        assert point["count"] == whole_counts.get(point["year"], 0), point
+    for point in body["allEntries"][:2]:
+        assert point["count"] == _count(client, _and(None, point["clauses"]), unit), point
+
+
+years_or_none = st.one_of(st.none(), st.integers(2000, 2030))
+
+
+@settings(max_examples=25)
+@given(conditions, st.sampled_from([None, "disease", "library_strategy"]), years_or_none, years_or_none)
+def test_trend_year_range_returns_the_points_of_its_years_and_keeps_the_counts_and_elements(
+    client: TestClient, ast: Node | None, field: str | None, year_from: int | None, year_to: int | None
+) -> None:
+    params: dict[str, str | int] = {"q": _q(ast) or "", "facetSelfExclude": "true", "limit": 2}
+    if field:
+        params["field"] = field
+    full = client.get("/api/trend", params=params).json()
+    limits = {k: v for k, v in (("yearFrom", year_from), ("yearTo", year_to)) if v is not None}
+    response = client.get("/api/trend", params={**params, **limits})
+    assert response.status_code == 200
+    limited = response.json()
+
+    def inside(year: int) -> bool:
+        return (year_from is None or year >= year_from) and (year_to is None or year <= year_to)
+
+    assert limited["years"] == [y for y in full["years"] if inside(y)]
+    assert limited["total"] == [p for p in full["total"] if inside(p["year"])]
+    assert limited["allEntries"] == [p for p in full["allEntries"] if inside(p["year"])]
+    assert [s["value"] for s in limited["series"]] == [s["value"] for s in full["series"]]
+    for part, whole in zip(limited["series"], full["series"], strict=True):
+        assert part["points"] == [p for p in whole["points"] if inside(p["year"])]
+    span = (full["years"][0], full["years"][-1]) if full["years"] else (None, None)
+    assert (full["firstYear"], full["lastYear"]) == span
+    assert (limited["firstYear"], limited["lastYear"]) == span
+
+
 @settings(max_examples=30)
 @given(conditions, st.sampled_from(["cell_line", "disease", "tissue", "drug", "library_strategy", "organism_id"]))
 def test_default_elements_contain_every_value_the_condition_names(

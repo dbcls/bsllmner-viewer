@@ -4,7 +4,7 @@ import { useLocation } from "react-router"
 import { useDataset, useEntries } from "~/lib/api/queries"
 import type { TermHit } from "~/lib/api/types"
 import { copyText } from "~/lib/export"
-import { Toast } from "~/ui"
+import { Alert } from "~/ui"
 
 import { ConditionBar } from "./condition-bar"
 import { ConditionPanel } from "./condition-panel"
@@ -19,6 +19,12 @@ import { TermPicker } from "./term-picker/term-picker"
 import { TrendTab } from "./trend/trend-tab"
 import { useCondition } from "./use-condition"
 
+/**
+ * How long an alert stays. It is at the top of the viewport, away from the control that raised it, so it stays long
+ * enough to be found there.
+ */
+const ALERT_MS = 4000
+
 export const WorkspacePage = () => {
   const [state, update] = useWorkspaceState()
   const location = useLocation()
@@ -28,18 +34,18 @@ export const WorkspacePage = () => {
   const [pickerOpen, setPickerOpen] = useState(false)
   const [exportOpen, setExportOpen] = useState(false)
   const [apiOpen, setApiOpen] = useState(false)
-  const [toast, setToast] = useState<string | null>(null)
-  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [alert, setAlert] = useState<string | null>(null)
+  const alertTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const entries = useEntries({ q: state.q, page: 1, perPage: 1 })
 
-  const showToast = useCallback((message: string) => {
-    setToast(message)
-    if (toastTimer.current) clearTimeout(toastTimer.current)
-    toastTimer.current = setTimeout(() => setToast(null), 1800)
+  const showAlert = useCallback((message: string) => {
+    setAlert(message)
+    if (alertTimer.current) clearTimeout(alertTimer.current)
+    alertTimer.current = setTimeout(() => setAlert(null), ALERT_MS)
   }, [])
 
   useEffect(() => () => {
-    if (toastTimer.current) clearTimeout(toastTimer.current)
+    if (alertTimer.current) clearTimeout(alertTimer.current)
   }, [])
 
   const onPick = (hit: TermHit) => {
@@ -49,7 +55,7 @@ export const WorkspacePage = () => {
 
   const share = async () => {
     const ok = await copyText(window.location.href)
-    if (!ok) showToast("Copy failed")
+    if (!ok) showAlert("Copy failed")
     return ok
   }
 
@@ -76,6 +82,7 @@ export const WorkspacePage = () => {
                 state={state}
                 condition={condition}
                 onUnit={(unit) => update({ unit })}
+                onTermIds={() => update({ termIds: !state.termIds })}
               />
             )}
             {state.tab === "heatmap" && (
@@ -83,15 +90,15 @@ export const WorkspacePage = () => {
                 state={state}
                 condition={condition}
                 update={update}
-                onToast={showToast}
+                onAlert={showAlert}
               />
             )}
             {state.tab === "trend" && (
               <TrendTab
                 state={state}
                 condition={condition}
-                onSplit={(field) => update({ trendField: field, trendTerms: null })}
-                onUnit={(unit) => update({ unit })}
+                update={update}
+                onAlert={showAlert}
               />
             )}
             {state.tab === "projects" && (
@@ -118,9 +125,9 @@ export const WorkspacePage = () => {
         open={apiOpen}
         onClose={() => setApiOpen(false)}
         state={state}
-        onToast={showToast}
+        onAlert={showAlert}
       />
-      <Toast message={toast} />
+      <Alert message={alert} />
     </>
   )
 }

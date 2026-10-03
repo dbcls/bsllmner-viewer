@@ -16,8 +16,14 @@ const state: fc.Arbitrary<WorkspaceState> = fc.record({
   rowTerms: fc.option(fc.uniqueArray(term, { minLength: 1, maxLength: 5 }), { nil: null }),
   colTerms: fc.option(fc.uniqueArray(term, { minLength: 1, maxLength: 5 }), { nil: null }),
   color: fc.constantFrom("count", "ratio"),
-  trendField: fc.option(fc.constantFrom("disease", "tissue"), { nil: null }),
+  trendField: fc.constantFrom("disease", "tissue", "library_strategy"),
   trendTerms: fc.option(fc.uniqueArray(term, { minLength: 1, maxLength: 3 }), { nil: null }),
+  trendFrom: fc.option(fc.integer({ min: 1900, max: 2100 }), { nil: null }),
+  trendTo: fc.option(fc.integer({ min: 1900, max: 2100 }), { nil: null }),
+  trendCondition: fc.boolean(),
+  trendAll: fc.boolean(),
+  trendLabels: fc.boolean(),
+  termIds: fc.boolean(),
 })
 
 describe("workspace state in the URL", () => {
@@ -67,6 +73,15 @@ describe("workspace state in the URL", () => {
         expect([DEFAULTS.col, DEFAULTS.row]).toContain(parsed.col)
         expect(parsed.colTerms).toBeNull()
       }
+    },
+  )
+
+  test.prop({ year: fc.oneof(fc.string(), fc.double().map(String)).filter((s) => !/^\d+$/.test(s)) })(
+    "reads a year of the trend that is not a whole number as no limit",
+    ({ year }) => {
+      const parsed = readState(new URLSearchParams({ trend_from: year, trend_to: year }))
+      expect(parsed.trendFrom).toBeNull()
+      expect(parsed.trendTo).toBeNull()
     },
   )
 

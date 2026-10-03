@@ -22,12 +22,21 @@ export const PANEL_GAP = 4
 
 /**
  * The position of a panel of the given height for a control at `box`: under the control, unless the panel does not fit
- * under it and there is more room above. With equal room, the panel goes under.
+ * under it and there is more room above. With equal room, the panel goes under. A panel lined up with the left edge of
+ * its control that would cross the right edge of the viewport is lined up with the right edge of the control instead,
+ * when it fits there; a width of 0 means that the width is not known yet.
  */
-export const panelPositionIn = (box: Box, viewport: Viewport, panelHeight: number, { align, matchWidth }: PanelOptions): PanelPosition => {
+export const panelPositionIn = (
+  box: Box,
+  viewport: Viewport,
+  panelHeight: number,
+  { align, matchWidth }: PanelOptions,
+  panelWidth = 0,
+): PanelPosition => {
   const below = viewport.height - box.bottom
   const above = box.top
-  const horizontal = align === "left" ? { left: box.left } : { right: viewport.width - box.right }
+  const crossesRight = box.left + panelWidth > viewport.width && box.right - panelWidth >= 0
+  const horizontal = align === "left" && !crossesRight ? { left: box.left } : { right: viewport.width - box.right }
   const width = matchWidth ? { minWidth: box.width } : {}
   const vertical = panelHeight + PANEL_GAP > below && above > below ? { bottom: viewport.height - box.top + PANEL_GAP } : { top: box.bottom + PANEL_GAP }
   return { ...horizontal, ...width, ...vertical }
@@ -38,5 +47,5 @@ export const panelPositionIn = (box: Box, viewport: Viewport, panelHeight: numbe
  * once it is drawn, its height decides again. The width of the viewport leaves out the scroll bar, so that a panel
  * aligned to the right edge does not slide under the scroll bar.
  */
-export const panelPosition = (anchor: HTMLElement, panelHeight: number, options: PanelOptions): PanelPosition =>
-  panelPositionIn(anchor.getBoundingClientRect(), { width: document.documentElement.clientWidth, height: window.innerHeight }, panelHeight, options)
+export const panelPosition = (anchor: HTMLElement, panelHeight: number, options: PanelOptions, panelWidth = 0): PanelPosition =>
+  panelPositionIn(anchor.getBoundingClientRect(), { width: document.documentElement.clientWidth, height: window.innerHeight }, panelHeight, options, panelWidth)

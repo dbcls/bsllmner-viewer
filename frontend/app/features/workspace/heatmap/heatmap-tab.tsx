@@ -10,18 +10,22 @@ import { fieldLabel, unitLabel } from "~/lib/labels"
 import { MATRIX_PRESETS } from "~/lib/presets"
 import { ACTION_ICON, busyClass, Card, CardHeader, Clickable, cn, HelpHint, Icon, InlineLabel, LinkButton, Segmented, Select, Skeleton } from "~/ui"
 
+import { AxisControls } from "../axis/axis-controls"
+import { type AxisMemory, resolvePasted, switchDimension } from "../axis/axis-terms"
+import { AxisTermsDialog } from "../axis/axis-terms-dialog"
+import { findTermId } from "../axis/find-term"
 import { expectedElements } from "../expected-elements"
 import { FigureExport } from "../figure-export"
 import { type HeatmapColor, type Patch, type WorkspaceState } from "../state"
+import { TermIdHover } from "../term-id-hover"
 import type { Condition } from "../use-condition"
 import { ViewControls } from "../view-controls"
-import { AxisControls, type AxisSide } from "./axis-controls"
-import { type AxisMemory, resolvePasted, switchDimension } from "./axis-terms"
-import { AxisTermsDialog } from "./axis-terms-dialog"
 import { type MatrixCell, matrixSvg, matrixSvgSize } from "./matrix-svg"
 import { type Guide, nestedUnder, openChildren, rowGuides, treePlaces } from "./row-tree"
 
 const AXIS_DIMENSIONS = ["library_strategy", "organism_id", "date_published"]
+
+export type AxisSide = "row" | "col"
 
 /** The number of elements per axis when the view names none. */
 const LIMIT = 10
@@ -30,7 +34,7 @@ type HeatmapTabProps = {
   state: WorkspaceState
   condition: Condition
   update: (patch: Patch) => void
-  onToast: (message: string) => void
+  onAlert: (message: string) => void
 }
 
 /** The api classifies only cells with at least this many expected matches, and the ratio of a cell with fewer is not colored. */
@@ -43,9 +47,12 @@ const coloredRatio = (cell: Cell | undefined): number | null =>
 const ratioText = (cell: Cell): string => (cell.ratio === null ? "" : formatRatio(cell.ratio))
 
 /** Cross-tabulation of two dimensions with expected counts, ratios to them, and gap marks. */
-export const HeatmapTab = ({ state, condition, update, onToast }: HeatmapTabProps) => {
+export const HeatmapTab = ({ state, condition, update, onAlert }: HeatmapTabProps) => {
   const dataset = useDataset()
   const fields = dataset.data?.fields.map((f) => f.name) ?? []
+  // The term IDs follow the labels of the rows and of the columns that are annotation terms, when the charts show them.
+  const rowIds = state.termIds && fields.includes(state.row)
+  const colIds = state.termIds && fields.includes(state.col)
   const dimensions = [...fields, ...AXIS_DIMENSIONS].map((d) => ({ value: d, label: fieldLabel(d) }))
   /**
    * What each axis showed on the dimensions that it left, so that coming back to a dimension shows the terms chosen there.
@@ -122,7 +129,7 @@ export const HeatmapTab = ({ state, condition, update, onToast }: HeatmapTabProp
     )
     const children = result.children.map((c) => c.value).filter((c) => c !== value)
     if (children.length === 0) {
-      onToast("No child terms with data")
+      onAlert("No child terms with data")
       return
     }
     // A child that is a row already, such as one that the user added, moves under its parent with the rows under it.
@@ -136,18 +143,13 @@ export const HeatmapTab = ({ state, condition, update, onToast }: HeatmapTabProp
   /** Makes the pasted entries the terms of the axis, in their order. A label becomes the term whose label it is, or else the first term found. */
   const replace = async (side: AxisSide, entries: string[]) => {
     const dimension = dimensionOf(side)
-    const unique = await resolvePasted(entries, fields.includes(dimension), async (label) => {
-      const hits = unwrap(
-        await api.GET("/api/terms", { params: { query: { field: dimension, query: label, facetSelfExclude: true, limit: 5 } } }),
-      ).terms
-      return (hits.find((h) => (h.label ?? "").toLowerCase() === label.toLowerCase()) ?? hits[0])?.termId ?? null
-    })
+    const unique = await resolvePasted(entries, fields.includes(dimension), (label) => findTermId(dimension, label))
     if (unique.length === 0) {
-      onToast("No terms recognised")
+      onAlert("No terms recognised")
       return
     }
     setValues(side, unique)
-    onToast(`${unique.length} of ${entries.length} terms recognised`)
+    onAlert(`${unique.length} of ${entries.length} terms recognised`)
   }
 
   /** Takes a term, and on the rows the rows that hang under it, off the axis. */
@@ -223,8 +225,8 @@ export const HeatmapTab = ({ state, condition, update, onToast }: HeatmapTabProp
       }),
     )
   const exportData = () => ({
-    rowLabels: rows.map((r) => ({ value: r.value, label: r.label, total: r.count })),
-    colLabels: cols.map((c) => ({ value: c.value, label: c.label, total: c.count })),
+    rowLabels: rows.map((r) => ({ value: r.value, label: r.label, ...(rowIds ? { id: r.value } : {}), total: r.count })),
+    colLabels: cols.map((c) => ({ value: c.value, label: c.label, ...(colIds ? { id: c.value } : {}), total: c.count })),
     cells: exportCells(),
     corner: { row: fieldLabel(state.row), col: fieldLabel(state.col) },
     total: data?.total ?? 0,
@@ -247,8 +249,9 @@ export const HeatmapTab = ({ state, condition, update, onToast }: HeatmapTabProp
     )
   const exportSvg = () => downloadSvgMarkup(`${state.row}-x-${state.col}.svg`, matrixSvg(exportData()))
   const exportPng = () => {
-    const size = matrixSvgSize(rows.length, cols.length)
-    void downloadPngMarkup(`${state.row}-x-${state.col}.png`, matrixSvg(exportData()), size.width, size.height)
+    const data = exportData()
+    const size = matrixSvgSize(data)
+    void downloadPngMarkup(`${state.row}-x-${state.col}.png`, matrixSvg(data), size.width, size.height)
   }
 
   const gradient = `linear-gradient(90deg, ${token("--color-brand-soft")}, ${token("--color-brand-light")}, ${token("--color-brand")}, ${token("--color-brand-deeper")})`
@@ -258,6 +261,8 @@ export const HeatmapTab = ({ state, condition, update, onToast }: HeatmapTabProp
       <ViewControls
         unit={state.unit}
         onUnit={(unit) => update({ unit })}
+        termIds={state.termIds}
+        onTermIds={() => update({ termIds: !state.termIds })}
         controls={
           <>
             <span className="inline-flex items-center gap-1.5">
@@ -295,7 +300,7 @@ export const HeatmapTab = ({ state, condition, update, onToast }: HeatmapTabProp
           className={cn("flex flex-wrap items-center gap-x-6 gap-y-2 text-fs-label text-ink-soft", busyClass(crosstab.isPlaceholderData))}
         >
           {/* The two axes are set apart by wide space, with Swap axes between them as plain text, so that the row reads as two settings and not as five. */}
-          <AxisControls side="row" {...axisProps("row")} onOpenTerms={() => setTermsSide("row")} />
+          <AxisControls name="Rows" selectLabel="Row dimension" {...axisProps("row")} onOpenTerms={() => setTermsSide("row")} />
           <LinkButton
             tone="soft"
             size="md"
@@ -308,13 +313,15 @@ export const HeatmapTab = ({ state, condition, update, onToast }: HeatmapTabProp
           >
             Swap axes
           </LinkButton>
-          <AxisControls side="col" {...axisProps("col")} onOpenTerms={() => setTermsSide("col")} />
+          <AxisControls name="Columns" selectLabel="Column dimension" {...axisProps("col")} onOpenTerms={() => setTermsSide("col")} />
         </div>
       </ViewControls>
       <AxisTermsDialog
-        side={termsSide}
+        open={termsSide !== null}
         onClose={() => setTermsSide(null)}
+        title={dialogSide === "col" ? "Column terms" : "Row terms"}
         {...axisProps(dialogSide)}
+        selectedNote="✓ in axis"
         fields={fields}
         explicit={(dialogSide === "row" ? state.rowTerms : state.colTerms) !== null}
         limit={LIMIT}
@@ -329,23 +336,25 @@ export const HeatmapTab = ({ state, condition, update, onToast }: HeatmapTabProp
       <Card padding="none" flush busy={crosstab.isPlaceholderData}>
         <CardHeader>
           <div className="flex w-full flex-wrap items-center justify-between gap-x-4 gap-y-1">
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-              {state.color === "count" ? (
+            <div className="flex items-center">
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                {state.color === "count" ? (
+                  <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                    0<span className="inline-block h-2.5 w-25 rounded-badge" style={{ background: gradient }} />
+                    {data === undefined ? <Skeleton className="w-12" /> : formatCount(max)}
+                    {state.unit !== "biosample" && <span>{unit}</span>}
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                    <Swatch className="border border-border-soft bg-surface" /> ≤ 0.5× <Swatch className="bg-brand-tint" /> &lt; 2×{" "}
+                    <Swatch className="bg-brand-light" /> ≥ 2× <Swatch className="bg-brand" /> ≥ 4×
+                  </span>
+                )}
                 <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                  0<span className="inline-block h-2.5 w-25 rounded-badge" style={{ background: gradient }} />
-                  {data === undefined ? <Skeleton className="w-12" /> : formatCount(max)}
-                  {state.unit !== "biosample" && <span>{unit}</span>}
+                  <span className="inline-block h-3.5 w-5.5 rounded-badge border-gap border-dashed border-critical-fg bg-surface" />
+                  Gap
                 </span>
-              ) : (
-                <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                  <Swatch className="border border-border-soft bg-surface" /> ≤ 0.5× <Swatch className="bg-brand-tint" /> &lt; 2×{" "}
-                  <Swatch className="bg-brand-light" /> ≥ 2× <Swatch className="bg-brand" /> ≥ 4×
-                </span>
-              )}
-              <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                <span className="inline-block h-3.5 w-5.5 rounded-badge border-gap border-dashed border-critical-fg bg-surface" />
-                Gap
-              </span>
+              </div>
               <HelpHint label="About the heatmap">
                 <span className="block">Expected: the count if the row and the column were unrelated (row total × column total ÷ total).</span>
                 <span className="mt-1.5 block">
@@ -372,10 +381,14 @@ export const HeatmapTab = ({ state, condition, update, onToast }: HeatmapTabProp
                 {cols.map((col) => (
                   <th
                     key={col.value}
-                    title={col.value}
+                    // A column with its term ID is at least as wide as the ID (0.6em a character of the monospace font) with
+                    // 8px on each side, padding included, past the usual width of a column, so that the IDs of two columns do
+                    // not run together.
+                    style={colIds ? { minWidth: `calc(${col.value.length * 0.6}em + 16px)` } : undefined}
                     className="sticky top-0 z-10 max-w-heat-head min-w-heat-cell bg-surface px-1 py-1.5 align-bottom text-fs-micro leading-snug font-medium text-balance"
                   >
                     {col.label}
+                    {colIds && <TermIdHover termId={col.value} label={col.label} className="block whitespace-nowrap" />}
                   </th>
                 ))}
                 <th className="sticky top-0 z-10 bg-surface px-2 py-1.5 text-right align-bottom text-fs-micro font-semibold text-ink-soft">Row total</th>
@@ -387,7 +400,6 @@ export const HeatmapTab = ({ state, condition, update, onToast }: HeatmapTabProp
                 return (
                   <tr key={row.value}>
                     <th
-                      title={row.value}
                       className={cn("sticky left-0 z-10 bg-surface px-2.5 py-1 text-left text-fs-label whitespace-nowrap", rowSelected ? "font-semibold" : "font-medium")}
                     >
                       {(guides[rowIndex] ?? []).map((guide) => (
@@ -402,11 +414,13 @@ export const HeatmapTab = ({ state, condition, update, onToast }: HeatmapTabProp
                           >
                             <Icon name={isOpen(rowIndex) ? ACTION_ICON.hideChildren : ACTION_ICON.showChildren} className="text-ink-soft" />
                             {row.label}
+                            {rowIds && <TermIdHover termId={row.value} label={row.label} />}
                           </Clickable>
                         ) : (
                           <span className="inline-flex items-center gap-1">
                             {rowsExpandable && <span className="inline-block w-3.5" />}
                             {row.label}
+                            {rowIds && <TermIdHover termId={row.value} label={row.label} />}
                           </span>
                         )}
                       </span>
@@ -551,5 +565,3 @@ const GuideLine = ({ guide, toLabel }: { guide: Guide; toLabel: boolean }) => {
 }
 
 const Swatch = ({ className }: { className: string }) => <span className={cn("inline-block h-3.5 w-5.5 rounded-badge", className)} />
-
-export type { AxisSide } from "./axis-controls"

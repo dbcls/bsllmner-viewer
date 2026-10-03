@@ -4,7 +4,8 @@
  *
  * An icon has no meaning of its own: every glyph is `aria-hidden`, so a control that shows only an icon names itself
  * with its own label. A screen does not pick a glyph by name. It picks the action that a control does (`ACTION_ICON`),
- * so the same action is drawn the same way everywhere. Icons mark actions only, not kinds of things.
+ * so the same action is drawn the same way everywhere. Icons mark actions only, not kinds of things. The one exception is
+ * the mark at the start of an alert (`ALERT_ICON`), which uses no glyph of an action.
  */
 
 import type { ReactNode } from "react"
@@ -31,6 +32,7 @@ export type IconName =
   | "arrow-left-right"
   | "circle-chevron-right"
   | "circle-chevron-down"
+  | "triangle-alert"
 
 const NODES: Record<IconName, ReactNode> = {
   "search": (
@@ -141,9 +143,21 @@ const NODES: Record<IconName, ReactNode> = {
       <path d="m16 10-4 4-4-4" />
     </>
   ),
+  "triangle-alert": (
+    <>
+      <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" />
+      <path d="M12 9v4" />
+      <path d="M12 17h.01" />
+    </>
+  ),
 }
 
 export const ICON_NAMES = Object.keys(NODES) as IconName[]
+
+/** The mark at the start of an alert. */
+export const ALERT_ICON = {
+  warning: "triangle-alert",
+} as const satisfies Record<string, IconName>
 
 /** The glyph of a kind of action, wherever a control does it. */
 export const ACTION_ICON = {

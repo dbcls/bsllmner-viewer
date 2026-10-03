@@ -12,6 +12,7 @@ from bsllmner_viewer.dsl.ast import FieldClause, Node, Range, clause, leaves, no
 from bsllmner_viewer.dsl.errors import DslError, ErrorType
 from bsllmner_viewer.dsl.serializer import serialize
 from bsllmner_viewer.dsl.transform import exclude_dimensions
+from bsllmner_viewer.store.organisms import ORGANISM_NAMES
 
 
 def version_ref(store: Store) -> DatasetVersionRef:
@@ -83,8 +84,7 @@ def condition_labels(store: Store, ast: Node | None) -> dict[str, str]:
         if organisms:
             marks = ", ".join("?" for _ in organisms)
             rows = cur.execute(
-                f"SELECT organism_id, any_value(organism_name) FROM biosample WHERE organism_id IN ({marks}) "
-                "GROUP BY 1",
+                f"SELECT organism_id, organism_name FROM ({ORGANISM_NAMES}) WHERE organism_id IN ({marks})",
                 organisms,
             ).fetchall()
             for organism_id, name in rows:

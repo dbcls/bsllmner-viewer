@@ -28,6 +28,7 @@ export type Evidence = Schemas["Evidence"]
 export type TermsResponse = Schemas["TermsResponse"]
 export type TermHit = Schemas["TermHit"]
 export type TermChildrenResponse = Schemas["TermChildrenResponse"]
+export type TermResponse = Schemas["TermResponse"]
 
 export type Unit = Schemas["Unit"]
 export type EntryType = Schemas["EntryType"]

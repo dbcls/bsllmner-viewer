@@ -32,14 +32,18 @@ def test_searchable_text_is_lower_case_with_single_spaces_and_padded(store_con: 
         assert re.fullmatch(r"[a-z0-9| ]+", text), biosample
 
 
-def test_searchable_text_holds_title_organism_attribute_values_and_annotation_values(
+def test_searchable_text_holds_title_organism_description_attribute_values_and_annotation_values(
     store_con: duckdb.DuckDBPyConnection,
 ) -> None:
-    title, organism, attributes = store_con.execute(
-        "SELECT title, organism_name, attributes FROM biosample WHERE accession = 'SAMN01000000'"
+    accession, title, organism, description, attributes = store_con.execute(
+        "SELECT accession, title, organism_name, description, attributes FROM biosample "
+        "WHERE accession IN (SELECT biosample FROM searchable_text) AND description::VARCHAR LIKE '%Description%' "
+        "ORDER BY accession LIMIT 1"
     ).fetchone()  # type: ignore[misc]
-    text = store_con.execute("SELECT text FROM searchable_text WHERE biosample = 'SAMN01000000'").fetchone()[0]  # type: ignore[index]
-    values = [title, organism, *(a["value"] for a in json.loads(attributes))]
+    text = store_con.execute("SELECT text FROM searchable_text WHERE biosample = ?", [accession]).fetchone()[0]  # type: ignore[index]
+    described = [d["value"] for d in json.loads(description)]
+    assert described
+    values = [title, organism, *described, *(a["value"] for a in json.loads(attributes))]
     for value in values:
         words = " ".join(re.findall(r"[a-z0-9]+", value.lower()))
         assert f" {words} " in text
@@ -83,7 +87,8 @@ def test_searchable_text_adds_the_joined_form_of_a_word_with_symbols(store_con: 
 def con() -> Iterator[duckdb.DuckDBPyConnection]:
     connection = duckdb.connect(":memory:")
     connection.execute(
-        "CREATE TABLE biosample (accession VARCHAR, title VARCHAR, organism_name VARCHAR, attributes JSON)"
+        "CREATE TABLE biosample "
+        "(accession VARCHAR, title VARCHAR, organism_name VARCHAR, description JSON, attributes JSON)"
     )
     connection.execute("CREATE TABLE annotation (biosample VARCHAR, extracted_value VARCHAR, term_label VARCHAR)")
     connection.execute("CREATE TABLE population (biosample VARCHAR)")
@@ -100,9 +105,11 @@ def _add(
     values: list[str] | None = None,
     annotations: list[tuple[str | None, str | None]] = (),  # type: ignore[assignment]
     in_population: bool = True,
+    described: list[str] = (),  # type: ignore[assignment]
 ) -> None:
     attributes = None if values is None else json.dumps([{"name": "n", "value": v} for v in values])
-    con.execute("INSERT INTO biosample VALUES (?, ?, ?, ?)", [accession, title, organism, attributes])
+    description = json.dumps([{"name": "Description", "value": v} for v in described])
+    con.execute("INSERT INTO biosample VALUES (?, ?, ?, ?, ?)", [accession, title, organism, description, attributes])
     for value, label in annotations:
         con.execute("INSERT INTO annotation VALUES (?, ?, ?)", [accession, value, label])
     if in_population:
@@ -124,6 +131,13 @@ def test_searchable_text_joins_values_with_a_bar_in_order(con: duckdb.DuckDBPyCo
         annotations=[("hepatic", "liver")],
     )
     assert _texts(con)["S1"].startswith(" liver biopsy | homo sapiens | sample 1 | treated | hepatic | liver ")
+
+
+def test_searchable_text_puts_the_description_between_the_organism_and_the_attributes(
+    con: duckdb.DuckDBPyConnection,
+) -> None:
+    _add(con, "S1", title="T", organism="Mus musculus", values=["attr"], described=["Whsc1KO heart", "second"])
+    assert _texts(con)["S1"].startswith(" t | mus musculus | whsc1ko heart | second | attr ")
 
 
 def test_searchable_text_of_a_biosample_with_only_a_title(con: duckdb.DuckDBPyConnection) -> None:

@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test"
 
 import { distribution, select } from "./_api"
-import { bar, expectQ, formatCount, workspaceUrl } from "./_helpers"
+import { bar, expectParam, expectQ, formatCount, workspaceUrl } from "./_helpers"
 
 test.describe("distribution", () => {
   test("clicking a bar adds its clause and keeps the field's other bars under self-exclusion", async ({ page, request }) => {
@@ -21,6 +21,20 @@ test.describe("distribution", () => {
     await expect(bar(page, other.label)).toContainText(formatCount(other.count))
   })
 
+  test("the Term IDs switch writes the term ID after the label of each bar, off by default, and keeps it in the URL", async ({ page, request }) => {
+    const [first] = (await distribution(request, "disease")).elements
+    if (!first) throw new Error("the dataset has no disease")
+    await page.goto(workspaceUrl({ tab: "distribution" }))
+    const main = page.getByRole("main")
+    await expect(bar(page, first.label)).toBeVisible()
+    await expect(main.getByText(first.value, { exact: true })).toHaveCount(0)
+    await expect(page.getByRole("switch", { name: "Term IDs" })).not.toBeChecked()
+    await page.getByText("Term IDs", { exact: true }).click()
+    await expect(page.getByRole("switch", { name: "Term IDs" })).toBeChecked()
+    await expectParam(page, "term_ids", "on")
+    await expect(main.getByText(first.value, { exact: true }).first()).toBeVisible()
+  })
+
   test("clicking a selected bar removes its clause", async ({ page, request }) => {
     const [first] = (await distribution(request, "disease")).elements
     if (!first) throw new Error("the dataset has no disease")
@@ -33,6 +47,7 @@ test.describe("distribution", () => {
   })
 
   test("a URL that turned self-exclusion off counts the field's own card with self-exclusion, and the view has no switch for it", async ({ page, request }) => {
+    // The only switch of the view is Term IDs, which writes the term IDs and does not change the counts.
     const [first] = (await distribution(request, "disease")).elements
     if (!first) throw new Error("the dataset has no disease")
     const q = await select(request, null, first.clauses)
@@ -44,7 +59,8 @@ test.describe("distribution", () => {
     for (const element of gone) {
       await expect(bar(page, element.label)).toContainText(formatCount(element.count))
     }
-    await expect(page.getByRole("switch")).toHaveCount(0)
+    await expect(page.getByRole("switch")).toHaveCount(1)
+    await expect(page.getByRole("switch", { name: "Term IDs" })).toHaveCount(1)
   })
 
   test("the last row of a card counts the BioSamples of its population without a term of the field", async ({ page, request }) => {

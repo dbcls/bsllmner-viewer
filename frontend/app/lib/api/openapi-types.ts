@@ -175,7 +175,7 @@ export interface paths {
         };
         /**
          * Counts of the condition per BioSample publication year
-         * @description `total` counts the condition per year, computed without the conjuncts on `date_published`. When `field` is given, `series` counts each element of that dimension per year, computed without the conjuncts on that dimension as well.
+         * @description `total` counts the condition per year, computed without the conjuncts on `date_published`. When `field` is given, `series` counts each element of that dimension per year, computed without the conjuncts on that dimension as well. `yearFrom` and `yearTo` limit the years returned without changing the counts or the elements; `firstYear` and `lastYear` are the first and the last year with a match, whatever the limits. A reversed range returns no years. `allEntries` counts the whole population in the same years, without `q`.
          */
         get: operations["getTrend"];
         put?: never;
@@ -232,6 +232,23 @@ export interface paths {
         };
         /** Child terms of a term annotated in a field */
         get: operations["listTermChildren"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/terms/{termId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A term with its synonyms, parents, ontology, and page */
+        get: operations["getTerm"];
         put?: never;
         post?: never;
         delete?: never;
@@ -308,15 +325,6 @@ export interface components {
             termId: string | null;
             /** Label */
             label: string | null;
-        };
-        /** Attribute */
-        Attribute: {
-            /** Name */
-            name: string;
-            /** Value */
-            value: string;
-            /** Harmonizedname */
-            harmonizedName: string | null;
         };
         /** Cell */
         Cell: {
@@ -407,6 +415,32 @@ export interface components {
             /** Cells */
             cells: components["schemas"]["Cell"][];
         };
+        /** DatasetAssay */
+        DatasetAssay: {
+            /**
+             * Name
+             * @description Target assay, as a `library_strategy` value
+             */
+            name: string;
+            /**
+             * Biosamplecount
+             * @description BioSamples of the whole population with an experiment of the assay
+             */
+            biosampleCount: number;
+        };
+        /** DatasetOntology */
+        DatasetOntology: {
+            /**
+             * Prefix
+             * @description Prefix of term IDs
+             */
+            prefix: string;
+            /**
+             * Name
+             * @description Name of the ontology that the prefix names
+             */
+            name: string;
+        };
         /** DatasetOrganism */
         DatasetOrganism: {
             /**
@@ -431,6 +465,11 @@ export interface components {
             };
             /** Targetassays */
             targetAssays: string[];
+            /**
+             * Assays
+             * @description Target assays in descending order of their BioSamples
+             */
+            assays: components["schemas"]["DatasetAssay"][];
             /** Fields */
             fields: components["schemas"]["FieldDescription"][];
             /** Dslfields */
@@ -445,6 +484,11 @@ export interface components {
             totals: components["schemas"]["Totals"];
             /** Organisms */
             organisms: components["schemas"]["DatasetOrganism"][];
+            /**
+             * Ontologies
+             * @description Names of the prefixes of the terms of the dataset
+             */
+            ontologies: components["schemas"]["DatasetOntology"][];
         };
         /**
          * DatasetVersionRef
@@ -533,6 +577,11 @@ export interface components {
             termId: string | null;
             /** Label */
             label: string | null;
+            /**
+             * Clauses
+             * @description The clause on the field and the term; empty without a term
+             */
+            clauses: components["schemas"]["Clause-Output"][];
             /** Evidence */
             evidence: components["schemas"]["Evidence"][];
         };
@@ -608,8 +657,11 @@ export interface components {
             datePublished: string | null;
             /** Run */
             run: string;
-            /** Attributes */
-            attributes: components["schemas"]["Attribute"][];
+            /**
+             * Metadata
+             * @description Original metadata: the description, attributes, and record
+             */
+            metadata: components["schemas"]["MetadataItem"][];
             /** Annotations */
             annotations: components["schemas"]["EntryAnnotation"][];
             /** Experiments */
@@ -622,15 +674,15 @@ export interface components {
         /** Evidence */
         Evidence: {
             /**
-             * Attribute
-             * @description Attribute name, or `title` for the BioSample title
+             * Name
+             * @description Name of the item of the original metadata that the evidence is in
              */
-            attribute: string;
+            name: string;
             /**
-             * Attributeindex
-             * @description Position in `attributes`, or -1 for the title
+             * Metadataindex
+             * @description Position of that item in `metadata`
              */
-            attributeIndex: number;
+            metadataIndex: number;
             /** Start */
             start: number;
             /** End */
@@ -646,6 +698,11 @@ export interface components {
             multiValued: boolean;
             /** Ontologies */
             ontologies: string[];
+            /**
+             * Mappedbiosamplecount
+             * @description BioSamples of the whole population with a term of the field
+             */
+            mappedBiosampleCount: number;
         };
         /** KeywordRequest */
         KeywordRequest: {
@@ -656,6 +713,26 @@ export interface components {
              * @description Text as typed into a keyword box: words, and phrases in double quotes. An empty keyword removes the keywords of the condition.
              */
             keyword: string;
+        };
+        /** MetadataItem */
+        MetadataItem: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "description" | "attribute" | "record";
+            /**
+             * Name
+             * @description Name to show: a description name, an attribute name, or a short name of a path
+             */
+            name: string;
+            /** Value */
+            value: string;
+            /**
+             * Harmonizedname
+             * @description Harmonized name of an attribute; null for the other kinds
+             */
+            harmonizedName: string | null;
         };
         /**
          * Organism
@@ -874,6 +951,51 @@ export interface components {
             /** Clauses */
             clauses: components["schemas"]["Clause-Output"][];
         };
+        /** TermOntology */
+        TermOntology: {
+            /**
+             * Prefix
+             * @description Prefix of the term ID
+             */
+            prefix: string;
+            /**
+             * Name
+             * @description Name of the ontology that the prefix names
+             */
+            name: string;
+        };
+        /** TermParent */
+        TermParent: {
+            /** Termid */
+            termId: string;
+            /** Label */
+            label: string | null;
+        };
+        /** TermResponse */
+        TermResponse: {
+            datasetVersion: components["schemas"]["DatasetVersionRef"];
+            /** Termid */
+            termId: string;
+            /** Label */
+            label: string | null;
+            /** @description Null for a term ID without a prefix */
+            ontology: components["schemas"]["TermOntology"] | null;
+            /**
+             * Synonyms
+             * @description Synonyms that differ from the label and from each other beyond letter case
+             */
+            synonyms: string[];
+            /**
+             * Parents
+             * @description Direct parent terms in the dataset, in the order of their labels
+             */
+            parents: components["schemas"]["TermParent"][];
+            /**
+             * Url
+             * @description Page of the term on the site of its ontology; null for an unlisted prefix
+             */
+            url: string | null;
+        };
         /** TermsResponse */
         TermsResponse: {
             datasetVersion: components["schemas"]["DatasetVersionRef"];
@@ -922,6 +1044,16 @@ export interface components {
             /** Years */
             years: number[];
             /**
+             * Firstyear
+             * @description The first year with a match, whatever `yearFrom` is
+             */
+            firstYear: number | null;
+            /**
+             * Lastyear
+             * @description The last year with a match, whatever `yearTo` is
+             */
+            lastYear: number | null;
+            /**
              * Total
              * @description Counts of the condition per year
              */
@@ -931,6 +1063,11 @@ export interface components {
              * @description The condition the counts of `total` were computed from
              */
             totalPopulationQ: string | null;
+            /**
+             * Allentries
+             * @description Counts of the whole population per year, without the condition
+             */
+            allEntries: components["schemas"]["TrendPoint"][];
             /**
              * Field
              * @description The dimension of `series`, when the request names one
@@ -1472,6 +1609,10 @@ export interface operations {
                 elements?: string | null;
                 /** @description Number of elements when they are not named */
                 limit?: number;
+                /** @description First year to return */
+                yearFrom?: number | null;
+                /** @description Last year to return */
+                yearTo?: number | null;
             };
             header?: never;
             path?: never;
@@ -1658,6 +1799,64 @@ export interface operations {
             };
             /** @description Bad Request */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    getTerm: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                termId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TermResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

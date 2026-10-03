@@ -29,6 +29,37 @@ def test_dataset_reports_version_fields_and_totals(client: TestClient) -> None:
     assert "referenceSnapshots" in body["version"]
 
 
+def test_dataset_counts_equal_the_distributions_of_the_whole_population(client: TestClient) -> None:
+    body = client.get("/api/dataset").json()
+
+    def counts(field: str) -> dict[str, int]:
+        params = {"field": field, "limit": 200}
+        return {e["value"]: e["count"] for e in client.get("/api/distribution", params=params).json()["elements"]}
+
+    assays = counts("library_strategy")
+    returned = [(a["name"], a["biosampleCount"]) for a in body["assays"]]
+    assert dict(returned) == {a: assays.get(a, 0) for a in body["targetAssays"]}
+    assert [n for _, n in returned] == sorted((n for _, n in returned), reverse=True)
+    assert {o["identifier"]: o["biosampleCount"] for o in body["organisms"]} == counts("organism_id")
+    for field in body["fields"]:
+        assert field["mappedBiosampleCount"] == counts(f"{field['name']}_status").get("mapped", 0), field
+
+
+def test_organism_names_are_the_names_that_most_biosamples_give_everywhere(
+    client: TestClient, store_con: duckdb.DuckDBPyConnection
+) -> None:
+    variants = store_con.execute("SELECT count(*) FROM biosample WHERE organism_name IN ('9606', 'Mouse')").fetchone()
+    assert variants is not None
+    assert variants[0] > 0
+    expected = {"9606": "Homo sapiens", "10090": "Mus musculus"}
+    dataset = {o["identifier"]: o["name"] for o in client.get("/api/dataset").json()["organisms"]}
+    assert dataset == expected
+    elements = client.get("/api/distribution", params={"field": "organism_id"}).json()["elements"]
+    assert {e["value"]: e["label"] for e in elements} == expected
+    labels = client.get("/api/dsl/parse", params={"q": "organism_id:9606 OR organism_id:10090"}).json()["labels"]
+    assert labels == expected
+
+
 def test_dataset_totals_have_exactly_biosample_experiment_and_bioproject(client: TestClient) -> None:
     totals = client.get("/api/dataset").json()["totals"]
     assert set(totals) == {"biosample", "experiment", "bioproject"}
@@ -258,6 +289,34 @@ def test_trend_populations_exclude_the_year_and_the_series_dimension(client: Tes
     assert all(2015 <= y <= 2016 for y in off["years"])
 
 
+def test_trend_reversed_year_range_returns_no_years_and_the_first_and_last_year(client: TestClient) -> None:
+    full = client.get("/api/trend", params={"field": "disease"}).json()
+    first, last = full["years"][0], full["years"][-1]
+    response = client.get("/api/trend", params={"field": "disease", "yearFrom": last, "yearTo": first})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["years"] == []
+    assert body["total"] == []
+    assert body["series"]
+    assert all(s["points"] == [] for s in body["series"])
+    assert (body["firstYear"], body["lastYear"]) == (first, last)
+
+
+def test_trend_single_year_range_returns_that_year(client: TestClient) -> None:
+    full = client.get("/api/trend").json()
+    year = full["years"][1]
+    body = client.get("/api/trend", params={"yearFrom": year, "yearTo": year}).json()
+    assert body["years"] == [year]
+    assert body["total"] == [full["total"][1]]
+
+
+def test_trend_without_matches_has_no_first_and_last_year(client: TestClient) -> None:
+    body = client.get("/api/trend", params={"q": "SAMN99999999", "field": "disease"}).json()
+    assert body["years"] == []
+    assert body["firstYear"] is None
+    assert body["lastYear"] is None
+
+
 def test_trend_rejects_the_year_as_its_dimension(client: TestClient) -> None:
     response = client.get("/api/trend", params={"field": "date_published"})
     assert response.status_code == 400
@@ -446,17 +505,22 @@ def test_entry_returns_attributes_annotations_and_evidence(client: TestClient, s
     assert body["identifier"] == accession
     assert body["type"] == "biosample"
     assert "accession" not in body
-    assert body["attributes"][0]["name"] == "sample_name"
+    assert body["metadata"][0] == {
+        "kind": "description",
+        "name": "Title",
+        "value": body["title"],
+        "harmonizedName": None,
+    }
+    assert next(i["name"] for i in body["metadata"] if i["kind"] == "attribute") == "sample_name"
     fields = list(dict.fromkeys(a["field"] for a in body["annotations"]))
     assert fields == ["cell_line", "disease", "tissue", "drug", "chip_antigen"]
     for annotation in body["annotations"]:
         if annotation["value"]:
             assert annotation["evidence"], annotation
             evidence = annotation["evidence"][0]
-            if evidence["attributeIndex"] >= 0:
-                attribute = body["attributes"][evidence["attributeIndex"]]
-                assert attribute["name"] == evidence["attribute"]
-                assert attribute["value"][evidence["start"] : evidence["end"]].lower() == annotation["value"].lower()
+            item = body["metadata"][evidence["metadataIndex"]]
+            assert item["name"] == evidence["name"]
+            assert item["value"][evidence["start"] : evidence["end"]].lower() == annotation["value"].lower()
     assert {e["accession"] for e in body["experiments"]} == {srx for srx, _ in synthetic.truth.experiments[accession]}
     missing = client.get("/api/entries/biosample/SAMN_NONE")
     assert missing.status_code == 404
@@ -623,3 +687,161 @@ def test_date_published_range_selects_exactly_the_biosamples_published_in_the_ra
             break
         page += 1
     assert got == expected
+
+
+def test_entry_returns_no_omitted_attribute_and_its_evidence_points_into_the_returned_attributes(
+    client: TestClient, synthetic: Synthetic
+) -> None:
+    disease_evidence = 0
+    checked = 0
+    for accession in synthetic.accessions[:20]:
+        body = client.get(f"/api/entries/biosample/{accession}").json()
+        assert "GEO Accession" not in {i["name"] for i in body["metadata"]}
+        for annotation in body["annotations"]:
+            for evidence in annotation["evidence"]:
+                item = body["metadata"][evidence["metadataIndex"]]
+                assert item["name"] == evidence["name"]
+                assert evidence["end"] <= len(item["value"])
+                checked += 1
+                disease_evidence += item["name"] == "study disease"
+    assert checked > 0
+    assert disease_evidence > 0
+
+
+def test_keyword_does_not_match_the_value_of_an_omitted_attribute(client: TestClient, synthetic: Synthetic) -> None:
+    accession = synthetic.accessions[0]
+    total = client.get("/api/entries/biosample", params={"q": f"GSM{accession[4:]}"}).json()["pagination"]["total"]
+    assert total == 0
+
+
+def test_entry_leaves_out_a_filter_key_attribute_only_where_no_evidence_of_the_biosample_points_to_it(
+    client: TestClient, store_con: duckdb.DuckDBPyConnection
+) -> None:
+    rows = store_con.execute(
+        "SELECT accession, attributes FROM biosample WHERE attributes::VARCHAR LIKE '%Submitter Id%' ORDER BY accession"
+    ).fetchall()
+    kept = left_out = 0
+    for accession, raw in rows[:40]:
+        stored = [a["name"] for a in orjson.loads(str(raw))]
+        body = client.get(f"/api/entries/biosample/{accession}").json()
+        names = [i["name"] for i in body["metadata"] if i["kind"] == "attribute"]
+        assert "sample_name" in names
+        evidenced = {e["name"] for an in body["annotations"] for e in an["evidence"]}
+        if "Submitter Id" in names:
+            assert "Submitter Id" in evidenced
+            kept += 1
+        else:
+            assert "Submitter Id" in stored
+            left_out += 1
+        assert names == [n for n in stored if n in names]
+    assert kept > 0
+    assert left_out > 0
+
+
+def test_term_returns_its_label_synonyms_parents_ontology_and_page(client: TestClient) -> None:
+    body = client.get("/api/terms/MONDO:0007254").json()
+    assert body["termId"] == "MONDO:0007254"
+    assert body["label"] == "breast cancer"
+    assert body["synonyms"] == ["mammary cancer"]
+    assert body["parents"] == [
+        {"termId": "MONDO:0002657", "label": "breast disorder"},
+        {"termId": "MONDO:0004992", "label": "cancer"},
+    ]
+    assert body["ontology"] == {"prefix": "MONDO", "name": "MONDO"}
+    assert body["url"] == "https://www.ebi.ac.uk/ols4/ontologies/mondo/classes?obo_id=MONDO:0007254"
+
+
+def test_term_that_the_dataset_does_not_have_is_not_found(client: TestClient) -> None:
+    response = client.get("/api/terms/MONDO:9999999")
+    assert response.status_code == 404
+    assert response.json()["type"] == "about:blank"
+
+
+def test_term_children_route_is_not_taken_for_a_term(client: TestClient) -> None:
+    response = client.get("/api/terms/children", params={"field": "disease", "termId": "MONDO:0004992"})
+    assert response.status_code == 200
+    assert "children" in response.json()
+
+
+def test_entry_annotation_with_a_term_has_the_clause_that_selects_the_biosample(
+    client: TestClient, synthetic: Synthetic
+) -> None:
+    checked = 0
+    for accession in synthetic.accessions[:20]:
+        body = client.get(f"/api/entries/biosample/{accession}").json()
+        in_population = any(e["inPopulation"] for e in body["experiments"])
+        for annotation in body["annotations"]:
+            if annotation["termId"] is None:
+                assert annotation["clauses"] == []
+                continue
+            assert annotation["clauses"] == [{"field": annotation["field"], "value": annotation["termId"]}]
+            q = client.post("/api/dsl/select", json={"q": None, "clauses": annotation["clauses"]}).json()["dsl"]
+            found = client.get("/api/entries/biosample", params={"q": f"{q} AND {accession}"}).json()
+            assert found["pagination"]["total"] == (1 if in_population else 0)
+            checked += 1
+    assert checked > 0
+
+
+def test_entry_metadata_has_the_description_then_the_record_items_with_evidence_then_the_attributes(
+    client: TestClient, store_con: duckdb.DuckDBPyConnection
+) -> None:
+    rows = store_con.execute(
+        "SELECT accession, title, description, record FROM biosample ORDER BY accession LIMIT 60"
+    ).fetchall()
+    with_record = with_list = 0
+    for accession, title, description, record in rows:
+        body = client.get(f"/api/entries/biosample/{accession}").json()
+        items = body["metadata"]
+        kinds = [i["kind"] for i in items]
+        order = {"description": 0, "record": 1, "attribute": 2}
+        assert kinds == sorted(kinds, key=order.__getitem__)
+        described = [(i["name"], i["value"]) for i in items if i["kind"] == "description"]
+        expected = ([("Title", title)] if title else []) + [
+            (d["name"], d["value"]) for d in orjson.loads(str(description))
+        ]
+        assert described == expected
+        with_list += sum(1 for name, _ in described if name == "Description") > 1
+        evidenced = {e["metadataIndex"] for an in body["annotations"] for e in an["evidence"]}
+        records = [(at, i) for at, i in enumerate(items) if i["kind"] == "record"]
+        assert all(at in evidenced for at, _ in records)
+        assert len(records) == len(orjson.loads(str(record)))
+        assert all(i["name"] != "Owner.Contacts" and i["harmonizedName"] is None for _, i in records)
+        with_record += bool(records)
+    assert with_record > 0
+    assert with_list > 0
+
+
+def test_entry_names_record_items_by_short_names_of_their_paths(client: TestClient) -> None:
+    from bsllmner_viewer.api.record_names import record_name
+
+    assert record_name("Owner.Name") == "Owner"
+    assert record_name("Status.when") == "Status"
+    assert record_name("Links.Link.label") == "Link"
+    assert record_name("Ids.Id.namespace") == "ID"
+    assert record_name("Description.Organism.taxonomy_id") == "Organism"
+    assert record_name("publication_date") == "Publication date"
+    assert record_name("accession") == "Accession"
+    assert record_name("Unknown.Path") == "Unknown.Path"
+    assert record_name("Ownership") == "Ownership"
+
+
+def test_keyword_matches_a_description_paragraph(client: TestClient, store_con: duckdb.DuckDBPyConnection) -> None:
+    accession, description = store_con.execute(
+        "SELECT accession, description FROM biosample "
+        "WHERE description::VARCHAR LIKE '%first paragraph of%' "
+        "AND accession IN (SELECT biosample FROM population) ORDER BY accession LIMIT 1"
+    ).fetchone()  # type: ignore[misc]
+    assert "first paragraph of" in str(description)
+    found = client.get("/api/entries/biosample", params={"q": f'"first paragraph of {accession}"'}).json()
+    assert [i["identifier"] for i in found["items"]] == [accession]
+
+
+def test_dataset_names_every_prefix_of_its_terms_as_the_term_endpoint_does(client: TestClient) -> None:
+    ontologies = client.get("/api/dataset").json()["ontologies"]
+    names = {o["prefix"]: o["name"] for o in ontologies}
+    assert len(names) == len(ontologies)
+    assert names["CVCL"] == "Cellosaurus"
+    assert names["MONDO"] == "MONDO"
+    for term_id in ("CVCL:0004", "MONDO:0007254", "NCBIGene:2146", "CHEBI:28748", "UBERON:0002107"):
+        ontology = client.get(f"/api/terms/{term_id}").json()["ontology"]
+        assert names[ontology["prefix"]] == ontology["name"]

@@ -7,8 +7,10 @@ from pathlib import Path
 import duckdb
 import pytest
 
+from bsllmner_viewer.api.queries.evidence import find_spans
 from bsllmner_viewer.build.ingest import BuildError, build_full
 from bsllmner_viewer.build.manifest import load_manifest
+from bsllmner_viewer.build.mk2_filter_keys import MK2_FILTER_KEYS
 from bsllmner_viewer.store.version import read_version
 from tests.synthetic import TARGET_ASSAYS, Synthetic
 
@@ -27,6 +29,51 @@ def test_build_stores_exactly_one_selected_run_per_biosample(
     assert _rows(store_con, "SELECT count(*) FROM entry WHERE accession NOT IN (SELECT accession FROM biosample)")[
         0
     ] == (0,)
+
+
+def _omitted(con: duckdb.DuckDBPyConnection) -> set[str]:
+    return {str(r[0]) for r in _rows(con, "SELECT name FROM omitted_attribute")}
+
+
+def test_derivation_omits_exactly_the_mk2_filter_keys_under_which_no_extracted_value_occurs(
+    store_con: duckdb.DuckDBPyConnection,
+) -> None:
+    rows = _rows(
+        store_con,
+        "SELECT b.accession, e.attributes FROM biosample b JOIN entry e USING (accession, run_id)",
+    )
+    values: dict[str, list[str]] = {}
+    for accession, value in _rows(
+        store_con, "SELECT biosample, extracted_value FROM annotation WHERE extracted_value IS NOT NULL"
+    ):
+        values.setdefault(str(accession), []).append(str(value))
+    held: set[str] = set()
+    for accession, raw in rows:
+        for attribute in json.loads(str(raw)):
+            if attribute["name"] in MK2_FILTER_KEYS and any(
+                find_spans(attribute["value"], v) for v in values.get(str(accession), [])
+            ):
+                held.add(attribute["name"])
+    assert "study disease" in held
+    assert _omitted(store_con) == MK2_FILTER_KEYS - held
+    assert "GEO Accession" in _omitted(store_con)
+
+
+def test_derived_biosample_leaves_out_the_omitted_attributes_in_order_and_the_entry_keeps_them(
+    store_con: duckdb.DuckDBPyConnection,
+) -> None:
+    omitted = _omitted(store_con)
+    rows = _rows(
+        store_con,
+        "SELECT b.attributes, e.attributes FROM biosample b JOIN entry e USING (accession, run_id)",
+    )
+    assert rows
+    kept_somewhere = False
+    for derived, raw in rows:
+        raw_list = json.loads(str(raw))
+        assert json.loads(str(derived)) == [a for a in raw_list if a["name"] not in omitted]
+        kept_somewhere |= any(a["name"] in omitted for a in raw_list)
+    assert kept_somewhere
 
 
 def test_build_selects_the_first_run_in_the_manifest_that_has_the_biosample(
@@ -207,3 +254,38 @@ def test_build_rejects_entries_missing_from_the_input(synthetic: Synthetic, tmp_
             build_full(load_manifest(synthetic.manifest), tmp_path / "z.duckdb", workers=1)
     finally:
         inputs.write_text(original)
+
+
+def test_entry_keeps_exactly_the_record_items_in_which_an_extracted_value_of_the_entry_occurs(
+    store_con: duckdb.DuckDBPyConnection,
+) -> None:
+    values: dict[tuple[int, str], list[str]] = {}
+    for run_id, accession, value in store_con.execute(
+        "SELECT run_id, accession, extracted_value FROM entry_annotation WHERE extracted_value IS NOT NULL"
+    ).fetchall():
+        values.setdefault((run_id, accession), []).append(value)
+    kept = 0
+    for run_id, accession, record in store_con.execute("SELECT run_id, accession, record FROM entry").fetchall():
+        items = json.loads(record)
+        extracted = values.get((run_id, accession), [])
+        for item in items:
+            assert not item["path"].startswith("Owner.Contacts")
+            assert any(find_spans(item["value"], v) for v in extracted)
+        kept += len(items)
+        if int(accession[4:]) % 5 == 0 and extracted:
+            assert any(item["path"] == "Owner.Name" for item in items), accession
+    assert kept > 0
+
+
+def test_derived_biosample_carries_the_description_and_record_of_its_selected_entry(
+    store_con: duckdb.DuckDBPyConnection,
+) -> None:
+    rows = _rows(
+        store_con,
+        "SELECT b.description = e.description AND b.record = e.record "
+        "FROM biosample b JOIN entry e USING (accession, run_id)",
+    )
+    assert rows
+    assert all(bool(r[0]) for r in rows)
+    lists = _rows(store_con, "SELECT description FROM biosample WHERE description::VARCHAR LIKE '%first paragraph%'")
+    assert lists

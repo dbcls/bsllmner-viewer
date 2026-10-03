@@ -1,7 +1,7 @@
 import { fc, test } from "@fast-check/vitest"
 import { describe, expect, it, vi } from "vitest"
 
-import { axisTermsText, pastedLines, resolvePasted, switchDimension } from "~/features/workspace/heatmap/axis-terms"
+import { axisTermsText, pastedLines, resolvePasted, switchDimension } from "~/features/workspace/axis/axis-terms"
 
 /** A term ID as the ontologies write them: a prefix, a colon, and a local ID. */
 const termId = fc.tuple(fc.stringMatching(/^[A-Za-z]{2,10}$/), fc.stringMatching(/^[A-Za-z0-9_]{1,10}$/)).map(([prefix, local]) => `${prefix}:${local}`)

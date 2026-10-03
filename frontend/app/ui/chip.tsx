@@ -6,7 +6,8 @@ import { ACTION_ICON, Icon } from "./icons"
 type ChipProps = {
   children: ReactNode
   onRemove?: () => void
-  title?: string
+  /** What the chip holds, in words, so that its remove button is named after it ("Remove breast cancer"). */
+  name?: string
   kind?: "tint" | "soft"
   size?: "sm" | "md"
   leading?: ReactNode
@@ -17,9 +18,8 @@ type ChipProps = {
  * to the height of its capitals (`text-trim-cap`), so the capitals sit in the middle of the chip. The label keeps room
  * above and below for the descenders, which its overflow would otherwise clip.
  */
-export const Chip = ({ children, onRemove, title, kind = "tint", size = "md", leading }: ChipProps) => (
+export const Chip = ({ children, onRemove, name, kind = "tint", size = "md", leading }: ChipProps) => (
   <span
-    title={title}
     className={cn(
       "inline-flex max-w-full items-center rounded-tag whitespace-nowrap text-ink",
       kind === "tint" ? "bg-brand-tint" : "border border-border-soft bg-brand-soft",
@@ -36,8 +36,7 @@ export const Chip = ({ children, onRemove, title, kind = "tint", size = "md", le
           event.stopPropagation()
           onRemove()
         }}
-        aria-label="Remove"
-        title="Remove"
+        aria-label={name ? `Remove ${name}` : "Remove"}
         className={cn(
           "flex cursor-pointer items-center self-stretch px-1.5",
           kind === "tint" ? "text-brand" : "text-ink-soft",
@@ -56,7 +55,6 @@ type FieldChipProps = {
   /** The value of the condition, such as the label of a term. */
   value: string
   onRemove: () => void
-  title?: string
 }
 
 /**
@@ -68,11 +66,10 @@ type FieldChipProps = {
  * trimmed to the height of their capitals (`text-trim-cap`), so that the capitals and the × sit in the middle of the
  * chip; the labels keep room above and below for the descenders, which their overflow would otherwise clip.
  */
-export const FieldChip = ({ field, value, onRemove, title }: FieldChipProps) => (
+export const FieldChip = ({ field, value, onRemove }: FieldChipProps) => (
   <button
     type="button"
     onClick={onRemove}
-    title={title}
     aria-label={`Remove ${field}: ${value}`}
     className="flex h-6 w-full cursor-pointer items-stretch overflow-hidden rounded-tag border border-border-soft bg-surface text-left text-fs-label whitespace-nowrap text-ink"
   >

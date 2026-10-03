@@ -18,7 +18,14 @@ vi.mock("~/lib/api/client", async (importOriginal) => {
 
 import { DATASET_STORAGE_KEY, storedDataset, useDataset } from "~/lib/api/queries"
 
-const description = (name: string) => ({ datasetVersion: { name }, fields: [{ name: "disease" }], targetAssays: ["RNA-Seq"], organisms: [] })
+const description = (name: string) => ({
+  datasetVersion: { name },
+  fields: [{ name: "disease", mappedBiosampleCount: 3 }],
+  targetAssays: ["RNA-Seq"],
+  assays: [{ name: "RNA-Seq", biosampleCount: 5 }],
+  organisms: [],
+  ontologies: [{ prefix: "MONDO", name: "MONDO" }],
+})
 
 const wrapper = ({ children }: { children: ReactNode }) => (
   <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>{children}</QueryClientProvider>
@@ -34,6 +41,15 @@ describe("storedDataset", () => {
     localStorage.setItem(DATASET_STORAGE_KEY, "{not json")
     expect(storedDataset()).toBeUndefined()
     localStorage.setItem(DATASET_STORAGE_KEY, JSON.stringify({ fields: "disease" }))
+    expect(storedDataset()).toBeUndefined()
+  })
+
+  it("gives nothing for a description kept by an api without the counts of the whole dataset or the names of the ontologies", () => {
+    localStorage.setItem(DATASET_STORAGE_KEY, JSON.stringify({ ...description("old"), assays: undefined }))
+    expect(storedDataset()).toBeUndefined()
+    localStorage.setItem(DATASET_STORAGE_KEY, JSON.stringify({ ...description("old"), fields: [{ name: "disease" }] }))
+    expect(storedDataset()).toBeUndefined()
+    localStorage.setItem(DATASET_STORAGE_KEY, JSON.stringify({ ...description("old"), ontologies: undefined }))
     expect(storedDataset()).toBeUndefined()
   })
 

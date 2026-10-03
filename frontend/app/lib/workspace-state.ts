@@ -32,8 +32,20 @@ export type WorkspaceState = {
   rowTerms: string[] | null
   colTerms: string[] | null
   color: HeatmapColor
-  trendField: string | null
+  /** The dimension whose elements the trend draws as lines. */
+  trendField: string
   trendTerms: string[] | null
+  /** The first and the last year that the trend shows, or null for the first and the last year with a match. */
+  trendFrom: number | null
+  trendTo: number | null
+  /** The trend draws the line of the condition. A workspace without a condition has no line of its own for it. */
+  trendCondition: boolean
+  /** The trend draws the line of the whole dataset. */
+  trendAll: boolean
+  /** The trend writes the count of each point above it. */
+  trendLabels: boolean
+  /** The charts (Distribution, Heatmap, and Trend) write the term ID after the label of a term. */
+  termIds: boolean
 }
 
 export const DEFAULTS: WorkspaceState = {
@@ -48,14 +60,22 @@ export const DEFAULTS: WorkspaceState = {
   rowTerms: null,
   colTerms: null,
   color: "count",
-  trendField: null,
+  trendField: "disease",
   trendTerms: null,
+  trendFrom: null,
+  trendTo: null,
+  trendCondition: true,
+  trendAll: false,
+  trendLabels: false,
+  termIds: false,
 }
 
 const UNITS: readonly Unit[] = ["biosample", "sra-experiment", "bioproject"]
 
 const list = (value: string | null): string[] | null =>
   value === null ? null : value.split(",").map((s) => s.trim()).filter(Boolean)
+
+const year = (value: string | null): number | null => (value !== null && /^\d+$/.test(value) ? Number(value) : null)
 
 export const readState = (params: URLSearchParams): WorkspaceState => {
   const tab = params.get("tab")
@@ -80,8 +100,14 @@ export const readState = (params: URLSearchParams): WorkspaceState => {
     rowTerms: list(params.get("row_terms")),
     colTerms: col === named ? list(params.get("col_terms")) : null,
     color: params.get("color") === "ratio" ? "ratio" : "count",
-    trendField: params.get("trend_field"),
+    trendField: params.get("trend_field") || DEFAULTS.trendField,
     trendTerms: list(params.get("trend_terms")),
+    trendFrom: year(params.get("trend_from")),
+    trendTo: year(params.get("trend_to")),
+    trendCondition: params.get("trend_condition") !== "off",
+    trendAll: params.get("trend_all") === "on",
+    trendLabels: params.get("trend_labels") === "on",
+    termIds: params.get("term_ids") === "on",
   }
 }
 
@@ -98,8 +124,14 @@ export const writeState = (state: WorkspaceState): URLSearchParams => {
   if (state.rowTerms) params.set("row_terms", state.rowTerms.join(","))
   if (state.colTerms) params.set("col_terms", state.colTerms.join(","))
   if (state.color !== DEFAULTS.color) params.set("color", state.color)
-  if (state.trendField) params.set("trend_field", state.trendField)
+  if (state.trendField !== DEFAULTS.trendField) params.set("trend_field", state.trendField)
   if (state.trendTerms) params.set("trend_terms", state.trendTerms.join(","))
+  if (state.trendFrom !== null) params.set("trend_from", String(state.trendFrom))
+  if (state.trendTo !== null) params.set("trend_to", String(state.trendTo))
+  if (!state.trendCondition) params.set("trend_condition", "off")
+  if (state.trendAll) params.set("trend_all", "on")
+  if (state.trendLabels) params.set("trend_labels", "on")
+  if (state.termIds) params.set("term_ids", "on")
   return params
 }
 

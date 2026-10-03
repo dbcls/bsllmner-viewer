@@ -49,6 +49,17 @@ class FieldDescription(ApiModel):
     name: str
     multi_valued: bool
     ontologies: list[str]
+    mapped_biosample_count: int = Field(description="BioSamples of the whole population with a term of the field")
+
+
+class DatasetOntology(ApiModel):
+    prefix: str = Field(description="Prefix of term IDs")
+    name: str = Field(description="Name of the ontology that the prefix names")
+
+
+class DatasetAssay(ApiModel):
+    name: str = Field(description="Target assay, as a `library_strategy` value")
+    biosample_count: int = Field(description="BioSamples of the whole population with an experiment of the assay")
 
 
 class DslFieldDescription(ApiModel):
@@ -67,11 +78,13 @@ class DatasetResponse(ApiModel):
     dataset_version: DatasetVersionRef
     version: dict[str, Any] = Field(description="Full dataset version information")
     target_assays: list[str]
+    assays: list[DatasetAssay] = Field(description="Target assays in descending order of their BioSamples")
     fields: list[FieldDescription]
     dsl_fields: list[DslFieldDescription]
     statuses: dict[str, list[str]] = Field(description="Status groups and the statuses under them")
     totals: Totals
     organisms: list[DatasetOrganism]
+    ontologies: list[DatasetOntology] = Field(description="Names of the prefixes of the terms of the dataset")
 
 
 class Organism(ApiModel):
@@ -206,8 +219,11 @@ class TrendResponse(ApiModel):
     unit: Unit
     facet_self_exclude: bool
     years: list[int]
+    first_year: int | None = Field(description="The first year with a match, whatever `yearFrom` is")
+    last_year: int | None = Field(description="The last year with a match, whatever `yearTo` is")
     total: list[TrendPoint] = Field(description="Counts of the condition per year")
     total_population_q: str | None = Field(description="The condition the counts of `total` were computed from")
+    all_entries: list[TrendPoint] = Field(description="Counts of the whole population per year, without the condition")
     field: str | None = Field(description="The dimension of `series`, when the request names one")
     population_q: str | None = Field(description="The condition the counts of `series` were computed from")
     series: list[TrendSeries]
@@ -268,8 +284,8 @@ class EntriesResponse(ApiModel):
 
 
 class Evidence(ApiModel):
-    attribute: str = Field(description="Attribute name, or `title` for the BioSample title")
-    attribute_index: int = Field(description="Position in `attributes`, or -1 for the title")
+    name: str = Field(description="Name of the item of the original metadata that the evidence is in")
+    metadata_index: int = Field(description="Position of that item in `metadata`")
     start: int
     end: int
     method: str
@@ -281,6 +297,7 @@ class EntryAnnotation(ApiModel):
     status: str
     term_id: str | None
     label: str | None
+    clauses: list[Clause] = Field(description="The clause on the field and the term; empty without a term")
     evidence: list[Evidence]
 
 
@@ -297,10 +314,11 @@ class EntryBioProject(ApiModel):
     title: str | None
 
 
-class Attribute(ApiModel):
-    name: str
+class MetadataItem(ApiModel):
+    kind: Literal["description", "attribute", "record"]
+    name: str = Field(description="Name to show: a description name, an attribute name, or a short name of a path")
     value: str
-    harmonized_name: str | None
+    harmonized_name: str | None = Field(description="Harmonized name of an attribute; null for the other kinds")
 
 
 class EntryResponse(ApiModel):
@@ -311,7 +329,7 @@ class EntryResponse(ApiModel):
     organism: Organism | None
     date_published: str | None
     run: str
-    attributes: list[Attribute]
+    metadata: list[MetadataItem] = Field(description="Original metadata: the description, attributes, and record")
     annotations: list[EntryAnnotation]
     experiments: list[EntryExperiment]
     bioprojects: list[EntryBioProject]
@@ -359,3 +377,25 @@ class ServiceInfoResponse(ApiModel):
     version: str = Field(description="Package version, followed by `+<commit>` when the build records a commit")
     description: str
     store: Literal["ok", "unavailable"]
+
+
+class TermOntology(ApiModel):
+    prefix: str = Field(description="Prefix of the term ID")
+    name: str = Field(description="Name of the ontology that the prefix names")
+
+
+class TermParent(ApiModel):
+    term_id: str
+    label: str | None
+
+
+class TermResponse(ApiModel):
+    dataset_version: DatasetVersionRef
+    term_id: str
+    label: str | None
+    ontology: TermOntology | None = Field(description="Null for a term ID without a prefix")
+    synonyms: list[str] = Field(
+        description="Synonyms that differ from the label and from each other beyond letter case"
+    )
+    parents: list[TermParent] = Field(description="Direct parent terms in the dataset, in the order of their labels")
+    url: str | None = Field(description="Page of the term on the site of its ontology; null for an unlisted prefix")

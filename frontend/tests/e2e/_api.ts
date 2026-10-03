@@ -24,6 +24,9 @@ export type TrendPoint = { year: number; count: number; clauses: Clause[] }
 export type Trend = {
   populationQ: string | null
   years: number[]
+  firstYear: number | null
+  lastYear: number | null
+  allEntries: TrendPoint[]
   total: TrendPoint[]
   series: { value: string; label: string; points: TrendPoint[] }[]
 }
@@ -84,7 +87,7 @@ export const crosstab = (
 
 export const trend = (
   request: APIRequestContext,
-  options: { field?: string; q?: string | null; unit?: Unit; selfExclude?: boolean } = {},
+  options: { field?: string; q?: string | null; unit?: Unit; selfExclude?: boolean; elements?: string[]; yearFrom?: number; yearTo?: number } = {},
 ): Promise<Trend> =>
   get(request, "/api/trend", {
     field: options.field,
@@ -92,6 +95,9 @@ export const trend = (
     unit: options.unit ?? "biosample",
     facetSelfExclude: options.selfExclude ?? true,
     limit: 5,
+    elements: options.elements?.join(","),
+    yearFrom: options.yearFrom,
+    yearTo: options.yearTo,
   })
 
 export const terms = async (request: APIRequestContext, field: string, text: string): Promise<Term[]> =>

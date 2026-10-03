@@ -13,7 +13,9 @@ type HelpHintProps = {
 
 /**
  * A "?" button that shows a short explanation in a bubble under it. The bubble opens while the pointer is over the
- * button or the button has focus; a click keeps it open until another click, a click outside, or Escape.
+ * button or the button has focus; a click keeps it open until another click, a click outside, or Escape. The button
+ * keeps the same space (8px) from the element before it on every screen, so a container puts it after that element
+ * without a gap of its own.
  */
 export const HelpHint = ({ label, side = "bottom", children }: HelpHintProps) => {
   const [hovered, setHovered] = useState(false)
@@ -41,7 +43,7 @@ export const HelpHint = ({ label, side = "bottom", children }: HelpHintProps) =>
   }, [pinned])
 
   return (
-    <span ref={wrapper} className="relative inline-flex">
+    <span ref={wrapper} className="relative ml-2 inline-flex">
       <button
         type="button"
         aria-label={label}

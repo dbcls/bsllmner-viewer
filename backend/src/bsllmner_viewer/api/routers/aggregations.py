@@ -28,6 +28,7 @@ from bsllmner_viewer.api.schemas import (
 from bsllmner_viewer.dsl.ast import BoolOp, Node, and_, clause
 from bsllmner_viewer.dsl.fields import STATUS_SUFFIX, FieldDef
 from bsllmner_viewer.dsl.transform import named_values
+from bsllmner_viewer.store.organisms import ORGANISM_NAMES
 
 router = APIRouter(tags=["Aggregations"])
 
@@ -63,9 +64,7 @@ def _organisms(store: StoreDep) -> dict[int, str | None]:
     cached = getattr(store, "_organism_names", None)
     if cached is None:
         with store.cursor() as cur:
-            rows = cur.execute(
-                "SELECT organism_id, any_value(organism_name) FROM biosample WHERE organism_id IS NOT NULL GROUP BY 1"
-            ).fetchall()
+            rows = cur.execute(ORGANISM_NAMES).fetchall()
         cached = {int(o): n for o, n in rows}
         store._organism_names = cached  # type: ignore[attr-defined]
     return cached
@@ -267,7 +266,10 @@ def _year_span(years: Iterable[int]) -> list[int]:
     description=(
         "`total` counts the condition per year, computed without the conjuncts on `date_published`. "
         "When `field` is given, `series` counts each element of that dimension per year, computed without the "
-        "conjuncts on that dimension as well."
+        "conjuncts on that dimension as well. `yearFrom` and `yearTo` limit the years returned without changing the "
+        "counts or the elements; `firstYear` and `lastYear` are the first and the last year with a match, whatever "
+        "the limits. A reversed range returns no years. `allEntries` counts the whole population in the same years, "
+        "without `q`."
     ),
 )
 def get_trend(
@@ -280,6 +282,8 @@ def get_trend(
         str | None, Query(description="Comma-separated elements; omitted means the top elements")
     ] = None,
     limit: LimitParam = 5,
+    year_from: Annotated[int | None, Query(alias="yearFrom", description="First year to return")] = None,
+    year_to: Annotated[int | None, Query(alias="yearTo", description="Last year to return")] = None,
 ) -> TrendResponse:
     date_dim = dimension(store.field_set, "date_published")
     dim = None if field is None else dimension(store.field_set, field)
@@ -294,12 +298,17 @@ def get_trend(
     series: list[TrendSeries] = []
     with store.cursor() as cur:
         total_counts = aggregate.trend_total(cur, total_pop, unit)
-        years = _year_span(total_counts)
+        all_counts = (
+            total_counts if total_ast is None else aggregate.trend_total(cur, population(None, store.field_set), unit)
+        )
+        span = _year_span(total_counts)
         if dim is not None:
             pop = population(series_ast, store.field_set)
             chosen = _elements(cur, dim, elements, ast, pop, limit)
             series_years, counts = aggregate.trend(cur, pop, dim, chosen, unit)
-            years = _year_span([*years, *series_years])
+            span = _year_span([*span, *series_years])
+        years = [y for y in span if (year_from is None or y >= year_from) and (year_to is None or y <= year_to)]
+        if dim is not None:
             labels = labels_for(cur, dim, chosen, _organisms(store))
             series = [
                 TrendSeries(
@@ -323,7 +332,12 @@ def get_trend(
         unit=unit,
         facet_self_exclude=facet_self_exclude,
         years=years,
+        first_year=span[0] if span else None,
+        last_year=span[-1] if span else None,
         total=[TrendPoint(year=y, count=total_counts.get(y, 0), clauses=clauses_for(date_dim, str(y))) for y in years],
+        all_entries=[
+            TrendPoint(year=y, count=all_counts.get(y, 0), clauses=clauses_for(date_dim, str(y))) for y in years
+        ],
         total_population_q=q_of(total_ast),
         field=None if dim is None else dim.name,
         population_q=q_of(series_ast),

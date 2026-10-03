@@ -1,8 +1,9 @@
-import { Fragment, type ReactNode } from "react"
-import { useNavigate } from "react-router"
+import { Fragment, type MouseEvent, type ReactNode } from "react"
+import { Link, useNavigate } from "react-router"
 
 import { useDataset, useEntries } from "~/lib/api/queries"
 import type { AnnotationValue, EntryItem } from "~/lib/api/types"
+import { backLinkState } from "~/lib/back-link"
 import { fieldLabel, STATUS_ORDER, statusInfo } from "~/lib/labels"
 import type { TablePerPage } from "~/lib/workspace-state"
 import { Card, CardFooter, CardHeader, cn, ExternalLink, FrozenTd, FrozenTh, HelpHint, InlineLabel, Pager, StatusGlyph, StatusPill, TableScroller } from "~/ui"
@@ -12,6 +13,9 @@ import { PerPageChooser } from "../per-page-chooser"
 import { SkeletonTableRows } from "../skeleton-rows"
 import type { WorkspaceState } from "../state"
 import { useTableTop } from "../use-table-top"
+
+/** The page of a BioSample. */
+const sampleHref = (accession: string): string => `/entries/${accession}`
 
 /** An annotation with an extracted value. A cell leaves a field without one (not stated, or extraction failed) empty. */
 const hasValue = (value: AnnotationValue): boolean => statusInfo(value.status).group !== "no_value"
@@ -46,15 +50,23 @@ export const SamplesTab = ({ state, onPage, onPerPage, search }: SamplesTabProps
   const entries = useEntries({ q: state.q, page: state.page, perPage: state.perPage })
   const total = entries.data?.pagination.total
   const table = useTableTop(onPage)
+  // A row opens its BioSample as its link does: a click with Cmd or Ctrl, or with the middle button, opens a new tab, which
+  // has no list to return to; a plain click opens it here, with the list to return to.
+  const openRow = (event: MouseEvent, accession: string) => {
+    if (event.metaKey || event.ctrlKey || event.button === 1) window.open(sampleHref(accession), "_blank", "noopener")
+    else void navigate(sampleHref(accession), { state: backLinkState(search) })
+  }
 
   return (
     <Card ref={table.ref} padding="none" flush busy={entries.isPlaceholderData}>
       <CardHeader>
-        <div className="flex min-w-0 grow basis-80 flex-wrap items-center gap-x-1.5 gap-y-1">
-          <InlineLabel>Status</InlineLabel>
-          {CELL_STATUSES.map((status) => (
-            <StatusPill key={status} status={status} label={statusInfo(status).label} size="sm" />
-          ))}
+        <div className="flex min-w-0 grow basis-80 items-center">
+          <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+            <InlineLabel>Status</InlineLabel>
+            {CELL_STATUSES.map((status) => (
+              <StatusPill key={status} status={status} label={statusInfo(status).label} size="sm" />
+            ))}
+          </div>
           <HelpHint label="About the status marks">{STATUS_HELP}</HelpHint>
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-2">
@@ -85,10 +97,21 @@ export const SamplesTab = ({ state, onPage, onPerPage, search }: SamplesTabProps
             {(entries.data?.items ?? []).map((row) => (
               <tr
                 key={row.identifier}
-                onClick={() => navigate(`/entries/${row.identifier}${search ? `?from=${encodeURIComponent(search)}` : ""}`)}
+                onClick={(event) => openRow(event, row.identifier)}
+                onAuxClick={(event) => event.button === 1 && openRow(event, row.identifier)}
                 className="group cursor-pointer hover:bg-brand-soft"
               >
-                <FrozenTd className={cn(TD, FROZEN_WIDTH, "truncate font-mono text-fs-label whitespace-nowrap text-brand")}>{row.identifier}</FrozenTd>
+                <FrozenTd className={cn(TD, FROZEN_WIDTH, "truncate font-mono text-fs-label whitespace-nowrap")}>
+                  <Link
+                    to={sampleHref(row.identifier)}
+                    state={backLinkState(search)}
+                    onClick={(event) => event.stopPropagation()}
+                    onAuxClick={(event) => event.stopPropagation()}
+                    className="text-brand no-underline hover:text-brand-deep"
+                  >
+                    {row.identifier}
+                  </Link>
+                </FrozenTd>
                 <td className={cn(TD, "max-w-64 truncate")} title={row.title ?? ""}>
                   {row.title}
                 </td>
@@ -128,18 +151,11 @@ export const SamplesTab = ({ state, onPage, onPerPage, search }: SamplesTabProps
 /** The widths of the skeletons of the columns before the annotation columns, near the widths of their values. */
 const LEAD_SKELETONS = ["w-24", "w-48", "w-24", "w-16", "w-20", "w-20"]
 
-const STATUS_MEANING: Record<string, string> = {
-  mapped_exact: "The value matched an ontology label or synonym exactly.",
-  mapped_selected: "The LLM selected the term from the candidate terms.",
-  unmapped_no_candidate: "No ontology term resembled the value.",
-  unmapped_rejected: "Similar terms existed, but the LLM adopted none.",
-}
-
 const STATUS_HELP = (
   <>
     {CELL_STATUSES.map((status, index) => (
       <span key={status} className={cn("block", index > 0 && "mt-1.5")}>
-        <StatusPill status={status} label={statusInfo(status).label} size="sm" /> {STATUS_MEANING[status]}
+        <StatusPill status={status} label={statusInfo(status).label} size="sm" /> {statusInfo(status).meaning}
       </span>
     ))}
     <span className="mt-1.5 block">A value in quotes is the extracted text, for which no term was adopted.</span>

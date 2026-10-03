@@ -13,6 +13,7 @@ import type {
   ParseResponse,
   ProjectSort,
   ProjectsResponse,
+  TermResponse,
   TermsResponse,
   TrendResponse,
   Unit,
@@ -29,8 +30,22 @@ const defined = <T extends Record<string, unknown>>(params: T): { [K in keyof T]
 /** Where the last description of the dataset is kept between visits. */
 export const DATASET_STORAGE_KEY = "bsllmner-viewer:dataset"
 
-const isDataset = (value: unknown): value is DatasetResponse =>
-  typeof value === "object" && value !== null && Array.isArray((value as DatasetResponse).fields) && Array.isArray((value as DatasetResponse).targetAssays)
+/**
+ * Whether a stored description has the shape that the screens read. A description kept by an older version of the api,
+ * without the counts of the whole dataset or the names of the ontologies, is not used.
+ */
+const isDataset = (value: unknown): value is DatasetResponse => {
+  if (typeof value !== "object" || value === null) return false
+  const { fields, targetAssays, assays, organisms, ontologies } = value as Partial<DatasetResponse>
+  return (
+    Array.isArray(fields) &&
+    fields.every((field) => typeof field.mappedBiosampleCount === "number") &&
+    Array.isArray(targetAssays) &&
+    Array.isArray(assays) &&
+    Array.isArray(organisms) &&
+    Array.isArray(ontologies)
+  )
+}
 
 /** The description of the dataset from the last visit, or undefined when there is none or it cannot be read. */
 export const storedDataset = (): DatasetResponse | undefined => {
@@ -98,6 +113,20 @@ export const selectElement = async (input: { q: string | null; clauses: Clause[]
   unwrap(await api.POST("/api/dsl/select", { body: { q: input.q, clauses: input.clauses, mode: input.mode ?? "toggle" } }))
 
 export const useSelectElement = () => useMutation({ mutationFn: selectElement })
+
+/**
+ * The condition of the clauses alone, as selecting them from no condition gives it, so that an element can link to the
+ * workspace before it is pressed. The answer never changes, so it is kept; a request for an element that leaves the
+ * screen before the answer arrives is cancelled.
+ */
+export const useClausesCondition = (clauses: Clause[], enabled = true) =>
+  useQuery({
+    queryKey: ["select", clauses],
+    queryFn: async ({ signal }): Promise<ConditionResponse> =>
+      unwrap(await api.POST("/api/dsl/select", { body: { q: null, clauses, mode: "toggle" }, signal })),
+    staleTime: Infinity,
+    enabled,
+  })
 
 /** Replace the keywords of a condition with the keywords of text typed into a keyword box; empty text removes them. */
 export const setKeyword = async (input: { q: string | null; keyword: string }): Promise<ConditionResponse> =>
@@ -184,6 +213,8 @@ export type TrendParams = {
   selfExclusion: boolean
   elements?: string
   limit?: number
+  yearFrom?: number
+  yearTo?: number
 }
 
 export const useTrend = (params: TrendParams, enabled = true) =>
@@ -200,6 +231,8 @@ export const useTrend = (params: TrendParams, enabled = true) =>
               facetSelfExclude: params.selfExclusion,
               elements: params.elements,
               limit: params.limit,
+              yearFrom: params.yearFrom,
+              yearTo: params.yearTo,
             }),
           },
         }),
@@ -257,6 +290,15 @@ export const useEntries = (params: EntriesParams, enabled = true) =>
       ),
     enabled,
     placeholderData: (previous) => previous,
+  })
+
+/** The details of a term: its ontology, synonyms, parents, and page on the site of its ontology. They never change within a store. */
+export const useTerm = (termId: string) =>
+  useQuery({
+    queryKey: ["term", termId],
+    queryFn: async (): Promise<TermResponse> => unwrap(await api.GET("/api/terms/{termId}", { params: { path: { termId } } })),
+    staleTime: Infinity,
+    retry: false,
   })
 
 export const useEntry = (accession: string) =>

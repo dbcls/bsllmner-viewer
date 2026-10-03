@@ -46,10 +46,14 @@ class Corpus:
 @pytest.fixture(scope="module")
 def corpus(store_con: duckdb.DuckDBPyConnection) -> Corpus:
     values: dict[str, list[str]] = {}
-    for accession, title, organism, attributes in store_con.execute(
-        "SELECT accession, title, organism_name, attributes FROM biosample"
+    for accession, title, organism, description, attributes in store_con.execute(
+        "SELECT accession, title, organism_name, description, attributes FROM biosample"
     ).fetchall():
-        values[accession] = [v for v in (title, organism) if v] + [a["value"] for a in json.loads(attributes)]
+        values[accession] = (
+            [v for v in (title, organism) if v]
+            + [d["value"] for d in json.loads(description)]
+            + [a["value"] for a in json.loads(attributes)]
+        )
     for accession, extracted, label in store_con.execute(
         "SELECT biosample, extracted_value, term_label FROM annotation"
     ).fetchall():

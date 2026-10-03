@@ -551,6 +551,7 @@ class TestOpenApi:
         ("GET", "/api/projects"): "listProjects",
         ("GET", "/api/terms"): "searchTerms",
         ("GET", "/api/terms/children"): "listTermChildren",
+        ("GET", "/api/terms/{termId}"): "getTerm",
         ("GET", "/api/export/entries/{type}"): "exportEntries",
         ("GET", "/api/export/accessions/{type}"): "exportAccessions",
     }

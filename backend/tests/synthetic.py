@@ -66,6 +66,8 @@ ANNOTATED: dict[str, list[tuple[str, str]]] = {
 ASSAYS = ["RNA-Seq", "ChIP-Seq", "ATAC-seq", "Bisulfite-Seq", "WGS"]
 TARGET_ASSAYS = ["RNA-Seq", "ChIP-Seq", "ATAC-seq"]
 ORGANISMS = [(9606, "Homo sapiens"), (10090, "Mus musculus")]
+# Names that a few BioSamples give instead, which sort before the names that most BioSamples give.
+ORGANISM_VARIANTS = {9606: "9606", 10090: "Mouse"}
 STATUS_KINDS = ("mapped_exact", "mapped_selected", "unmapped_no_candidate", "unmapped_rejected", "not_stated")
 
 
@@ -197,6 +199,7 @@ def _write_run(root: Path, name: str, members: list[str], rng: random.Random, tr
     inputs: list[str] = []
     for accession in members:
         organism = rng.choice(ORGANISMS)
+        organism_name = ORGANISM_VARIANTS[organism[0]] if int(accession[4:]) % 7 == 0 else organism[1]
         modified = datetime.datetime(2020, 1, 1) + datetime.timedelta(days=rng.randrange(2000))
         roll = rng.random()
         if roll < 0.05:
@@ -218,7 +221,11 @@ def _write_run(root: Path, name: str, members: list[str], rng: random.Random, tr
             if published_utc is not None and datetime.date(2005, 1, 1) <= published_utc <= RUN_START.date()
             else None
         )
-        attributes = [{"attribute_name": "sample_name", "content": f"sample {accession}"}]
+        attributes = [
+            {"attribute_name": "sample_name", "content": f"sample {accession}"},
+            # An attribute that records how the BioSample was archived, which the derived BioSample leaves out.
+            {"attribute_name": "GEO Accession", "content": f"GSM{accession[4:]}"},
+        ]
         title = f"{name} sample of {accession}"
         failed = rng.random() < 0.03
         extracted: dict[str, object] | None = None if failed else {}
@@ -226,6 +233,7 @@ def _write_run(root: Path, name: str, members: list[str], rng: random.Random, tr
         timings: dict[str, dict[str, object]] = {f: {} for f in FIELDS}
         search: dict[str, dict[str, list[dict[str, object]]]] = {f: {} for f in FIELDS}
         text2term: dict[str, dict[str, list[dict[str, object]]]] = {f: {} for f in FIELDS}
+        mentions: list[str] = []
         for field_name, spec in FIELDS.items():
             key = (name, accession, field_name)
             if extracted is None:
@@ -269,6 +277,13 @@ def _write_run(root: Path, name: str, members: list[str], rng: random.Random, tr
                     rows.append((value, status, None))
             extracted[field_name] = values if multi else values[0]
             truth.annotations[key] = rows
+            mentions.append(values[0])
+            if field_name == "disease":
+                # Attributes among the names that bsllmner-mk2 drops. `study disease` always holds an extracted
+                # value, and `Submitter Id` holds one only in every other BioSample.
+                attributes.append({"attribute_name": "study disease", "content": values[0]})
+                submitter = values[0] if int(accession[4:]) % 2 == 0 else f"submitter {accession}"
+                attributes.append({"attribute_name": "Submitter Id", "content": submitter})
         entries.append(
             {
                 "extract": {
@@ -284,12 +299,31 @@ def _write_run(root: Path, name: str, members: list[str], rng: random.Random, tr
                 "ambiguous_fields": {},
             }
         )
+        number = int(accession[4:])
+        description: dict[str, object] = {
+            "Title": title,
+            "Organism": {"taxonomy_id": str(organism[0]), "OrganismName": organism_name},
+        }
+        # A paragraph that holds an extracted value, or a list of paragraphs that hold none.
+        if number % 3 == 0 and mentions:
+            description["Comment"] = {"Paragraph": f"Profiling of {mentions[0]} samples"}
+        elif number % 3 == 1:
+            description["Comment"] = {"Paragraph": [f"first paragraph of {accession}", "second paragraph"]}
+        if number % 4 == 0:
+            description["SampleName"] = f"name of {accession}"
+        if number % 11 == 0:
+            description["Synonym"] = [{"db": "SYN", "content": f"synonym of {accession}"}]
+        # The name of the owner holds an extracted value in a few entries; a contact always does and is never kept.
+        owner_name = f"Laboratory of {mentions[-1]}" if number % 5 == 0 and mentions else "Synthetic Institute"
+        contact = mentions[0] if mentions else "Ann"
         body: dict[str, object] = {
             "access": "public",
             "last_update": modified.isoformat() + "+00:00",
             "submission_date": submitted.isoformat(),
             "Ids": {"Id": [{"namespace": "BioSample", "content": accession}]},
-            "Description": {"Title": title, "Organism": {"taxonomy_id": str(organism[0]), "OrganismName": organism[1]}},
+            "Description": description,
+            "Owner": {"Name": {"content": owner_name}, "Contacts": {"Contact": {"Name": {"First": contact}}}},
+            "Status": {"status": "live", "when": "2020-01-01T00:00:00"},
             "Attributes": {"Attribute": attributes},
         }
         if has_published:

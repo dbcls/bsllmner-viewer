@@ -2,13 +2,14 @@ import { useDataset, useDistribution } from "~/lib/api/queries"
 import type { DatasetResponse, Element, TermElement, Unit } from "~/lib/api/types"
 import { downloadPngMarkup, downloadSvgMarkup, downloadTsv } from "~/lib/export"
 import { formatCount, formatPercent } from "~/lib/format"
-import { fieldLabel, ontologyLabel, unitLabel } from "~/lib/labels"
+import { fieldLabel, ontologyName, unitLabel } from "~/lib/labels"
 import { Card, Clickable, cn, Skeleton } from "~/ui"
 
 import { clausesOfField } from "../ast"
 import { expectedElements } from "../expected-elements"
 import { FigureExport } from "../figure-export"
 import type { WorkspaceState } from "../state"
+import { TermIdHover } from "../term-id-hover"
 import type { Condition } from "../use-condition"
 import { ViewControls } from "../view-controls"
 import { type BarDatum, barsSvg } from "./bars-svg"
@@ -32,18 +33,26 @@ type DistributionTabProps = {
   state: WorkspaceState
   condition: Condition
   onUnit: (unit: Unit) => void
+  onTermIds: () => void
 }
 
 /** One card per annotation field: the top terms as bars, and the part of the population without a term of the field. */
-export const DistributionTab = ({ state, condition, onUnit }: DistributionTabProps) => {
+export const DistributionTab = ({ state, condition, onUnit, onTermIds }: DistributionTabProps) => {
   const dataset = useDataset()
   const fields = dataset.data?.fields ?? []
   const names = new Set(fields.map((f) => f.name))
   const ordered = [...FIELD_ORDER.filter((f) => names.has(f)), ...fields.map((f) => f.name).filter((f) => !FIELD_ORDER.includes(f))]
-  const ontologies = new Map(fields.map((f) => [f.name, f.ontologies.map(ontologyLabel).join(" / ")]))
+  const known = dataset.data?.ontologies ?? []
+  const ontologies = new Map(fields.map((f) => [f.name, f.ontologies.map((prefix) => ontologyName(prefix, known)).join(" / ")]))
   return (
     <div>
-      <ViewControls unit={state.unit} onUnit={onUnit} help="Each card shows the terms assigned to the most BioSamples. Counts include child terms." />
+      <ViewControls
+        unit={state.unit}
+        onUnit={onUnit}
+        termIds={state.termIds}
+        onTermIds={onTermIds}
+        help="Each card shows the terms assigned to the most BioSamples. Counts include child terms."
+      />
       <div className="grid grid-cols-3 gap-4">
         {dataset.data === undefined &&
           Array.from({ length: FIELD_CARDS }, (_, index) => (
@@ -95,6 +104,7 @@ const DistributionCard = ({ field, ontology, dataset, state, condition }: CardPr
   const collect = (): BarDatum[] =>
     elements.map((e) => ({
       label: e.label,
+      ...(state.termIds ? { id: e.value } : {}),
       count: e.count,
     }))
   const exportName = `${field}-distribution`
@@ -122,7 +132,7 @@ const DistributionCard = ({ field, ontology, dataset, state, condition }: CardPr
       <div className="mt-2 flex-1">
         {data === undefined && <SkeletonBars count={expectedElements(field, dataset, LIMIT)} />}
         {elements.map((element) => (
-          <ElementRow key={element.value} element={element} max={max} ownCondition={ownCondition} condition={condition} />
+          <ElementRow key={element.value} element={element} max={max} ownCondition={ownCondition} condition={condition} showId={state.termIds} />
         ))}
         {data && elements.length === 0 && <div className="py-3 text-fs-label text-ink-soft">No values in this population.</div>}
         {data?.withoutTerm != null && <WithoutTermRow field={field} count={data.withoutTerm} total={data.total} />}
@@ -184,10 +194,12 @@ type ElementRowProps = {
   max: number
   ownCondition: boolean
   condition: Condition
+  /** The term ID follows the label. */
+  showId: boolean
 }
 
 /** One element as a bar. Clicking it adds the element's clause to the condition, or removes it. */
-const ElementRow = ({ element, max, ownCondition, condition }: ElementRowProps) => {
+const ElementRow = ({ element, max, ownCondition, condition, showId }: ElementRowProps) => {
   const selected = condition.isSelected(element.clauses)
   const dimmed = ownCondition && !selected
   return (
@@ -198,7 +210,15 @@ const ElementRow = ({ element, max, ownCondition, condition }: ElementRowProps) 
         aria-pressed={selected}
       >
         <span className="min-w-0 flex-1">
-          <span className={cn("block truncate text-fs-body-sm", selected && "font-semibold")}>{element.label}</span>
+          <span className={cn("block truncate text-fs-body-sm", selected && "font-semibold")}>
+            {element.label}
+            {showId && (
+              <>
+                {" "}
+                <TermIdHover termId={element.value} label={element.label} />
+              </>
+            )}
+          </span>
           <span className={cn("mt-0.5 block h-2 overflow-hidden rounded-badge bg-brand-soft", selected && "ring-2 ring-selection")}>
             <span
               className={cn("block h-full rounded-badge", selected ? "bg-brand" : dimmed ? "bg-brand-tint" : "bg-brand-light")}

@@ -1,13 +1,11 @@
 import { useEffect, useRef, useState } from "react"
-import { useNavigate } from "react-router"
 
-import { selectElement, useDataset, useDistribution, useTerms } from "~/lib/api/queries"
-import type { TermHit } from "~/lib/api/types"
+import { useDataset, useTerms } from "~/lib/api/queries"
 import { formatCount } from "~/lib/format"
 import { fieldLabel } from "~/lib/labels"
-import { termDetail } from "~/lib/terms"
-import { workspaceSearch } from "~/lib/workspace-state"
-import { ACTION_ICON, busyClass, Button, Card, CardHeader, Clickable, cn, Select, Skeleton, TermRow, TermRowSkeleton, TextInput } from "~/ui"
+import { ACTION_ICON, busyClass, Button, Card, CardHeader, Clickable, cn, Select, Skeleton, termRowClass, TermRowContent, TermRowSkeleton, TextInput } from "~/ui"
+
+import { ConditionLink } from "./condition-link"
 
 /** The field choice that searches every annotation field. */
 const ALL_FIELDS = "*"
@@ -30,9 +28,9 @@ const resultTitle = (field: string | null, query: string): string => {
 
 /** Search terms across the annotation fields, or browse one field, and open the workspace with the chosen term. */
 export const TermSearch = () => {
-  const navigate = useNavigate()
   const dataset = useDataset()
-  const fields = dataset.data?.fields.map((f) => f.name) ?? []
+  const fieldCounts = dataset.data?.fields ?? []
+  const fields = fieldCounts.map((f) => f.name)
   const total = dataset.data?.totals.biosample ?? 0
   const [field, setField] = useState(ALL_FIELDS)
   const [query, setQuery] = useState("")
@@ -53,11 +51,6 @@ export const TermSearch = () => {
   const clear = () => {
     setField(ALL_FIELDS)
     setQuery("")
-  }
-
-  const open = async (hit: TermHit) => {
-    const condition = await selectElement({ q: null, clauses: hit.clauses })
-    await navigate(`/entries${workspaceSearch({ q: condition.dsl })}`)
   }
 
   return (
@@ -89,17 +82,21 @@ export const TermSearch = () => {
             >
               {!terms.data && Array.from({ length: SKELETON_TERMS }, (_, index) => <TermRowSkeleton key={index} />)}
               {(terms.data?.terms ?? []).map((hit) => (
-                <TermRow
+                <ConditionLink
                   key={`${hit.field}:${hit.termId}`}
-                  label={hit.label ?? hit.termId}
-                  id={hit.termId}
-                  detail={termDetail(hit)}
-                  count={formatCount(hit.count)}
-                  {...(everyField ? { field: fieldLabel(hit.field) } : {})}
-                  {...(hit.matchedSynonym ? { synonym: hit.matchedSynonym } : {})}
-                  highlight={terms.data?.query ?? ""}
-                  onClick={() => void open(hit)}
-                />
+                  clauses={hit.clauses}
+                  enabled={!terms.isPlaceholderData}
+                  className={termRowClass()}
+                >
+                  <TermRowContent
+                    label={hit.label ?? hit.termId}
+                    id={hit.termId}
+                    count={formatCount(hit.count)}
+                    {...(everyField ? { field: fieldLabel(hit.field) } : {})}
+                    {...(hit.matchedSynonym ? { synonym: hit.matchedSynonym } : {})}
+                    highlight={terms.data?.query ?? ""}
+                  />
+                </ConditionLink>
               ))}
               {terms.data && terms.data.terms.length === 0 && (
                 <div className="px-6 py-6 text-center text-fs-body-sm text-ink-soft">No matching term. Try a synonym or a term ID.</div>
@@ -113,8 +110,8 @@ export const TermSearch = () => {
             <div className="mb-1.5 font-semibold">Annotation terms</div>
             <div className="grid grid-cols-3 gap-x-5">
               {dataset.data === undefined && Array.from({ length: SKELETON_FIELDS }, (_, index) => <FieldRowSkeleton key={index} />)}
-              {fields.map((name) => (
-                <FieldRow key={name} field={name} total={total} onSelect={() => setField(name)} />
+              {fieldCounts.map(({ name, mappedBiosampleCount }) => (
+                <FieldRow key={name} field={name} mapped={mappedBiosampleCount} total={total} onSelect={() => setField(name)} />
               ))}
             </div>
           </Card>
@@ -131,29 +128,27 @@ const SKELETON_FIELDS = 6
 
 type FieldRowProps = {
   field: string
+  /** The BioSamples with a term in the field, of the whole dataset, as build counted them. */
+  mapped: number
   total: number
   onSelect: () => void
 }
 
-const FieldRow = ({ field, total, onSelect }: FieldRowProps) => {
-  const status = useDistribution({ field: `${field}_status`, q: null, unit: "biosample", selfExclusion: true })
-  const mapped = status.data?.elements.find((element) => element.value === "mapped")?.count
-  return (
-    <Clickable
-      onClick={onSelect}
-      aria-label={`Browse ${fieldLabel(field)} terms`}
-      className="flex w-full cursor-pointer items-center gap-2 rounded-tag py-1 text-left hover:bg-brand-soft"
-    >
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-fs-body-sm">{fieldLabel(field)}</span>
-        <span className="mt-0.5 block h-1.5 overflow-hidden rounded-badge bg-brand-soft">
-          <span className="block h-full bg-brand-light" style={{ width: `${total > 0 && mapped !== undefined ? (mapped / total) * 100 : 0}%` }} />
-        </span>
+const FieldRow = ({ field, mapped, total, onSelect }: FieldRowProps) => (
+  <Clickable
+    onClick={onSelect}
+    aria-label={`Browse ${fieldLabel(field)} terms`}
+    className="flex w-full cursor-pointer items-center gap-2 rounded-tag py-1 text-left hover:bg-brand-soft"
+  >
+    <span className="min-w-0 flex-1">
+      <span className="block truncate text-fs-body-sm">{fieldLabel(field)}</span>
+      <span className="mt-0.5 block h-1.5 overflow-hidden rounded-badge bg-brand-soft">
+        <span className="block h-full bg-brand-light" style={{ width: `${total > 0 ? (mapped / total) * 100 : 0}%` }} />
       </span>
-      <span className="flex w-17 shrink-0 justify-end font-mono text-fs-label text-ink-mid">{mapped === undefined ? <Skeleton className="w-12" /> : formatCount(mapped)}</span>
-    </Clickable>
-  )
-}
+    </span>
+    <span className="w-17 shrink-0 text-right font-mono text-fs-label text-ink-mid">{formatCount(mapped)}</span>
+  </Clickable>
+)
 
 /** A field row before the description of the dataset arrives, on the first visit only. */
 const FieldRowSkeleton = () => (

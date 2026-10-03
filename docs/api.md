@@ -86,9 +86,19 @@ Unlike the DDBJ Search API, a keyword may appear anywhere in a condition, includ
 
 An entry is a BioSample. `GET /api/entries/biosample` lists the BioSamples that match `q`, in the sense of the BioSample counting unit in [data-model.md](data-model.md). Each item has the accession of the BioSample as `identifier`, `biosample` as `type`, the BioSample's metadata and annotations, and the experiments of the BioSample that match `q` as `experiments`. The annotations belong to the BioSample, and a BioSample can have several experiments, so an experiment is listed in the item of its BioSample and is not an entry of its own. An entry list is always computed from `q` itself.
 
-`GET /api/entries/biosample/{accession}` returns one BioSample with its original attributes, its annotations with evidence, its experiments, and its BioProjects. The BioSample does not have to be in the population; its experiments show which of them are.
+`GET /api/entries/biosample/{accession}` returns one BioSample with its original metadata ([data-model.md](data-model.md#entities)), its annotations with evidence, its experiments, and its BioProjects. The BioSample does not have to be in the population; its experiments show which of them are. Each annotation with a term also has the clause on its field and term, so that a client can make a condition from it.
+
+The original metadata is a list of items. Each item has its kind (`description`, `record`, or `attribute`), a name to show, and a value. The items come in this order of their kinds, so that the attributes come last and the items that describe the BioSample as a whole come first. Evidence identifies an item by its position in the list (`metadataIndex`).
+
+- The description is always returned: the title, the description paragraphs, the sample name, and the synonyms, named `Title`, `Description`, `Sample name`, and `Synonym`.
+- An item of the record is returned only when evidence of the BioSample points to it. It is named by a short name for its path in the input entry, such as `Owner` for `Owner.Name` and `Status` for `Status.when`. A path without a short name is its own name.
+- An attribute is named by its attribute name. The attributes leave out each attribute whose name bsllmner-mk2 lists in its `filter_keys.json` ([build.md](build.md#runs)) and that no evidence of the BioSample points to. Such an attribute records how the BioSample was submitted and archived, so it is shown only when an annotation of the BioSample was derived from it. For example, `INSDC center name` is left out, but a `Submitter Id` of `E-MTAB-13151:ChIP_ETO2_DMSO_rep1` stays when the ChIP antigen ETO2 was found in it. Keywords still match the values of the attributes that are left out, so a BioSample can match a keyword through a value that its page does not show.
 
 The exports return every matching entry as TSV or as newline-delimited JSON (`application/x-ndjson`), and every matching accession of a type as plain text with one accession per line. Accession lists exist for `biosample`, `sra-experiment`, `sra-run`, and `bioproject`.
+
+## Terms
+
+`GET /api/terms/{termId}` returns one term of the dataset: its label, its synonyms, its direct parent terms, the ontology that the prefix of its ID names, and the address of its page on the site of that ontology. Synonyms that differ from the label or from each other only in letter case are left out. The api derives the address from the prefix: Cellosaurus for `CVCL`, NCBI Gene for `NCBIGene`, and the EBI Ontology Lookup Service for `CL`, `UBERON`, `MONDO`, `CHEBI`, and `EFO`. A term with another prefix has no address. Clients take the address from the api and do not hold the addresses of ontologies themselves. The names of ontologies come from the same place: `GET /api/dataset` returns the name of each prefix of the terms of the dataset, and a prefix without a name in the api is its own name.
 
 ## Aggregations
 
@@ -128,6 +138,10 @@ A trend counts the condition for each publication year of the BioSample. It retu
 
 If a request names a dimension, then the trend also counts each element of the dimension for each year. With self-exclusion, the population of these counts also excludes the conjuncts on that dimension.
 
+The trend also returns `allEntries`, the count of the whole population for each year that the trend returns, in the same counting unit. Neither `q` nor self-exclusion applies to these counts, so that a client can compare the condition with the whole dataset.
+
+`yearFrom` and `yearTo` limit the years that a trend returns. They do not change the population, the counts, or the default elements. `firstYear` and `lastYear` are the first and the last year in which the populations of the trend have a match, whether or not the years are limited, so that a client can offer the years to choose from. If `yearFrom` is after `yearTo`, then the trend returns no years, as a reversed date range matches nothing in the DDBJ Search API.
+
 ### Expected counts in cross-tabulations
 
 For each cell of a cross-tabulation, the api compares the count of the cell with the count that the cell would have if the two dimensions were independent. It returns the expected count, the ratio to the expected count, and the adjusted standardized residual, in the selected counting unit. With `N` the count of the aggregation population, `R` the count of the row, `C` the count of the column, and `O` the count of the cell:
@@ -149,6 +163,10 @@ A cell with `E ≥ 5` is classified as follows. Cells with `E < 5` are not class
 | Over-represented | `O / E ≥ 2` and `r ≥ 2` |
 
 The thresholds are fixed. Rows and columns overlap and BioProject counts are distinct counts, so `E` and `r` describe how far a cell departs from independence rather than constitute a statistical test.
+
+### Counts of the whole population
+
+`GET /api/dataset` returns the BioSample counts of the whole population for each target assay, for each organism, and for each annotation field. The count of a field is the number of BioSamples with a term in the field. build computes these counts, so they stay the same for a store, and a client can show them without an aggregation request. Each count equals the count of an element of a distribution with an empty `q` in the BioSample unit. For example, the count of the field `disease` equals the count of the element `mapped` of the distribution on `disease_status`.
 
 ### Invariant
 

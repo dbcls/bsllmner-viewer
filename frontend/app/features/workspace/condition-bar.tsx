@@ -1,10 +1,11 @@
 import { Fragment, useEffect, useState } from "react"
 
-import { useDistribution, useEntries, useParsedCondition, useProjects } from "~/lib/api/queries"
+import { useDataset, useDistribution, useEntries, useParsedCondition, useProjects } from "~/lib/api/queries"
 import { formatCount } from "~/lib/format"
 import { ACTION_ICON, Button, Chip, cn, CopyButton, LinkButton, Segmented, Skeleton, TextArea } from "~/ui"
 
 import { clauseLabel, type ConditionGroup, conditionGroups, describeAst, groupLabel } from "./ast"
+import { TermIdHover } from "./term-id-hover"
 import type { Condition } from "./use-condition"
 
 type Mode = "visual" | "query"
@@ -62,7 +63,7 @@ type RowProps = {
 const Row = ({ index, count, label, children }: RowProps) => (
   <div className="flex items-start">
     <Rail index={index} count={count} />
-    <span title={label} className="flex h-7 w-condition-label shrink-0 items-center pr-2 pl-2.5 text-fs-body-sm text-ink-mid">
+    <span className="flex h-7 w-condition-label shrink-0 items-center pr-2 pl-2.5 text-fs-body-sm text-ink-mid">
       <span className="truncate py-1 text-trim-cap">{label}</span>
     </span>
     <div className="min-w-0 flex-1">{children}</div>
@@ -72,15 +73,17 @@ const Row = ({ index, count, label, children }: RowProps) => (
 type TreeProps = {
   groups: ConditionGroup[]
   condition: Condition
+  /** The fields whose values are ontology terms. Their chips show the term ID after the label. */
+  termFields: ReadonlySet<string>
 }
 
-const Tree = ({ groups, condition }: TreeProps) => (
+const Tree = ({ groups, condition, termFields }: TreeProps) => (
   <div className="flex flex-col gap-1">
     {groups.map((group, index) =>
       group.kind === "keyword" ? (
         <Row key="keyword" index={index} count={groups.length} label="Keyword">
           <span className="inline-flex min-h-7 max-w-full items-center border border-transparent px-1">
-            <Chip title={group.text} onRemove={() => void condition.setKeyword("")}>
+            <Chip name={group.text} onRemove={() => void condition.setKeyword("")}>
               {group.text}
             </Chip>
           </span>
@@ -91,8 +94,14 @@ const Tree = ({ groups, condition }: TreeProps) => (
             {group.clauses.map((clause, clauseIndex) => (
               <Fragment key={`${clause.field}:${clause.value ?? clause.from}`}>
                 {clauseIndex > 0 && <span className="px-0.5 text-fs-badge leading-none font-bold tracking-widest text-brand">OR</span>}
-                <Chip title={clause.value ?? `${clause.from} TO ${clause.to}`} onRemove={() => void condition.toggle([clause])}>
+                <Chip name={clauseLabel(clause, condition.labels)} onRemove={() => void condition.toggle([clause])}>
                   {clauseLabel(clause, condition.labels)}
+                  {termFields.has(clause.field) && clause.value && (
+                    <>
+                      {" "}
+                      <TermIdHover termId={clause.value} label={clauseLabel(clause, condition.labels)} />
+                    </>
+                  )}
                 </Chip>
               </Fragment>
             ))}
@@ -101,7 +110,7 @@ const Tree = ({ groups, condition }: TreeProps) => (
       ) : (
         <Row key={`expression-${index}`} index={index} count={groups.length} label="Expression">
           <span className="inline-flex min-h-7 max-w-full items-center border border-transparent px-1">
-            <Chip kind="soft" title="Edit this part of the condition in Query mode">
+            <Chip kind="soft">
               {describeAst(group.node, condition.labels)}
             </Chip>
           </span>
@@ -165,6 +174,8 @@ export const ConditionBar = ({ q, condition, onShare, onExport, onApi, exportMen
   const experiments = useDistribution({ field: "library_strategy", q, unit: "sra-experiment", selfExclusion: false, limit: 1 })
   const projects = useProjects({ q, selfExclusion: false, sort: "biosampleCount:desc", page: 1, perPage: 1 })
   const groups = conditionGroups(condition.ast)
+  const dataset = useDataset()
+  const termFields = new Set(dataset.data?.dslFields.filter((field) => field.kind === "term").map((field) => field.name))
 
   useEffect(() => {
     setDraft(q ?? "")
@@ -207,7 +218,7 @@ export const ConditionBar = ({ q, condition, onShare, onExport, onApi, exportMen
               ) : groups.length === 0 ? (
                 <div className="flex min-h-7 items-center px-1 text-fs-body-sm text-ink-soft">No condition. All entries of the dataset are shown.</div>
               ) : (
-                <Tree groups={groups} condition={condition} />
+                <Tree groups={groups} condition={condition} termFields={termFields} />
               )
             ) : (
               <div className="px-1">
@@ -215,14 +226,13 @@ export const ConditionBar = ({ q, condition, onShare, onExport, onApi, exportMen
                   <TextArea
                     value={draft}
                     onChange={setDraft}
-                    onSubmit={apply}
                     rows={2}
                     mono
                     spellCheck={false}
                     placeholder='disease:"MONDO:0007254" AND library_strategy:ATAC-seq'
                     aria-label="Condition"
                   />
-                  <Button size="sm" onClick={apply} title="Apply (⌘/Ctrl+Enter)">
+                  <Button size="sm" onClick={apply}>
                     Apply
                   </Button>
                 </div>

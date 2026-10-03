@@ -30,6 +30,10 @@ class InputDoc:
     title: str | None
     date_published: datetime.date | None
     attributes: list[Attribute] = field(default_factory=list)
+    # (name, value): the description paragraphs, the sample name, and the synonyms.
+    description: list[tuple[str, str]] = field(default_factory=list)
+    # (path, value): every string of the other members of the entry, without the contacts of the owner.
+    record: list[tuple[str, str]] = field(default_factory=list)
 
 
 def read_input(path: Path) -> Iterator[InputDoc]:
@@ -56,7 +60,70 @@ def parse_input_doc(doc: dict[str, Any]) -> InputDoc:
         title=title if isinstance(title, str) else None,
         date_published=parse_date(body.get("publication_date")),
         attributes=_attributes(body),
+        description=_description(description),
+        record=_record(body),
     )
+
+
+def _strings(value: Any) -> list[str]:
+    """A string, or the strings of a list."""
+    items = value if isinstance(value, list) else [value]
+    return [item for item in items if isinstance(item, str) and item]
+
+
+def _description(description: dict[str, Any]) -> list[tuple[str, str]]:
+    comment = description.get("Comment")
+    paragraphs = _strings(comment.get("Paragraph")) if isinstance(comment, dict) else []
+    synonyms = description.get("Synonym")
+    synonym_items = synonyms if isinstance(synonyms, list) else [synonyms]
+    return [
+        *(("Description", p) for p in paragraphs),
+        *(("Sample name", n) for n in _strings(description.get("SampleName"))),
+        *(
+            ("Synonym", s["content"])
+            for s in synonym_items
+            if isinstance(s, dict) and isinstance(s.get("content"), str)
+        ),
+    ]
+
+
+# Members that the record leaves out: the description and the attributes, which have their own place, and the contacts
+# of the owner, which name people.
+_NOT_IN_RECORD = {
+    "Attributes",
+    "Description.Title",
+    "Description.Comment",
+    "Description.SampleName",
+    "Description.Synonym",
+    "Owner.Contacts",
+}
+
+
+def _record(body: dict[str, Any]) -> list[tuple[str, str]]:
+    out: list[tuple[str, str]] = []
+    _leaves(body, "", out)
+    return out
+
+
+def _leaves(value: Any, path: str, out: list[tuple[str, str]]) -> None:
+    """Every string under `value`, with its path. The `content` of an object is the value of the object's own path."""
+    if path in _NOT_IN_RECORD:
+        return
+    if isinstance(value, dict):
+        for key, item in value.items():
+            child = path if key == "content" else f"{path}.{key}" if path else key
+            if key == "content" and not isinstance(item, (dict, list)):
+                _leaves(item, path, out)
+            else:
+                _leaves(item, child, out)
+    elif isinstance(value, list):
+        for item in value:
+            _leaves(item, path, out)
+    elif isinstance(value, str):
+        if value and path:
+            out.append((path, value))
+    elif isinstance(value, (int, float)) and not isinstance(value, bool) and path:
+        out.append((path, str(value)))
 
 
 def _attributes(body: dict[str, Any]) -> list[Attribute]:

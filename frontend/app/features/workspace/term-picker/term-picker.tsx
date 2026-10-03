@@ -4,7 +4,6 @@ import { useTerms } from "~/lib/api/queries"
 import type { TermHit } from "~/lib/api/types"
 import { formatCount } from "~/lib/format"
 import { fieldLabel } from "~/lib/labels"
-import { termDetail } from "~/lib/terms"
 import { ACTION_ICON, busyClass, cn, Modal, Select, TermRow, TermRowSkeleton, TextInput } from "~/ui"
 
 /** The field choice that searches every annotation field. */
@@ -84,7 +83,6 @@ export const PickerSearch = ({ fieldOptions, field, onField, fields, q, isSelect
                 key={`${hit.field}:${hit.termId}`}
                 label={hit.label ?? hit.termId}
                 id={hit.termId}
-                detail={termDetail(hit)}
                 count={formatCount(hit.count)}
                 {...(everyField ? { field: fieldLabel(hit.field) } : {})}
                 {...(hit.matchedSynonym ? { synonym: hit.matchedSynonym } : {})}

@@ -1,51 +1,34 @@
 export type Span = { start: number; end: number }
 
 /**
- * Merge overlapping or touching spans into disjoint ranges, sorted by start.
- * Spans that only touch (one's end equals another's start) merge too, since
- * two adjacent extracted matches read as one continuous highlight.
+ * A run of text. `matched` is true where a span covers it, and `active` where a span of the active set covers it, such
+ * as the evidence of the annotation under the pointer. An active run is also matched.
  */
-export const mergeSpans = (spans: Span[]): Span[] => {
-  const sorted = [...spans].sort((a, b) => a.start - b.start)
-  const merged: Span[] = []
-  for (const span of sorted) {
-    const last = merged[merged.length - 1]
-    if (last && span.start <= last.end) {
-      last.end = Math.max(last.end, span.end)
+export type TextSegment = { text: string; matched: boolean; active: boolean }
+
+const covers = (spans: Span[], at: number): boolean => spans.some((span) => span.start <= at && at < span.end)
+
+/**
+ * Splits text into the longest runs that are alike in being matched and in being active. The spans need not be sorted
+ * and may overlap or touch, and spans of different sets may overlap: where an active span overlaps another span, the run
+ * is active. Spans that touch read as one run, since two adjacent extracted matches read as one continuous highlight.
+ */
+export const segmentText = (text: string, spans: Span[], active: Span[] = []): TextSegment[] => {
+  const clamp = (at: number): number => Math.max(0, Math.min(at, text.length))
+  const cuts = new Set([0, text.length, ...[...spans, ...active].flatMap((span) => [clamp(span.start), clamp(span.end)])])
+  const points = [...cuts].sort((a, b) => a - b)
+  const segments: TextSegment[] = []
+  for (let index = 1; index < points.length; index++) {
+    const start = points[index - 1] ?? 0
+    const end = points[index] ?? start
+    const isActive = covers(active, start)
+    const isMatched = isActive || covers(spans, start)
+    const last = segments[segments.length - 1]
+    if (last && last.matched === isMatched && last.active === isActive) {
+      last.text += text.slice(start, end)
     } else {
-      merged.push({ start: span.start, end: span.end })
+      segments.push({ text: text.slice(start, end), matched: isMatched, active: isActive })
     }
   }
-  return merged
+  return segments.length ? segments : [{ text, matched: false, active: false }]
 }
-
-export type TextSegment = { text: string; matched: boolean }
-
-/** Splits text into matched/unmatched runs from a set of spans (need not be pre-merged or sorted). */
-export const segmentText = (text: string, spans: Span[]): TextSegment[] => {
-  const segments: TextSegment[] = []
-  let cursor = 0
-  for (const span of mergeSpans(spans)) {
-    const start = Math.max(cursor, Math.min(span.start, text.length))
-    const end = Math.max(start, Math.min(span.end, text.length))
-    if (start > cursor) segments.push({ text: text.slice(cursor, start), matched: false })
-    if (end > start) segments.push({ text: text.slice(start, end), matched: true })
-    cursor = Math.max(cursor, end)
-  }
-  if (cursor < text.length) segments.push({ text: text.slice(cursor), matched: false })
-  return segments.length ? segments : [{ text, matched: false }]
-}
-
-export type EvidenceContext = { pre: string; match: string; post: string }
-
-const CONTEXT_MAX = 40
-
-const clipHead = (text: string): string => (text.length > CONTEXT_MAX ? `…${text.slice(text.length - CONTEXT_MAX)}` : text)
-const clipTail = (text: string): string => (text.length > CONTEXT_MAX ? `${text.slice(0, CONTEXT_MAX)}…` : text)
-
-/** The matched substring of an evidence span plus up to ~40 characters of surrounding context. */
-export const evidenceContext = (source: string, start: number, end: number): EvidenceContext => ({
-  pre: clipHead(source.slice(0, start)),
-  match: source.slice(start, end),
-  post: clipTail(source.slice(end)),
-})

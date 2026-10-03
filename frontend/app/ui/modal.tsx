@@ -58,7 +58,6 @@ export const Modal = ({ open, onClose, title, description, children, width = "md
             type="button"
             onClick={onClose}
             aria-label="Close"
-            title="Close (Esc)"
             className="-mt-1 -mr-2 cursor-pointer rounded-button p-1.5 text-fs-h2 leading-none text-ink-soft hover:bg-brand-soft hover:text-ink"
           >
             <Icon name={ACTION_ICON.clear} />

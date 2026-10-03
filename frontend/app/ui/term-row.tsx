@@ -3,11 +3,9 @@ import { Fragment } from "react"
 import { cn } from "./cn"
 import { Skeleton } from "./skeleton"
 
-type TermRowProps = {
+type TermRowContentProps = {
   label: string
   id: string
-  /** Where the term sits in its ontology, shown only as the row's tooltip. */
-  detail: string
   count: string
   field?: string
   /** The synonym that the search matched, when the label and the ID did not. */
@@ -15,6 +13,9 @@ type TermRowProps = {
   /** The searched text, marked where it occurs in the label and the synonym. */
   highlight?: string
   note?: string
+}
+
+type TermRowProps = TermRowContentProps & {
   selected?: boolean
   onClick: () => void
   /** `lg` lines the row's content up with the `px-6` content of a dialog. */
@@ -58,21 +59,23 @@ const Marked = ({ text, highlight }: { text: string; highlight: string | undefin
 )
 
 /**
+ * The classes of a term row, for a row that is not a `TermRow` button, such as a link to the workspace: the same look,
+ * the same height, and the same response to the pointer.
+ */
+export const termRowClass = (padding: RowPadding = "sm", selected = false): string =>
+  cn(
+    "flex w-full cursor-pointer items-baseline gap-2 border-b border-brand-soft py-1.5 text-left hover:bg-brand-soft",
+    ROW_PADDING[padding],
+    selected && "bg-brand-soft",
+  )
+
+/**
  * One term of a search result on one line: its field (when the search covers every field), label, the synonym that the
  * search matched, and ID, with its count at the right edge. The unit of the count is named once, by the list around the
  * rows.
  */
-export const TermRow = ({ label, id, detail, count, field, synonym, highlight, note, selected, onClick, padding = "sm" }: TermRowProps) => (
-  <button
-    type="button"
-    onClick={onClick}
-    title={detail || undefined}
-    className={cn(
-      "flex w-full cursor-pointer items-baseline gap-2 border-b border-brand-soft py-1.5 text-left hover:bg-brand-soft",
-      ROW_PADDING[padding],
-      selected && "bg-brand-soft",
-    )}
-  >
+export const TermRowContent = ({ label, id, count, field, synonym, highlight, note }: TermRowContentProps) => (
+  <>
     {field && <span className="shrink-0 rounded-tag bg-brand-tint px-1.5 text-fs-label leading-snug text-brand">{field}</span>}
     <span className="min-w-0 shrink truncate font-medium text-ink">
       <Marked text={label} highlight={highlight} />
@@ -85,6 +88,13 @@ export const TermRow = ({ label, id, detail, count, field, synonym, highlight, n
     <span className="shrink-0 font-mono text-fs-micro text-ink-soft">{id}</span>
     {note && <span className="shrink-0 text-fs-micro font-semibold text-brand">{note}</span>}
     <span className="ml-auto shrink-0 pl-2 text-right font-mono text-fs-label text-ink-mid">{count}</span>
+  </>
+)
+
+/** A term row that does something on the page when it is pressed, such as adding the term to the condition. */
+export const TermRow = ({ selected, onClick, padding = "sm", ...content }: TermRowProps) => (
+  <button type="button" onClick={onClick} className={termRowClass(padding, selected)}>
+    <TermRowContent {...content} />
   </button>
 )
 

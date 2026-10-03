@@ -35,8 +35,9 @@ test.describe("condition", () => {
     await picker.getByRole("button").filter({ hasText: first.value }).click()
     await expect(picker).toBeHidden()
     await expectQ(page, `disease:"${first.value}"`)
-    await expect(conditionRegion(page).getByTitle(first.value)).toContainText(first.label)
-    await expect(conditionPanel(page).getByTitle(first.value)).toContainText(first.label)
+    await expect(conditionRegion(page).getByRole("button", { name: `Remove ${first.label}`, exact: true })).toBeVisible()
+    await expect(conditionRegion(page).getByText(first.value, { exact: true })).toBeVisible()
+    await expect(conditionPanel(page).getByRole("button", { name: `Remove Disease: ${first.label}` })).toBeVisible()
   })
 
   test("a term of the same field joins with OR and a different field with AND", async ({ page, request }) => {
@@ -56,7 +57,7 @@ test.describe("condition", () => {
   test("removing a chip drops its clause and Clear all empties the condition", async ({ page, request }) => {
     const { first, assay } = await startingPoints(request)
     await page.goto(workspaceUrl({ q: `disease:"${first.value}" AND library_strategy:${assay}` }))
-    await conditionRegion(page).getByTitle(first.value).getByRole("button", { name: "Remove" }).click()
+    await conditionRegion(page).getByRole("button", { name: `Remove ${first.label}`, exact: true }).click()
     await expectQ(page, `library_strategy:${assay}`)
     await conditionRegion(page).getByRole("button", { name: "Clear all" }).click()
     await expectQ(page, null)
@@ -117,7 +118,7 @@ test.describe("condition", () => {
     await expect(page.getByRole("main")).toContainText(pageRangeText(await countOf(request, "hypoxia")))
     await box.fill('"breast cancer" organoid')
     await expectQ(page, 'organoid AND "breast cancer"')
-    await expect(conditionRegion(page).getByTitle('organoid "breast cancer"')).toBeVisible()
+    await expect(conditionRegion(page).getByRole("button", { name: 'Remove organoid "breast cancer"', exact: true })).toBeVisible()
   })
 
   test("an accession typed as a keyword finds its entry", async ({ page, request }) => {
@@ -183,7 +184,7 @@ test.describe("condition", () => {
     await page.goto(workspaceUrl({ q: `${term} AND hypoxia` }))
     const box = conditionPanel(page).getByRole("textbox", { name: "Keyword" })
     await expect(box).toHaveValue("hypoxia")
-    await conditionRegion(page).getByTitle("hypoxia", { exact: true }).getByRole("button", { name: "Remove" }).click()
+    await conditionRegion(page).getByRole("button", { name: "Remove hypoxia", exact: true }).click()
     await expectQ(page, term)
     await expect(box).toHaveValue("")
   })
@@ -198,8 +199,8 @@ test.describe("condition", () => {
     await expect(conditionRegion(page)).toContainText(`NOT Assay: ${assay}`)
     await expect(conditionRegion(page)).toContainText(`Cell line: ${cellLine.label} OR Tissue: ${tissue.label}`)
     await expect(panel.getByRole("checkbox", { name: new RegExp(assay) })).not.toBeChecked()
-    await expect(panel.getByTitle(cellLine.value)).toHaveCount(0)
-    await expect(panel.getByTitle(tissue.value)).toHaveCount(0)
+    await expect(panel.getByRole("button", { name: `Remove Cell line: ${cellLine.label}` })).toHaveCount(0)
+    await expect(panel.getByRole("button", { name: `Remove Tissue: ${tissue.label}` })).toHaveCount(0)
   })
 
   test("the picker opens on every field and adds the chosen term under its own field", async ({ page, request }) => {
@@ -213,6 +214,6 @@ test.describe("condition", () => {
     await expect(hit).toContainText("Disease")
     await hit.click()
     await expectQ(page, `disease:"${first.value}"`)
-    await expect(conditionPanel(page).getByTitle(first.value)).toContainText(first.label)
+    await expect(conditionPanel(page).getByRole("button", { name: `Remove Disease: ${first.label}` })).toBeVisible()
   })
 })

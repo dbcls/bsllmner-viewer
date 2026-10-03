@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
+import orjson
 from fastapi import APIRouter, Query
 
 from bsllmner_viewer.api.common import q_of, version_ref
@@ -11,10 +12,11 @@ from bsllmner_viewer.api.deps import QParam, StoreDep, parse_condition
 from bsllmner_viewer.api.problems import NOT_FOUND_RESPONSE, ApiError
 from bsllmner_viewer.api.queries import entries as rq
 from bsllmner_viewer.api.queries.core import population
+from bsllmner_viewer.api.queries.dimensions import clauses_for, dimension
 from bsllmner_viewer.api.queries.entries import attributes_of, organism_of
 from bsllmner_viewer.api.queries.evidence import STRING_MATCH, find_spans
+from bsllmner_viewer.api.record_names import record_name
 from bsllmner_viewer.api.schemas import (
-    Attribute,
     EntriesResponse,
     EntryAnnotation,
     EntryBioProject,
@@ -22,12 +24,12 @@ from bsllmner_viewer.api.schemas import (
     EntryResponse,
     EntryType,
     Evidence,
+    MetadataItem,
     Pagination,
 )
+from bsllmner_viewer.build.mk2_filter_keys import MK2_FILTER_KEYS
 
 router = APIRouter(tags=["Entries"])
-
-TITLE_ATTRIBUTE = "title"
 
 
 @router.get(
@@ -70,7 +72,8 @@ def get_entry(store: StoreDep, accession: str) -> EntryResponse:
     with store.cursor() as cur:
         row = cur.execute(
             "SELECT b.accession, b.title, b.organism_id, b.organism_name, b.date_published, "
-            "b.attributes, r.name FROM biosample b JOIN run r USING (run_id) WHERE b.accession = ?",
+            "b.attributes, r.name, b.description, b.record FROM biosample b JOIN run r USING (run_id) "
+            "WHERE b.accession = ?",
             [accession],
         ).fetchone()
         if row is None:
@@ -97,27 +100,67 @@ def get_entry(store: StoreDep, accession: str) -> EntryResponse:
             "LEFT JOIN bioproject b ON b.accession = bb.bioproject WHERE bb.biosample = ? ORDER BY bb.bioproject",
             [accession],
         ).fetchall()
-    attributes = [
-        Attribute(name=str(a.get("name")), value=str(a.get("value")), harmonized_name=a.get("harmonized_name"))
-        for a in attributes_of(row[5])
-    ]
-    searchable: list[tuple[str, int, str]] = [(TITLE_ATTRIBUTE, -1, row[1])] if row[1] else []
-    searchable += [(a.name, i, a.value) for i, a in enumerate(attributes)]
-    annotations: list[EntryAnnotation] = []
-    field_order = {f.name: f.position for f in store.fields}
-    for field, value, status, term_id, label in sorted(annotation_rows, key=lambda r: field_order.get(str(r[0]), 99)):
-        evidence: list[Evidence] = []
-        if value:
-            for name, index, text in searchable:
-                evidence.extend(
-                    Evidence(attribute=name, attribute_index=index, start=span.start, end=span.end, method=STRING_MATCH)
-                    for span in find_spans(text, value)
-                )
-        annotations.append(
-            EntryAnnotation(
-                field=str(field), value=value, status=str(status), term_id=term_id, label=label, evidence=evidence
+    items = [
+        *([MetadataItem(kind="description", name="Title", value=row[1], harmonized_name=None)] if row[1] else []),
+        *(
+            MetadataItem(kind="description", name=str(d["name"]), value=str(d["value"]), harmonized_name=None)
+            for d in orjson.loads(row[7])
+        ),
+        *(
+            MetadataItem(kind="record", name=record_name(str(r["path"])), value=str(r["value"]), harmonized_name=None)
+            for r in orjson.loads(row[8])
+        ),
+        *(
+            MetadataItem(
+                kind="attribute",
+                name=str(a.get("name")),
+                value=str(a.get("value")),
+                harmonized_name=a.get("harmonized_name"),
             )
+            for a in attributes_of(row[5])
+        ),
+    ]
+    field_order = {f.name: f.position for f in store.fields}
+    found: list[tuple[str, str | None, str, str | None, str | None, list[tuple[int, int, int]]]] = []
+    for field, value, status, term_id, label in sorted(annotation_rows, key=lambda r: field_order.get(str(r[0]), 99)):
+        spans = (
+            [
+                (index, span.start, span.end)
+                for index, item in enumerate(items)
+                for span in find_spans(item.value, value)
+            ]
+            if value
+            else []
         )
+        found.append((str(field), value, str(status), term_id, label, spans))
+    # An attribute under a name that bsllmner-mk2 drops records how the BioSample was submitted and archived, and so
+    # does an item of the record; they are shown only when evidence of the BioSample points to them.
+    evidenced = {index for *_, spans in found for index, _, _ in spans}
+    shown = [
+        index
+        for index, item in enumerate(items)
+        if item.kind == "description"
+        or (item.kind == "attribute" and item.name not in MK2_FILTER_KEYS)
+        or index in evidenced
+    ]
+    position = {index: at for at, index in enumerate(shown)}
+    annotations = [
+        EntryAnnotation(
+            field=field,
+            value=value,
+            status=status,
+            term_id=term_id,
+            label=label,
+            clauses=[] if term_id is None else clauses_for(dimension(store.field_set, field), term_id),
+            evidence=[
+                Evidence(
+                    name=items[index].name, metadata_index=position[index], start=start, end=end, method=STRING_MATCH
+                )
+                for index, start, end in spans
+            ],
+        )
+        for field, value, status, term_id, label, spans in found
+    ]
     return EntryResponse(
         dataset_version=version_ref(store),
         identifier=str(row[0]),
@@ -126,7 +169,7 @@ def get_entry(store: StoreDep, accession: str) -> EntryResponse:
         organism=organism_of(row[2], row[3]),
         date_published=row[4].isoformat() if row[4] else None,
         run=str(row[6]),
-        attributes=attributes,
+        metadata=[items[index] for index in shown],
         annotations=annotations,
         experiments=[
             EntryExperiment(

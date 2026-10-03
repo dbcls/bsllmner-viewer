@@ -1,7 +1,7 @@
 import { render } from "@testing-library/react"
 import { describe, expect, it } from "vitest"
 
-import { ACTION_ICON, Icon, ICON_NAMES } from "~/ui/icons"
+import { ACTION_ICON, ALERT_ICON, Icon, ICON_NAMES } from "~/ui/icons"
 
 describe("Icon", () => {
   it.each(ICON_NAMES)("draws %s as a decorative SVG that follows the font size", (name) => {
@@ -25,5 +25,12 @@ describe("ACTION_ICON", () => {
   it("gives every action its own glyph", () => {
     const glyphs = Object.values(ACTION_ICON)
     expect(new Set(glyphs).size).toBe(glyphs.length)
+  })
+})
+
+describe("ALERT_ICON", () => {
+  it("uses no glyph of an action, so that a mark of an alert is never read as a control", () => {
+    const actions = new Set<string>(Object.values(ACTION_ICON))
+    for (const glyph of Object.values(ALERT_ICON)) expect(actions.has(glyph)).toBe(false)
   })
 })

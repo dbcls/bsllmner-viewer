@@ -4,7 +4,14 @@ from __future__ import annotations
 
 import duckdb
 
+from bsllmner_viewer.api.queries.evidence import find_spans
+from bsllmner_viewer.build.mk2_filter_keys import MK2_FILTER_KEYS
+from bsllmner_viewer.dsl.fields import STATUS_GROUPS
+from bsllmner_viewer.store.organisms import ORGANISM_NAMES
 from bsllmner_viewer.store.schema import drop_derived_tables
+
+_ATTRIBUTES = '[{"name": "VARCHAR", "value": "VARCHAR", "harmonized_name": "VARCHAR"}]'
+_FETCH_ROWS = 10_000
 
 
 def derive(con: duckdb.DuckDBPyConnection, target_assays: list[str]) -> None:
@@ -12,7 +19,8 @@ def derive(con: duckdb.DuckDBPyConnection, target_assays: list[str]) -> None:
     con.execute(
         """
         CREATE TABLE biosample AS
-        SELECT e.accession, e.run_id, e.organism_id, e.organism_name, e.title, e.date_published, e.attributes
+        SELECT e.accession, e.run_id, e.organism_id, e.organism_name, e.title, e.date_published, e.attributes,
+               e.description, e.record
         FROM entry e JOIN run r USING (run_id)
         QUALIFY row_number() OVER (
             PARTITION BY e.accession ORDER BY r.manifest_index
@@ -20,7 +28,6 @@ def derive(con: duckdb.DuckDBPyConnection, target_assays: list[str]) -> None:
         ORDER BY e.accession
         """
     )
-    con.execute("CREATE UNIQUE INDEX biosample_accession ON biosample (accession)")
     con.execute(
         """
         CREATE TABLE annotation AS
@@ -29,6 +36,8 @@ def derive(con: duckdb.DuckDBPyConnection, target_assays: list[str]) -> None:
         ORDER BY a.field, a.status, a.accession
         """
     )
+    _omit_attributes(con)
+    con.execute("CREATE UNIQUE INDEX biosample_accession ON biosample (accession)")
     con.execute(
         """
         CREATE TABLE term AS
@@ -205,6 +214,7 @@ def derive(con: duckdb.DuckDBPyConnection, target_assays: list[str]) -> None:
         ORDER BY a.field, a.status
         """
     )
+    _derive_whole_population_counts(con, target_assays)
     con.execute(
         """
         CREATE TABLE population_count AS
@@ -214,6 +224,90 @@ def derive(con: duckdb.DuckDBPyConnection, target_assays: list[str]) -> None:
                 JOIN biosample_bioproject bp ON bp.biosample = pn2.biosample) AS n_bioproject
         FROM population pn
         """
+    )
+
+
+def _derive_whole_population_counts(con: duckdb.DuckDBPyConnection, target_assays: list[str]) -> None:
+    """BioSamples of the whole population per target assay, per organism, and with a term per annotation field."""
+    con.execute(
+        """
+        CREATE TABLE assay_count AS
+        SELECT t.library_strategy, count(DISTINCT pn.biosample) AS n_biosample
+        FROM (SELECT unnest(?::VARCHAR[]) AS library_strategy) t
+        LEFT JOIN population pn ON pn.library_strategy = t.library_strategy
+        GROUP BY t.library_strategy
+        ORDER BY n_biosample DESC, t.library_strategy
+        """,
+        [target_assays],
+    )
+    con.execute(
+        f"""
+        CREATE TABLE organism_count AS
+        SELECT b.organism_id, any_value(o.organism_name) AS organism_name, count(DISTINCT pn.biosample) AS n_biosample
+        FROM population pn JOIN biosample b ON b.accession = pn.biosample
+        LEFT JOIN ({ORGANISM_NAMES}) o ON o.organism_id = b.organism_id
+        WHERE b.organism_id IS NOT NULL
+        GROUP BY b.organism_id
+        ORDER BY n_biosample DESC, b.organism_id
+        """
+    )
+    con.execute(
+        """
+        CREATE TABLE field_mapped_count AS
+        SELECT f.name AS field, count(DISTINCT m.biosample) AS n_biosample
+        FROM field f
+        LEFT JOIN (
+            SELECT a.field, a.biosample FROM annotation a
+            WHERE list_contains(?, a.status) AND a.biosample IN (SELECT biosample FROM population)
+        ) m ON m.field = f.name
+        GROUP BY f.name, f.position
+        ORDER BY f.position
+        """,
+        [list(STATUS_GROUPS["mapped"])],
+    )
+
+
+def _omit_attributes(con: duckdb.DuckDBPyConnection) -> None:
+    """Leave out of every BioSample the attributes under the mk2 filter keys in which no extracted value occurs.
+
+    A key stays as soon as one of its attributes holds an extracted value of its BioSample, by the rule that evidence
+    uses, so that leaving the other keys out removes no evidence.
+    """
+    candidates = sorted(MK2_FILTER_KEYS)
+    con.execute(
+        f"""
+        CREATE TEMP TABLE candidate_attribute AS
+        WITH attribute AS (
+            SELECT accession, unnest(from_json(attributes, '{_ATTRIBUTES}')) AS a FROM biosample
+        ),
+        extracted AS (
+            SELECT biosample, list(DISTINCT extracted_value) AS extracted_values FROM annotation
+            WHERE extracted_value IS NOT NULL AND extracted_value <> '' GROUP BY biosample
+        )
+        SELECT attribute.a.name AS name, attribute.a.value AS value, extracted.extracted_values
+        FROM attribute JOIN extracted ON extracted.biosample = attribute.accession
+        WHERE list_contains(?, attribute.a.name) AND attribute.a.value IS NOT NULL
+        """,
+        [candidates],
+    )
+    held: set[str] = set()
+    for name in candidates:
+        con.execute("SELECT value, extracted_values FROM candidate_attribute WHERE name = ?", [name])
+        while batch := con.fetchmany(_FETCH_ROWS):
+            if any(find_spans(value, extracted) for value, values in batch for extracted in values):
+                held.add(name)
+                break
+    con.execute("DROP TABLE candidate_attribute")
+    omitted = [name for name in candidates if name not in held]
+    con.execute("CREATE TABLE omitted_attribute (name VARCHAR PRIMARY KEY)")
+    con.executemany("INSERT INTO omitted_attribute VALUES (?)", [[name] for name in omitted])
+    con.execute(
+        f"""
+        UPDATE biosample
+        SET attributes = to_json(list_filter(from_json(attributes, '{_ATTRIBUTES}'), x -> NOT list_contains(?, x.name)))
+        WHERE len(list_filter(from_json(attributes, '{_ATTRIBUTES}'), x -> list_contains(?, x.name))) > 0
+        """,
+        [omitted, omitted],
     )
 
 
@@ -242,6 +336,12 @@ def _derive_searchable_text(con: duckdb.DuckDBPyConnection) -> None:
                        ' | ',
                        replace(b.title, '|', '/'),
                        replace(b.organism_name, '|', '/'),
+                       nullif(array_to_string(
+                           list_transform(
+                               from_json(b.description, '[{"value": "VARCHAR"}]'), x -> replace(x.value, '|', '/')
+                           ),
+                           ' | '
+                       ), ''),
                        array_to_string(
                            list_transform(
                                from_json(b.attributes, '[{"value": "VARCHAR"}]'), x -> replace(x.value, '|', '/')

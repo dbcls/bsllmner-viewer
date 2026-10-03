@@ -3,6 +3,8 @@ import { formatCount } from "~/lib/format"
 
 export type BarDatum = {
   label: string
+  /** The term ID, written after the label in the grey of the page, when the chart shows term IDs. */
+  id?: string
   count: number
 }
 
@@ -27,7 +29,8 @@ export const barsSvg = (title: string, unit: string, rows: BarDatum[]): string =
     const y = 40 + index * rowHeight
     const x = barLeft
     const total = (row.count / max) * barWidth
-    parts.push(`<text x="${x}" y="${y + 10}" fill="${token("--color-ink")}">${escape(row.label)}</text>`)
+    const id = row.id ? `<tspan font-family="IBM Plex Mono, monospace" font-size="10" fill="${token("--color-ink-soft")}"> ${escape(row.id)}</tspan>` : ""
+    parts.push(`<text x="${x}" y="${y + 10}" fill="${token("--color-ink")}">${escape(row.label)}${id}</text>`)
     parts.push(`<rect x="${x}" y="${y + 15}" width="${barWidth}" height="8" rx="2" fill="${token("--color-brand-soft")}"/>`)
     parts.push(`<rect x="${x}" y="${y + 15}" width="${total.toFixed(1)}" height="8" rx="2" fill="${token("--color-brand-light")}"/>`)
     parts.push(`<text x="${width - 12}" y="${y + 22}" text-anchor="end" font-family="IBM Plex Mono, monospace" fill="${token("--color-ink-mid")}">${formatCount(row.count)}</text>`)

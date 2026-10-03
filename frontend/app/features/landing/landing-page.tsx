@@ -1,14 +1,14 @@
-import { Link, useNavigate } from "react-router"
+import { Link } from "react-router"
 
-import { selectElement, useDataset, useDistribution, useParsedCondition } from "~/lib/api/queries"
-import type { AstNode, Element, Unit } from "~/lib/api/types"
-import { conditionLabels } from "~/lib/condition-labels"
+import { useDataset } from "~/lib/api/queries"
+import type { Clause, DatasetResponse, Unit } from "~/lib/api/types"
 import { formatCount } from "~/lib/format"
 import { fieldLabel, organismLabel, unitLabel } from "~/lib/labels"
 import { MATRIX_PRESETS, type Preset, QUESTION_PRESETS } from "~/lib/presets"
 import { workspaceSearch } from "~/lib/workspace-state"
-import { ACTION_ICON, Caption, Card, Clickable, ExternalLink, Icon, PageHeading, SectionHeading, Skeleton, Tag } from "~/ui"
+import { ACTION_ICON, Caption, Card, ExternalLink, Icon, PageHeading, SectionHeading, Skeleton, Tag } from "~/ui"
 
+import { ConditionLink } from "./condition-link"
 import { TermSearch } from "./term-search"
 
 const STATISTICS_FIELDS = ["library_strategy", "organism_id"] as const
@@ -73,8 +73,7 @@ const PresetLinks = ({ presets, detail }: { presets: Preset[]; detail: PresetDet
 
 /** An example: its title and its detail, linked to the workspace in the state it describes. */
 const PresetLink = ({ preset, detail }: { preset: Preset; detail: PresetDetail }) => {
-  const parsed = useParsedCondition(detail === "values" ? (preset.state.q ?? null) : null)
-  const values = parsed.data ? conditionLabels(parsed.data.ast as AstNode, parsed.data.labels) : []
+  const values = preset.values ?? []
   return (
     <Link
       to={`/entries${workspaceSearch(preset.state)}`}
@@ -105,20 +104,29 @@ const Total = ({ unit, value }: { unit: Unit; value: number | undefined }) => (
   </div>
 )
 
+/** A bar of the statistics: a value of a field of the whole dataset, its BioSamples, and the clause that selects it. */
+type StatisticsBar = { value: string; label: string; count: number; clauses: Clause[] }
+
+/** The bars of a field of the statistics, from the counts of the whole dataset that build made, in descending order. */
+const statisticsBars = (field: (typeof STATISTICS_FIELDS)[number], dataset: DatasetResponse): StatisticsBar[] =>
+  field === "library_strategy"
+    ? dataset.assays.map(({ name, biosampleCount }) => ({ value: name, label: name, count: biosampleCount, clauses: [{ field, value: name }] }))
+    : dataset.organisms.map(({ identifier, name, biosampleCount }) => ({
+      value: identifier,
+      label: organismLabel(identifier, name),
+      count: biosampleCount,
+      clauses: [{ field, value: identifier }],
+    }))
+
 const FieldStatistics = ({ field }: { field: (typeof STATISTICS_FIELDS)[number] }) => {
-  const navigate = useNavigate()
   const limit = field === "organism_id" ? 2 : 3
-  const distribution = useDistribution({ field, q: null, unit: "biosample", selfExclusion: true, limit })
-  const elements: Element[] = distribution.data?.elements ?? []
+  const dataset = useDataset()
+  const elements = dataset.data ? statisticsBars(field, dataset.data).slice(0, limit) : []
   const max = Math.max(1, ...elements.map((e) => e.count))
-  const open = async (element: Element) => {
-    const condition = await selectElement({ q: null, clauses: element.clauses })
-    await navigate(`/entries${workspaceSearch({ q: condition.dsl })}`)
-  }
   return (
     <div className="mt-4 border-t border-border-soft pt-3.5">
       <div className="mb-1.5 font-semibold">{fieldLabel(field)}</div>
-      {distribution.data === undefined &&
+      {dataset.data === undefined &&
         Array.from({ length: limit }, (_, index) => (
           <div key={index} aria-hidden="true" className="flex items-center gap-2 py-0.5">
             <span className="min-w-0 flex-1">
@@ -133,19 +141,19 @@ const FieldStatistics = ({ field }: { field: (typeof STATISTICS_FIELDS)[number] 
           </div>
         ))}
       {elements.map((element) => (
-        <Clickable
+        <ConditionLink
           key={element.value}
-          onClick={() => void open(element)}
+          clauses={element.clauses}
           className="flex w-full cursor-pointer items-center gap-2 rounded-tag py-0.5 text-left hover:bg-brand-soft"
         >
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-fs-body-sm">{field === "organism_id" ? organismLabel(element.value, element.label) : element.label}</span>
+            <span className="block truncate text-fs-body-sm">{element.label}</span>
             <span className="mt-0.5 block h-1.5 overflow-hidden rounded-badge bg-brand-soft">
               <span className="block h-full bg-brand-light" style={{ width: `${(element.count / max) * 100}%` }} />
             </span>
           </span>
           <span className="w-17 shrink-0 text-right font-mono text-fs-label text-ink-mid">{formatCount(element.count)}</span>
-        </Clickable>
+        </ConditionLink>
       ))}
     </div>
   )

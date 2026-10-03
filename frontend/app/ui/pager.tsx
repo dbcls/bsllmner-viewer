@@ -36,10 +36,10 @@ export const Pager = ({ page, perPage, total, onChange }: PagerProps) => {
         )}
       </span>
       <span className="flex gap-1">
-        <button type="button" className={cn(STEP)} onClick={() => onChange(page - 1)} disabled={page <= 1} aria-label="Previous page" title="Previous page">
+        <button type="button" className={cn(STEP)} onClick={() => onChange(page - 1)} disabled={page <= 1} aria-label="Previous page">
           <Icon name={ACTION_ICON.goBack} />
         </button>
-        <button type="button" className={cn(STEP)} onClick={() => onChange(page + 1)} disabled={page >= pages} aria-label="Next page" title="Next page">
+        <button type="button" className={cn(STEP)} onClick={() => onChange(page + 1)} disabled={page >= pages} aria-label="Next page">
           <Icon name={ACTION_ICON.goTo} />
         </button>
       </span>

@@ -28,6 +28,18 @@ describe("apiRequestFor", () => {
     expect(url.searchParams.get("unit")).toBe("sra-experiment")
   })
 
+  it("requests the trend with the years of the Trend tab, and without them when the tab has no limits", () => {
+    const limited = new URL(apiRequestFor({ ...DEFAULTS, tab: "trend", trendField: "disease", trendTerms: ["A:1"], trendFrom: 2010, trendTo: 2020 }), "http://localhost")
+    expect(limited.pathname).toBe("/api/trend")
+    expect(limited.searchParams.get("yearFrom")).toBe("2010")
+    expect(limited.searchParams.get("yearTo")).toBe("2020")
+    expect(limited.searchParams.get("elements")).toBe("A:1")
+    const whole = new URL(apiRequestFor({ ...DEFAULTS, tab: "trend" }), "http://localhost")
+    expect(whole.searchParams.get("field")).toBe(DEFAULTS.trendField)
+    expect(whole.searchParams.has("yearFrom")).toBe(false)
+    expect(whole.searchParams.has("yearTo")).toBe(false)
+  })
+
   it("requests the projects with the sort, the page, and the rows per page of the Projects tab", () => {
     const url = new URL(apiRequestFor({ ...DEFAULTS, tab: "projects", sort: "experimentCount:asc", page: 3, perPage: 50 }), "http://localhost")
     expect(url.pathname).toBe("/api/projects")

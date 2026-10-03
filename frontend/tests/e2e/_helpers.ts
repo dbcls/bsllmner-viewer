@@ -67,11 +67,11 @@ export const cell = (page: Page, row: string, col: string): Locator =>
 export const cellButton = (page: Page, row: string, col: string): Locator =>
   page.getByRole("button", { name: new RegExp(`^${escapeRegExp(row)} × ${escapeRegExp(col)}:`) })
 
-/** The controls of one axis of the heatmap: its name, its dimension, and the button that opens its terms. */
-export const axisControls = (page: Page, side: "Rows" | "Columns"): Locator => page.getByRole("group", { name: side })
+/** The controls of one axis of a chart view: its name, its dimension, and the button that opens its terms. */
+export const axisControls = (page: Page, side: "Rows" | "Columns" | "Lines"): Locator => page.getByRole("group", { name: side })
 
-/** The button of a heatmap axis that shows the number of its terms and opens them. */
-export const axisTermsButton = (page: Page, side: "Rows" | "Columns"): Locator => axisControls(page, side).getByRole("button", { name: /^\d+ terms?$/ })
+/** The button of an axis of a chart view that shows the number of its terms and opens them. */
+export const axisTermsButton = (page: Page, side: "Rows" | "Columns" | "Lines"): Locator => axisControls(page, side).getByRole("button", { name: /^\d+ terms?$/ })
 
 /** The dialog of the terms of a heatmap axis, with the ways to change them. */
 export const axisTerms = (page: Page, side: "Rows" | "Columns"): Locator => page.getByRole("dialog", { name: side === "Rows" ? "Row terms" : "Column terms" })

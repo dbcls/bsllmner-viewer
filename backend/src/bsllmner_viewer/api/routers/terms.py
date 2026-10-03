@@ -1,19 +1,29 @@
-"""Term search and children."""
+"""Term search, children, and one term."""
 
 from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Path, Query
 
 from bsllmner_viewer.api.common import aggregation_population, q_of, version_ref
 from bsllmner_viewer.api.deps import FacetSelfExcludeParam, QParam, StoreDep, parse_condition
-from bsllmner_viewer.api.problems import ApiError
+from bsllmner_viewer.api.problems import NOT_FOUND_RESPONSE, ApiError
 from bsllmner_viewer.api.queries import terms as tq
 from bsllmner_viewer.api.queries.aggregate import element_counts, has_children, parents_within, term_status_counts
 from bsllmner_viewer.api.queries.core import population
 from bsllmner_viewer.api.queries.dimensions import clauses_for, dimension
-from bsllmner_viewer.api.schemas import TermChildrenResponse, TermElement, TermHit, TermsResponse, Unit
+from bsllmner_viewer.api.schemas import (
+    TermChildrenResponse,
+    TermElement,
+    TermHit,
+    TermOntology,
+    TermParent,
+    TermResponse,
+    TermsResponse,
+    Unit,
+)
+from bsllmner_viewer.api.term_sites import ontology_of, shown_synonyms, term_url
 
 router = APIRouter(tags=["Terms"])
 
@@ -145,4 +155,40 @@ def term_children(
             )
             for t, label in children
         ],
+    )
+
+
+@router.get(
+    "/terms/{termId}",
+    operation_id="getTerm",
+    responses=NOT_FOUND_RESPONSE,
+    response_model=TermResponse,
+    summary="A term with its synonyms, parents, ontology, and page",
+)
+def get_term(store: StoreDep, term_id: Annotated[str, Path(alias="termId")]) -> TermResponse:
+    with store.cursor() as cur:
+        row = cur.execute("SELECT label FROM term WHERE term_id = ?", [term_id]).fetchone()
+        if row is None:
+            raise ApiError(None, 404, f"term {term_id} is not in the dataset")
+        synonyms = [
+            str(r[0])
+            for r in cur.execute(
+                "SELECT synonym FROM term_synonym WHERE term_id = ? ORDER BY synonym", [term_id]
+            ).fetchall()
+        ]
+        parents = cur.execute(
+            "SELECT p.parent_id, t.label FROM term_parent p JOIN term t ON t.term_id = p.parent_id "
+            "WHERE p.term_id = ? ORDER BY lower(t.label), p.parent_id",
+            [term_id],
+        ).fetchall()
+    label = row[0]
+    ontology = ontology_of(term_id)
+    return TermResponse(
+        dataset_version=version_ref(store),
+        term_id=term_id,
+        label=label,
+        ontology=None if ontology is None else TermOntology(prefix=ontology[0], name=ontology[1]),
+        synonyms=shown_synonyms(label, synonyms),
+        parents=[TermParent(term_id=str(p), label=lab) for p, lab in parents],
+        url=term_url(term_id),
     )

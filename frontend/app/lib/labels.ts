@@ -22,18 +22,9 @@ export const fieldLabel = (field: string): string => {
   return field.replaceAll("_", " ").replace(/^./, (c) => c.toUpperCase())
 }
 
-export const ONTOLOGY_LABELS: Record<string, string> = {
-  CVCL: "Cellosaurus",
-  CL: "Cell Ontology",
-  UBERON: "UBERON",
-  MONDO: "MONDO",
-  CHEBI: "ChEBI",
-  NCBIGene: "NCBI Gene",
-  EFO: "EFO",
-  BFO: "BFO",
-}
-
-export const ontologyLabel = (prefix: string): string => ONTOLOGY_LABELS[prefix] ?? prefix
+/** The name of an ontology by its prefix, from the ontologies that the dataset describes, or the prefix itself. */
+export const ontologyName = (prefix: string, ontologies: readonly { prefix: string; name: string }[]): string =>
+  ontologies.find((ontology) => ontology.prefix === prefix)?.name ?? prefix
 
 export const ontologyOfTerm = (termId: string): string => termId.split(":")[0] ?? termId
 
@@ -50,15 +41,17 @@ export type StatusGroup = "mapped" | "unmapped" | "no_value"
 export type StatusInfo = {
   label: string
   group: StatusGroup
+  /** What the status says about the annotation, in one sentence for the help of the screens that show it. */
+  meaning: string
 }
 
 export const STATUS_INFO: Record<StatusCode, StatusInfo> = {
-  mapped_exact: { label: "Exact match", group: "mapped" },
-  mapped_selected: { label: "LLM selected", group: "mapped" },
-  unmapped_no_candidate: { label: "No candidate", group: "unmapped" },
-  unmapped_rejected: { label: "Rejected", group: "unmapped" },
-  not_stated: { label: "Not stated", group: "no_value" },
-  extraction_failed: { label: "Extraction failed", group: "no_value" },
+  mapped_exact: { label: "Exact match", group: "mapped", meaning: "The value matched an ontology label or synonym exactly." },
+  mapped_selected: { label: "LLM selected", group: "mapped", meaning: "The LLM selected the term from the candidate terms." },
+  unmapped_no_candidate: { label: "No candidate", group: "unmapped", meaning: "No ontology term resembled the value." },
+  unmapped_rejected: { label: "Rejected", group: "unmapped", meaning: "Similar terms existed, but the LLM adopted none." },
+  not_stated: { label: "Not stated", group: "no_value", meaning: "No value was extracted for the field." },
+  extraction_failed: { label: "Extraction failed", group: "no_value", meaning: "The output of the LLM could not be read, so no field has a value." },
 }
 
 export const STATUS_ORDER: StatusCode[] = [
@@ -77,7 +70,7 @@ export const GROUP_LABELS: Record<StatusGroup, string> = {
 }
 
 export const statusInfo = (status: string): StatusInfo =>
-  STATUS_INFO[status as StatusCode] ?? { label: status, group: "no_value" }
+  STATUS_INFO[status as StatusCode] ?? { label: status, group: "no_value", meaning: "" }
 
 export const statusLabel = (value: string): string =>
   value in GROUP_LABELS ? GROUP_LABELS[value as StatusGroup] : statusInfo(value).label

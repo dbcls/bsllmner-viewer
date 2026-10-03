@@ -6,16 +6,19 @@ type ToggleProps = {
   label: ReactNode
   checked: boolean
   onChange: () => void
-  title?: string
+  /** The switch is shown but cannot change, as when what it shows or hides is not there. */
+  disabled?: boolean
 }
 
 /** A switch with its label to the right. */
-export const Toggle = ({ label, checked, onChange, title }: ToggleProps) => (
-  <label className="inline-flex cursor-pointer items-center gap-1.5 text-fs-label text-ink-mid select-none" title={title}>
+export const Toggle = ({ label, checked, onChange, disabled = false }: ToggleProps) => (
+  <label
+    className={cn("inline-flex items-center gap-1.5 text-fs-label select-none", disabled ? "cursor-not-allowed text-ink-softer" : "cursor-pointer text-ink-mid")}
+  >
     <span
       className={cn(
         "relative inline-block h-4 w-7 rounded-pill transition-colors",
-        checked ? "bg-brand" : "bg-border-soft",
+        checked && !disabled ? "bg-brand" : "bg-border-soft",
         "has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-brand-light has-[:focus-visible]:ring-offset-1",
       )}
     >
@@ -25,7 +28,7 @@ export const Toggle = ({ label, checked, onChange, title }: ToggleProps) => (
           checked && "translate-x-3",
         )}
       />
-      <input type="checkbox" role="switch" checked={checked} onChange={onChange} className="sr-only" />
+      <input type="checkbox" role="switch" checked={checked} onChange={onChange} disabled={disabled} className="sr-only" />
     </span>
     {label}
   </label>

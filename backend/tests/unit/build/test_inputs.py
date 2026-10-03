@@ -160,3 +160,61 @@ def test_parse_input_doc_prefers_the_wrapped_entry_over_top_level_members() -> N
     }
     parsed = parse_input_doc(doc)
     assert (parsed.title, parsed.organism_id) == ("inner", 9606)
+
+
+def test_parse_input_doc_reads_paragraphs_sample_name_and_synonyms_in_their_shapes() -> None:
+    doc = parse_input_doc(
+        {
+            "accession": "SAMN1",
+            "Description": {
+                "Title": "T",
+                "SampleName": "S1",
+                "Comment": {"Paragraph": ["first", "", "second"]},
+                "Synonym": [{"db": "A", "content": "syn a"}, {"db": "B"}, {"db": "C", "content": "syn c"}],
+            },
+        }
+    )
+    assert doc.description == [
+        ("Description", "first"),
+        ("Description", "second"),
+        ("Sample name", "S1"),
+        ("Synonym", "syn a"),
+        ("Synonym", "syn c"),
+    ]
+    single = parse_input_doc(
+        {"accession": "SAMN2", "Description": {"Comment": {"Paragraph": "only"}, "Synonym": {"content": "s"}}}
+    )
+    assert single.description == [("Description", "only"), ("Synonym", "s")]
+
+
+def test_parse_input_doc_reads_the_record_as_paths_without_the_description_attributes_and_contacts() -> None:
+    doc = parse_input_doc(
+        {
+            "BioSample": {
+                "access": "public",
+                "id": 12,
+                "Ids": {
+                    "Id": [{"namespace": "BioSample", "content": "SAMN1"}, {"namespace": "SRA", "content": "SRS1"}]
+                },
+                "Description": {"Title": "T", "Organism": {"taxonomy_id": "9606", "OrganismName": "Homo sapiens"}},
+                "Owner": {"Name": {"content": "Lab"}, "Contacts": {"Contact": {"Name": {"First": "Ann"}}}},
+                "Links": None,
+                "Status": {"status": "live", "when": "2020"},
+                "Attributes": {"Attribute": [{"attribute_name": "a", "content": "v"}]},
+            },
+            "accession": "SAMN1",
+        }
+    )
+    assert doc.record == [
+        ("access", "public"),
+        ("id", "12"),
+        ("Ids.Id.namespace", "BioSample"),
+        ("Ids.Id", "SAMN1"),
+        ("Ids.Id.namespace", "SRA"),
+        ("Ids.Id", "SRS1"),
+        ("Description.Organism.taxonomy_id", "9606"),
+        ("Description.Organism.OrganismName", "Homo sapiens"),
+        ("Owner.Name", "Lab"),
+        ("Status.status", "live"),
+        ("Status.when", "2020"),
+    ]

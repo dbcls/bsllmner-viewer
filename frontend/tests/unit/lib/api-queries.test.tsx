@@ -66,6 +66,13 @@ describe.each([true, false])("queries with selfExclusion=%s", (selfExclusion) =>
     expect((await lastCall()).query["facetSelfExclude"]).toBe(expected)
   })
 
+  it("useTrend sends the years as yearFrom and yearTo", async () => {
+    renderHook(() => useTrend({ q: null, unit: "biosample", selfExclusion, yearFrom: 2010, yearTo: 2020 }), { wrapper })
+    const url = await lastCall()
+    expect(url.query["yearFrom"]).toBe(2010)
+    expect(url.query["yearTo"]).toBe(2020)
+  })
+
   it("useProjects sends facetSelfExclude, sort, and perPage", async () => {
     renderHook(() => useProjects({ q: null, selfExclusion, sort: "experimentCount:asc", page: 2, perPage: 25 }), { wrapper })
     const url = await lastCall()

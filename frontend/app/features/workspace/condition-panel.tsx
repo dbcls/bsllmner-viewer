@@ -73,7 +73,6 @@ export const ConditionPanel = ({ q, condition, onAddTerm }: ConditionPanelProps)
                 field={fieldLabel(clause.field)}
                 value={clauseLabel(clause, condition.labels)}
                 onRemove={() => void condition.toggle([clause])}
-                title={clause.value ?? ""}
               />
             ))}
           </div>
