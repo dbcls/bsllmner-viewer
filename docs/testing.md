@@ -1,52 +1,58 @@
 # Testing
 
-This document describes what is tested, how the tests are divided, and what may be replaced by a test double. The commands that run the tests are in [development.md](development.md).
+This document describes what the tests check, how the tests are divided into kinds, and what a test may replace with a test double. [development.md](development.md) gives the commands that run the tests.
 
 ## Kinds
 
-Tests are divided by the kind of failure that they find, not by the tool that they use. One subject can have tests of several kinds.
+Each kind of test finds a different kind of failure. The kind of a test does not depend on the tool that the test uses. One subject can have tests of several kinds.
 
-| Kind | Failure that it finds | Tool | Location |
-|---|---|---|---|
-| Property | Specifications that contradict each other, and missed boundaries | hypothesis (backend), fast-check (frontend). Pure functions and a store built from generated data | `backend/tests/pbt/`, `frontend/tests/pbt/` |
-| Unit | A specification that is not implemented | pytest (backend), vitest (frontend). Functions and components | `backend/tests/unit/`, `frontend/tests/unit/` |
-| API | Correct parts that are connected incorrectly | pytest with the FastAPI test client, against a store that the build writes from generated input files | `backend/tests/unit/api/`, `backend/tests/pbt/api/` |
-| End-to-end | A page that does not display, or an operation that does not complete | Playwright, against a deployed site | `frontend/tests/e2e/` |
+| Kind | Failure that the kind finds | Target | Tool | Location |
+|---|---|---|---|---|
+| Property | Two parts of the specification contradict each other, or a boundary case is missed | Pure functions, and a store that build writes from generated data | hypothesis (backend), fast-check (frontend) | `backend/tests/pbt/`, `frontend/tests/pbt/` |
+| Unit | The code does not implement a part of the specification | Functions and components | pytest (backend), vitest (frontend) | `backend/tests/unit/`, `frontend/tests/unit/` |
+| API | Each part works correctly, but the parts are connected incorrectly | The api through the FastAPI test client, with a store that build writes from generated input files | pytest | `backend/tests/unit/api/`, `backend/tests/pbt/api/` |
+| End-to-end | A page is not displayed, or an operation does not complete | A deployed site | Playwright | `frontend/tests/e2e/` |
 
-- If a property test and a unit test check the same thing, then keep the property test. Keep a unit test for inputs that the generator cannot make, and for boundaries that random inputs hit only by chance.
-- Example-based tests do not find an error in a specification, because they restate the specification. A property with a counterexample, a run on real data, and a count compared before and after a build are what find such errors.
+If a property test and a unit test check the same thing, then keep the property test. Keep a unit test for an input that the generator of a property test cannot make, or for a boundary that random inputs reach only by chance.
+
+An example-based test restates the specification, so the test cannot find an error in the specification. You find errors in the specification in three ways:
+
+- a property test that produces a counterexample
+- a run on real data
+- a comparison of the counts before a build and after the build
 
 ## What to test
 
-Every invariant written in the docs has at least one test. The test name states the invariant without weakening it, so that a reader can tell which sentence of the docs the test checks. For example, `test_element_count_equals_population_and_element` checks the invariant of aggregations in [api.md](api.md).
+Every invariant in the docs has at least one test. The name of the test states the invariant and does not weaken the invariant, so that a reader can find the sentence of the docs that the test checks. For example, `test_element_count_equals_population_and_element` checks the invariant of aggregations in [api.md](api.md#invariant).
 
-- Coverage is not a measure. Whether a line ran says nothing about what an assertion detects.
-- A test that only passes is not written. If no boundary, error case, or negative case can be added, then the test is not needed.
-- "Does not raise" is not a property. A property is a meaningful constraint between the input and the output.
-- Two things that types cannot connect are connected by a test. For example, the API types of the frontend are generated from the OpenAPI document, and the clauses that the api returns for an element select exactly what the element counts.
+- Do not use coverage to measure the tests. A line that runs does not show what an assertion detects.
+- Do not write a test that only passes. If you cannot add a boundary case, an error case, or a negative case to a test, then the test is not needed.
+- "The code does not raise an exception" is not a property. A property is a meaningful constraint between the input and the output.
+- If the types cannot make two things agree, then write a test that checks that the two things agree. For example, a test checks that the API types of the frontend are the types generated from the OpenAPI document. Another test checks that the clauses that the api returns for an element select exactly what the element counts.
 
 ## Test doubles
 
-Only what is outside the application may be replaced: external services, time, and randomness.
+A test replaces only things outside the application: external services, time, and randomness.
 
-- The store, the condition DSL, the build, and the api are not replaced. The tests build a real store from generated input files (`backend/tests/synthetic.py`) and query it, because the design depends on how the store's tables are derived and queried.
-- For the frontend, the api is outside. Frontend unit tests may replace the HTTP responses of the api; the end-to-end tests check the real connection.
-- If a test seems to need a double for an internal part, then fix the design, not the test.
+- The tests do not replace the store, the condition DSL, build, or the api. The tests build a real store from generated input files (`backend/tests/synthetic.py`), and then query the store, because the design depends on how the tables of the store are derived and queried.
+- For the frontend, the api is outside the application. The unit tests of the frontend can replace the HTTP responses of the api. The end-to-end tests check the real connection between the frontend and the api.
+- If a test seems to need a double for a part inside the application, then fix the design, not the test.
 
 ## Independence
 
-Tests do not share state and do not depend on the order in which they run.
+The tests do not share state, and the tests do not depend on the order in which they run.
 
-- The backend tests build one store per session from generated data and only read it. A test that writes a store writes a new file in its own temporary directory.
-- The frontend unit tests render components with their own query client and do not reach the network.
+- The backend tests build one store from generated data for each pytest session, and the tests only read the store. If a test writes a store, then the test writes a new file in its own temporary directory.
+- The unit tests of the frontend render components with their own query client, and do not access the network.
 
 ## End-to-end tests
 
-End-to-end tests run against a deployed staging site with its real dataset, after a deployment and before the deployment is promoted. The end-to-end tests do not run during development or in CI, because they take minutes and need a deployed site.
+After you deploy to the staging site, and before you promote the deployment, you run the end-to-end tests on the staging site, which has its real dataset. Do not run the end-to-end tests during development or in continuous integration (CI), because the tests take minutes and need a deployed site.
 
-- The site has no operations that change data, so the tests only read.
-- The tests do not contain terms, accessions, or counts that depend on the dataset. Each test takes them at run time from the API of the same site, or from the top of a list on a page, and compares what the page shows with what the API returns. A rebuild of the dataset therefore does not break the tests.
-- If the dataset lacks something that every dataset has, such as a disease term, then the test fails. If the dataset is too small for the scenario, such as a list that fits on one page or a condition with few years, then the test skips.
-- What a deployment is meant to be (whether it is kept out of search engines, and which commit it runs) is given by the person who runs the tests, in environment variables. The scenarios that check it skip if it is not given. A wrongly deployed site responds in the same way as a correctly deployed one, so the expectation cannot come from the site. Without these variables, the address is not taken as a deployment, so the scenarios of the web server of a deployment also skip.
-- The tests keep the load small: few workers, and conditions that match few entries for lists and exports. The site serves real users and the full dataset.
-- The tests do not run against production. The requests of the tests would mix with the access logs of real users.
+- The site has no operation that changes data, so the tests only read data.
+- The tests do not contain terms, accessions, or counts that depend on the dataset. At run time, each test gets these values from the API of the same site, or from the first items of a list on a page. Then the test compares what the page shows with what the API returns. A new build of the dataset therefore does not make the tests fail.
+- If the dataset does not have a thing that every dataset has, such as a disease term, then the test fails. If the dataset is too small for a scenario, for example if a list fits on one page or a condition has few years, then the test is skipped.
+- The person who runs the tests gives the intended state of the deployment in environment variables ([development.md](development.md#end-to-end-tests)): whether search engines must not index the site, and which commit the site runs. If a variable is not given, then the scenarios that check the variable are skipped. The tests cannot take the intended state from the site, because a site that is deployed incorrectly responds in the same way as a site that is deployed correctly.
+- If `BSLLMNER_VIEWER_E2E_NOINDEX` is not given, then the tests do not treat the address as a deployment, and skip the scenarios that check the web server of a deployment.
+- The tests keep the load on the site small, because the site serves the full dataset to real users. The tests use few workers, and for lists and exports, the tests use conditions that match few entries.
+- Do not run the tests on production, because the requests of the tests would mix with the requests of real users in the access logs.

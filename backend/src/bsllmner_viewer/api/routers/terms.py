@@ -51,7 +51,7 @@ def _term_dimension(store: StoreDep, field: str):  # type: ignore[no-untyped-def
         "Searches the terms of a field, or of every annotation field, and counts each hit in `unit`. Hits are ordered "
         "by how they match `query`, then by `count`. Each hit is counted in the population of its own field. The "
         "population is `q`. With `facetSelfExclude`, it is `q` without the conjuncts on that field. "
-        'See "Default elements" in /llms-full.txt for the hits that `limit` keeps. '
+        'See "Terms" in /llms-full.txt for the hits that `limit` keeps. '
         "Use the `termId` of a hit in a condition."
     ),
 )

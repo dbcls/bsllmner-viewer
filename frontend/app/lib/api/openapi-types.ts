@@ -213,7 +213,7 @@ export interface paths {
         };
         /**
          * Search the terms annotated in a field, or in every annotation field
-         * @description Searches the terms of a field, or of every annotation field, and counts each hit in `unit`. Hits are ordered by how they match `query`, then by `count`. Each hit is counted in the population of its own field. The population is `q`. With `facetSelfExclude`, it is `q` without the conjuncts on that field. See "Default elements" in /llms-full.txt for the hits that `limit` keeps. Use the `termId` of a hit in a condition.
+         * @description Searches the terms of a field, or of every annotation field, and counts each hit in `unit`. Hits are ordered by how they match `query`, then by `count`. Each hit is counted in the population of its own field. The population is `q`. With `facetSelfExclude`, it is `q` without the conjuncts on that field. See "Terms" in /llms-full.txt for the hits that `limit` keeps. Use the `termId` of a hit in a condition.
          */
         get: operations["searchTerms"];
         put?: never;
@@ -273,7 +273,7 @@ export interface paths {
         };
         /**
          * Export the accessions of the entries that match a condition
-         * @description Returns every distinct accession of `type` among the entries that match `q`, as plain text: a header line that starts with `#` and names `q` and the dataset version, then one accession per line in ascending order. See "Entries" in /llms-full.txt.
+         * @description Returns every distinct accession of `type` among the entries that match `q`, as plain text: a header line that starts with `#` and names `q` and the dataset version, then one accession per line in ascending order. See "Exports" in /llms-full.txt.
          */
         get: operations["exportAccessions"];
         put?: never;
@@ -293,7 +293,7 @@ export interface paths {
         };
         /**
          * Export the BioSamples that match a condition as TSV or NDJSON
-         * @description Returns every BioSample that matches `q`, in the order of the entry list, as TSV or as NDJSON. NDJSON is newline-delimited JSON: one JSON object per line. See "Entries" in /llms-full.txt for the columns and the cells.
+         * @description Returns every BioSample that matches `q`, in the order of the entry list, as TSV or as NDJSON. NDJSON is newline-delimited JSON: one JSON object per line. See "Exports" in /llms-full.txt for the columns and the cells.
          */
         get: operations["exportEntries"];
         put?: never;

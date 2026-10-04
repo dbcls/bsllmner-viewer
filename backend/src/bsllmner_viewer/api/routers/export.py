@@ -118,7 +118,7 @@ def _response(
     description=(
         "Returns every distinct accession of `type` among the entries that match `q`, as plain text: a header line "
         "that starts with `#` and names `q` and the dataset version, then one accession per line in ascending order. "
-        'See "Entries" in /llms-full.txt.'
+        'See "Exports" in /llms-full.txt.'
     ),
     response_class=StreamingResponse,
 )
@@ -173,7 +173,7 @@ def export_accessions(
     description=(
         "Returns every BioSample that matches `q`, in the order of the entry list, as TSV or as NDJSON. NDJSON is "
         "newline-delimited JSON: one JSON object per line. "
-        'See "Entries" in /llms-full.txt for the columns and the cells.'
+        'See "Exports" in /llms-full.txt for the columns and the cells.'
     ),
     response_class=StreamingResponse,
 )
