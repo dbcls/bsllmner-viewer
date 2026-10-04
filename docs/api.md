@@ -232,6 +232,8 @@ The dimensions of an operation are its `field`, `row`, and `col`. The trend comp
 
 With self-exclusion, every element of a dimension stays visible while one of its elements is selected, so that a user can compare the selection with the alternatives. The UI uses self-exclusion for the distributions, the cross-tabulations, the trend, and the counts that the condition panel and the term search show next to the values that a condition can take. The UI computes the project statistics with self-exclusion, so that the BioProjects in `q` stay in the list together with the other BioProjects that match the rest of `q`. The UI computes the entry list from `q` itself.
 
+The counting unit that a user chooses in the UI applies to the distributions, the cross-tabulations, and the trend, and to the term searches that choose the elements of their dimensions. The condition panel, and the term search that adds a term to the condition, always count BioSamples, because the entries of a condition are BioSamples.
+
 ### Default elements
 
 If a request does not name the elements of a dimension, then the api chooses the elements.

@@ -65,6 +65,8 @@ For example, `INSDC center name` and `Submitter Id` are two of these names. An `
 
 Input entries do not always give the same name for an organism. For example, some entries give `human` or `9606` for `Homo sapiens`. Wherever the api names an organism by its NCBI Taxonomy ID, for example in aggregations, in the labels of conditions, and in the description of the dataset, the api uses the name that most BioSamples of the dataset give for the ID. If several names are given by the largest number of BioSamples, then the api uses the first of these names in character order. A BioSample and its entries keep the name that the input entry of the BioSample gives.
 
+A clause on `organism_id` matches only the BioSamples whose organism has exactly the given NCBI Taxonomy ID, as in the DDBJ Search API. The clause does not match the lower taxa of the organism, such as its subspecies. For example, `organism_id:10090` (Mus musculus) does not match a BioSample of Mus musculus musculus. Therefore, conditions and aggregations treat a subspecies, a hybrid, a xenograft, and a mixed sample as separate organisms.
+
 ### Publication date
 
 Of the dates of a BioSample, build takes only the publication date (`publication_date`), because the publication date is the only date that has the same meaning for every BioSample:

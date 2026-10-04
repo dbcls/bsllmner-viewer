@@ -60,6 +60,15 @@ The api reads the file that it opened at startup until the api stops. Therefore,
 
 A store file that the api serves is never modified. You can delete an old file when no api process has the file open. The `ETag` of an api response depends on the store, on the files of the api package, and on the installed Python packages ([api.md](api.md#caching)). Therefore, after you switch the store, update the code, or update a dependency, clients get the new responses and not the responses that they kept.
 
+## Changing the dataset
+
+Most of the UI takes the values that depend on the dataset, such as the fields, the target assays, and the organisms, from `GET /api/dataset`. Some values of the frontend are written for the current dataset. Before you publish a store of another dataset, for example the results of another model, update these values, and deploy the updated frontend together with the new store:
+
+- `frontend/app/lib/presets.ts`: the example questions and the example heatmaps of the top page, with the labels of the values of each condition. The end-to-end tests check that these labels are the labels that the api returns for each condition.
+- `frontend/app/lib/crate.ts`: the RO-Crate that publishes the annotations, the license of the annotations, and the organization that made the annotations. The footer and the schema.org `Dataset` of the top page use these values.
+- `frontend/app/shell/footer.tsx`: the place where the annotations were computed.
+- `ENTRY_BYTES` in `frontend/app/features/workspace/overlays.tsx`: the size of one entry in a TSV export and in an NDJSON export. The export menu uses these sizes to estimate the size of an export before the download. Measure the sizes on the new store.
+
 ## Deploying the application
 
 To deploy the application, copy `deploy/.env.example` to `deploy/.env`, and set the variables ([deployment.md](deployment.md#environment-variables)). Then build the images and start the containers:
