@@ -46,6 +46,11 @@ describe("the elements of an axis that is not an annotation field", () => {
     expect(limitAlert(limit)).toBe("A heatmap axis shows up to 100 values.")
     const resolve = async () => ({ terms: ["RNA-Seq", "ChIP-Seq"], missed: 0, rejected: 1 })
     expect(await replaceTerms(["RNA-Seq", "ChIP-Seq", "x"], resolve, limit)).toEqual({ terms: ["RNA-Seq", "ChIP-Seq"], alert: "2 of 3 values recognized, 1 not valid." })
+    const three = ["RNA-Seq", "ChIP-Seq", "ATAC-seq"]
+    expect(await replaceTerms(three, async () => ({ terms: three, missed: 0, rejected: 0 }), { ...limit, max: 2 })).toEqual({
+      terms: ["RNA-Seq", "ChIP-Seq"],
+      alert: "The first 2 of 3 values are shown.",
+    })
     expect(await replaceTerms(["x"], async () => ({ terms: [], missed: 1, rejected: 0 }), limit)).toEqual({ terms: null, alert: "No values recognized." })
   })
 

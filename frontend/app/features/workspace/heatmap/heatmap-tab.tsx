@@ -3,7 +3,7 @@ import { type ReactNode, useMemo, useState } from "react"
 import { loadFailureProps } from "~/lib/api/client"
 import { fetchTermChildren, queryFailed, useCrosstab, useDataset } from "~/lib/api/queries"
 import type { Cell, Clause, Element, TermElement, TermHit } from "~/lib/api/types"
-import { countScale, countScaleIsDark, logPosition, RATIO_STEPS, ratioScale, ratioScaleIsDark, token } from "~/lib/color"
+import { COUNT_SCALE_STOPS, countScale, countScaleIsDark, logPosition, RATIO_STEPS, ratioScale, ratioScaleIsDark, token } from "~/lib/color"
 import { downloadPngMarkup, downloadSvgMarkup, downloadTsv, FIGURE_SAVE_FAILED } from "~/lib/export"
 import { figureFileName } from "~/lib/figure-style"
 import { formatCount, formatRatio } from "~/lib/format"
@@ -23,7 +23,7 @@ import type { Condition } from "../use-condition"
 import { useReplaceUnofferedDimensions } from "../use-offered-dimensions"
 import { ViewControls } from "../view-controls"
 import { crosstabAxes, crosstabDimensions, crosstabParams, HEATMAP_LIMIT } from "../view-requests"
-import { COUNT_SCALE_TOKENS, type MatrixCell, type MatrixExport, matrixSvg, matrixSvgSize, ROW_INDENT } from "./matrix-svg"
+import { type MatrixCell, type MatrixExport, matrixSvg, matrixSvgSize, ROW_INDENT } from "./matrix-svg"
 import { type Guide, nestedUnder, openChildren, rowGuides, treePlaces } from "./row-tree"
 import { HEATMAP_HEADER, heatmapRows } from "./table"
 
@@ -35,7 +35,10 @@ type HeatmapTabProps = {
   update: Update
   /** Reads the latest state of the URL, which can be newer than `state` after an await. */
   latest: () => WorkspaceState
-  /** Pasted entries are being resolved. The state outlives the view, as the user can leave the view and come back meanwhile. */
+  /**
+   * Pasted entries are being resolved. The resolution can finish after the user leaves the view, so the parent holds
+   * this flag instead of the view.
+   */
   replacing: boolean
   setReplacing: (replacing: boolean) => void
   onAlert: (message: string) => void
@@ -78,7 +81,7 @@ export const HeatmapTab = ({ state, condition, update, latest, replacing, setRep
   const cols = useMemo(() => data?.cols ?? [], [data])
 
   const unit = unitLabel(state.unit)
-  /** The table is the one of the previous condition, while the table of the new condition is on its way. */
+  /** The table is the one of the previous request, while the table of the new request loads. */
   const stale = crosstab.isPlaceholderData
   const limitOf = (side: AxisSide): TermLimit => ({ max: MAX_AXIS_TERMS, subject: "A heatmap axis", noun: elementNoun(dimensionOf(side), fields) })
 
@@ -94,7 +97,7 @@ export const HeatmapTab = ({ state, condition, update, latest, replacing, setRep
 
   /**
    * The terms of an axis: those that the URL names, when the user chose them, as the rows and columns on screen can still
-   * be those of the previous terms while the cross-tabulation of the new ones is on its way.
+   * be those of the previous terms while the cross-tabulation of the new ones loads.
    */
   const values = (side: AxisSide): string[] =>
     (side === "row" ? axes.rowTerms : axes.colTerms) ?? (side === "row" ? rows : cols).map((e) => e.value)
@@ -115,10 +118,10 @@ export const HeatmapTab = ({ state, condition, update, latest, replacing, setRep
   /** The values of the rows that hang under the row at `index`, at every depth. */
   const nestedValues = (index: number) => nestedUnder(places, index).map((at) => rows[at]?.value ?? "")
 
-  /** The rows whose children are on their way, so that a second press on a chevron waits for the first. */
+  /** The rows whose children are loading, so that a second press on a chevron waits for the first. */
   const [expanding, setExpanding] = useState<ReadonlySet<string>>(new Set())
 
-  /** Shows the child terms of a row term under it, or takes them and the rows under them off the axis. */
+  /** Shows the child terms of a row term under it, or removes them and the rows under them from the axis. */
   const toggleExpand = async (index: number) => {
     const value = rows[index]?.value
     if (value === undefined || !data || expanding.has(value)) return
@@ -190,14 +193,17 @@ export const HeatmapTab = ({ state, condition, update, latest, replacing, setRep
     }
   }
 
-  /** Takes a term, and on the rows the rows that hang under it in the tree on screen, off the axis. */
+  /**
+   * Removes a term from the axis. On the rows axis, also removes the rows that hang under the term in the tree on
+   * screen.
+   */
   const remove = (side: AxisSide, value: string) => {
     const at = side === "row" ? rows.findIndex((row) => row.value === value) : -1
     const under = at >= 0 ? nestedValues(at) : []
     setValues(side, values(side).filter((v) => v !== value && !under.includes(v)))
   }
 
-  /** Adds a found term to the end of the axis, or takes it off when the axis has it. */
+  /** Adds a found term to the end of the axis, or removes it when the axis has it. */
   const pick = (side: AxisSide, hit: TermHit) => {
     if (values(side).includes(hit.termId)) {
       remove(side, hit.termId)
@@ -222,21 +228,27 @@ export const HeatmapTab = ({ state, condition, update, latest, replacing, setRep
   const expandable = (element: Element | TermElement, index: number): boolean =>
     ("hasChildren" in element && element.hasChildren) || isOpen(index)
 
-  /** When a row opens, a row that does not keeps the place of the chevron, so that every label of a level starts at one x. */
+  /**
+   * Whether any row can open or is open. If so, a row that cannot open still leaves room for the chevron, so that every
+   * label of a level starts at the same x.
+   */
   const rowsExpandable = rows.some(expandable)
   const guides = rowGuides(places.map((place) => place.depth))
 
   const axisProps = (side: AxisSide) => ({
     dimension: dimensionOf(side),
     dimensions: dimensionsOf(side),
-    // A heatmap that could not be loaded lists the terms of the URL, so that a term that the api refuses can be taken off.
+    // A heatmap that could not be loaded lists the terms of the URL, so that a term that the api refuses can be removed.
     elements: failed ? (side === "row" ? axes.rowTerms : axes.colTerms)?.map((value) => ({ value, label: value })) ?? [] : side === "row" ? rows : cols,
     pending: side === "row" ? pendingRows : pendingCols,
     unknown: failed && (side === "row" ? axes.rowTerms : axes.colTerms) === null,
     onDimension: (dimension: string) => changeDimension(side, dimension),
   })
 
-  /** The axis that the terms dialog shows; while the dialog is closed, it draws nothing whatever the axis. */
+  /**
+   * The axis that the terms dialog shows. While the dialog is closed, the dialog draws nothing, so the value does not
+   * matter.
+   */
   const dialogSide = termsSide ?? "row"
 
   const cellStyle = (cell: Cell | undefined) => {
@@ -253,7 +265,10 @@ export const HeatmapTab = ({ state, condition, update, latest, replacing, setRep
   const softText = (cell: Cell | undefined): boolean =>
     cell?.classification !== "gap" && (!cell || cell.count === 0 || (state.color === "ratio" && coloredRatio(cell) === null))
 
-  /** The ground of a cell: white for a gap, whatever the scale says, on the page and in the saved figure. */
+  /**
+   * The background of a cell: the surface color for a gap, even when the scale gives another color, on the page and in
+   * the saved figure.
+   */
   const cellBackground = (gap: boolean, background: string): string => (gap ? token("--color-surface") : background)
 
   const exportCells = (): MatrixCell[] =>
@@ -293,7 +308,7 @@ export const HeatmapTab = ({ state, condition, update, latest, replacing, setRep
     void downloadPngMarkup(fileName("png"), matrixSvg(figure), size.width, size.height).catch(() => onAlert(FIGURE_SAVE_FAILED))
   }
 
-  const gradient = `linear-gradient(90deg, ${COUNT_SCALE_TOKENS.map((name) => token(name)).join(", ")})`
+  const gradient = `linear-gradient(90deg, ${COUNT_SCALE_STOPS.map((stop) => `${token(stop.token)} ${stop.at * 100}%`).join(", ")})`
 
   return (
     <div>
@@ -338,7 +353,8 @@ export const HeatmapTab = ({ state, condition, update, latest, replacing, setRep
           aria-busy={crosstab.isPlaceholderData || undefined}
           className={cn("flex flex-wrap items-center gap-x-6 gap-y-2 text-fs-label text-ink-soft", busyClass(crosstab.isPlaceholderData))}
         >
-          {/* The two axes are set apart by wide space, with Swap axes between them as plain text, so that the row reads as two settings and not as five. */}
+          {/* The two axes are separated by wide space, and Swap axes sits between them as plain text, so that the row
+              reads as two settings. */}
           <AxisControls name="Rows" selectLabel="Row dimension" {...axisProps("row")} noun={elementNoun(dimensionOf("row"), fields)} onOpenTerms={() => setTermsSide("row")} />
           <LinkButton
             tone="soft"
@@ -429,7 +445,7 @@ export const HeatmapTab = ({ state, condition, update, latest, replacing, setRep
                     key={col.value}
                     // A column with its term ID is at least as wide as the ID (0.6em a character of the monospace font) with
                     // 8px on each side, padding included, past the usual width of a column, so that the IDs of two columns do
-                    // not run together.
+                    // not touch.
                     style={colIds ? { minWidth: `calc(${col.value.length * 0.6}em + 16px)` } : undefined}
                     className="sticky top-0 z-10 max-w-heat-head min-w-heat-cell bg-surface px-1 py-1.5 align-bottom text-fs-micro leading-snug font-medium text-balance"
                   >
@@ -513,8 +529,8 @@ export const HeatmapTab = ({ state, condition, update, latest, replacing, setRep
                   </tr>
                 )
               })}
-              {/* The column totals follow the last row as closely as the column labels precede the first, with no line and no
-                  extra space: their grey numbers without cells set them apart from the rows. */}
+              {/* The column totals sit directly under the last row, with no line and no extra space. The column totals
+                  are grey numbers without cells, so the column totals are not read as a row. */}
               <tr>
                 <FrozenHeading className="z-10 h-8 px-3.5 text-left text-fs-micro font-semibold text-ink-soft">Column total</FrozenHeading>
                 {cols.map((col) => (

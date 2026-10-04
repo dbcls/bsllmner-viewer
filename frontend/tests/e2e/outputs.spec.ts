@@ -2,11 +2,18 @@ import { readFile } from "node:fs/promises"
 
 import { expect, test } from "@playwright/test"
 
-import { distribution, entries, select, smallProjects } from "./_api"
-import { expectCounted, fieldLabel, workspaceUrl } from "./_helpers"
+import { countOf, distribution, entries, select, smallProjects } from "./_api"
+import { expectCounted, fieldLabel, skipUnless, workspaceUrl } from "./_helpers"
+
+/** The bytes of a likely size as the export menu writes it, such as "~4.1 MB", and 0 for "<1 KB". */
+const bytesOf = (text: string): number => {
+  const match = /~([\d.,]+) ([KMGT]B)$/.exec(text.trim())
+  const scale: Record<string, number> = { KB: 1e3, MB: 1e6, GB: 1e9, TB: 1e12 }
+  return match ? Number((match[1] ?? "").replaceAll(",", "")) * (scale[match[2] ?? ""] ?? 0) : 0
+}
 
 test.describe("outputs of the condition", () => {
-  test("the export menu links carry the condition, and the entry exports show their likely size", async ({ page, request }) => {
+  test("the export menu links carry the condition, and the entry exports show a likely size for the number of entries, larger for NDJSON than for TSV", async ({ page, request }) => {
     const [term] = (await distribution(request, "disease")).elements
     if (!term) throw new Error("the dataset has no disease")
     const q = await select(request, null, term.clauses)
@@ -31,18 +38,29 @@ test.describe("outputs of the condition", () => {
       expect(url.searchParams.get("format")).toBe(format)
     }
     // The size is an estimate from the number of entries. The menu shows no row count.
+    const sizes: number[] = []
     for (const name of [/^TSV/, /^NDJSON/]) {
       const item = menu.getByRole("menuitem", { name })
       await expect(item).toContainText(/(~[\d.,]+ [KMGT]B|<1 KB)$/)
       await expect(item).not.toContainText("rows")
+      sizes.push(bytesOf(await item.innerText()))
     }
+    // An entry takes some hundred bytes in either format, so a condition of a hundred entries or more reads in KB or more.
+    const count = await countOf(request, q)
+    skipUnless(count >= 100, "the most frequent disease has fewer than 100 BioSamples")
+    const [tsv = 0, ndjson = 0] = sizes
+    for (const size of sizes) {
+      expect(size / count).toBeGreaterThan(50)
+      expect(size / count).toBeLessThan(10_000)
+    }
+    expect(ndjson).toBeGreaterThan(tsv)
     await page.keyboard.press("Escape")
     await expect(menu).toBeHidden()
   })
 
   test("the exports of a small condition hold exactly its entries", async ({ page, request }) => {
     const [project] = await smallProjects(request)
-    if (!project) throw new Error("no small BioProject")
+    skipUnless(project, "the dataset has no BioProject with 2 to 20 BioSamples")
     const q = await select(request, null, project.clauses)
     const total = (await entries(request, q, 1)).pagination.total
     await page.goto(workspaceUrl({ q }))
@@ -59,7 +77,10 @@ test.describe("outputs of the condition", () => {
     }
     expect((await read(/^TSV/)).length).toBe(total + 1)
     expect((await read(/^NDJSON/)).length).toBe(total)
-    expect(await read(/BioProject/)).toEqual([project.identifier])
+    // The BioSamples of the project can belong to other BioProjects too, and the list has those BioProjects as well.
+    const bioprojects = await read(/BioProject/)
+    expect(bioprojects).toContain(project.identifier)
+    expect(bioprojects.length).toBe(await countOf(request, q, "bioproject"))
     expect((await read(/BioSample/)).length).toBe(total)
   })
 

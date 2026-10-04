@@ -1,14 +1,37 @@
 import { expect, type Page, test } from "@playwright/test"
 
-import { countOf, dataset, distribution, entries } from "./_api"
-import { addTermButton, choose, conditionPanel, conditionRegion, expectChosen, expectQ, formatCount, pageRangeText, termPicker, workspaceUrl } from "./_helpers"
+import { countOf, countsOfElements, dataset, distribution, entries, listedOrganisms, parse, select, termSearch, trend } from "./_api"
+import { addTermButton, choose, conditionPanel, conditionRegion, expectChosen, expectQ, fieldLabel, formatCount, pageRangeText, skipUnless, termPicker, workspaceUrl } from "./_helpers"
 
 /** The two most frequent disease terms and the first target assay of the dataset. */
 const startingPoints = async (request: Parameters<typeof dataset>[0]) => {
   const [first, second] = (await distribution(request, "disease")).elements
   const assay = (await dataset(request)).targetAssays[0]
-  if (!first || !second || !assay) throw new Error("the dataset has too few diseases or no target assay")
+  if (!first || !assay) throw new Error("the dataset has no disease or no target assay")
   return { first, second, assay }
+}
+
+/**
+ * A word of a frequent disease label that some BioSample matches as a keyword. The word is not one of the given labels,
+ * so that the chip of the keyword and the chip of a term have different names.
+ */
+const aKeyword = async (request: Parameters<typeof dataset>[0], labels: string[] = []): Promise<string> => {
+  const taken = new Set(labels.map((label) => label.toLowerCase()))
+  for (const element of (await distribution(request, "disease")).elements) {
+    for (const word of element.label.split(/\s+/)) {
+      if (!/^[A-Za-z0-9]{4,}$/.test(word) || /^(and|or|not)$/i.test(word) || taken.has(word.toLowerCase())) continue
+      if ((await countOf(request, word)) > 0) return word
+    }
+  }
+  throw new Error("no word of the disease labels matches a BioSample as a keyword")
+}
+
+/** The status fields that the status scenario uses: the first two annotation fields of the dataset. */
+const statusFields = async (request: Parameters<typeof dataset>[0]) => {
+  const [first, second] = (await dataset(request)).fields
+  if (!first) throw new Error("the dataset has no annotation field")
+  skipUnless(second, "the dataset has a single annotation field")
+  return { first: first.name, second: second.name }
 }
 
 /** The range of the last `years` years that the page computes, ending today in the browser's time zone. */
@@ -42,6 +65,7 @@ test.describe("condition", () => {
 
   test("a term of the same field joins with OR and a different field with AND", async ({ page, request }) => {
     const { first, second, assay } = await startingPoints(request)
+    skipUnless(second, "the dataset has a single disease")
     await page.goto(workspaceUrl({ q: `disease:"${first.value}"` }))
     await conditionPanel(page).getByText(assay, { exact: true }).click()
     await expectQ(page, `disease:"${first.value}" AND library_strategy:${assay}`)
@@ -99,23 +123,84 @@ test.describe("condition", () => {
     await expectQ(page, null)
   })
 
-  test("the condition bar shows the count of each unit for the condition", async ({ page, request }) => {
-    const { first } = await startingPoints(request)
-    const q = `disease:"${first.value}"`
-    await page.goto(workspaceUrl({ q }))
-    for (const [unit, label] of [["biosample", "BioSamples"], ["sra-experiment", "SRA Experiments"], ["bioproject", "BioProjects"]] as const) {
-      await expect(conditionRegion(page)).toContainText(new RegExp(`${formatCount(await countOf(request, q, unit))}\\s*${label}`))
+  test("the condition bar shows the count of each unit for a condition on each kind of field", async ({ page, request }) => {
+    const { first, assay } = await startingPoints(request)
+    const [organism] = listedOrganisms(await dataset(request))
+    const { firstYear } = await trend(request)
+    if (!organism || firstYear === null) throw new Error("the dataset has no organism or no publication year")
+    const keyword = (await parse(request, await aKeyword(request))).q
+    if (!keyword) throw new Error("the keyword has no canonical form")
+    const conditions = [
+      await select(request, null, first.clauses),
+      await select(request, null, [{ field: "organism_id", value: organism.identifier }]),
+      await select(request, null, [{ field: "library_strategy", value: assay }]),
+      await select(request, null, [{ field: "date_published", from: `${firstYear}-01-01`, to: `${firstYear}-12-31` }]),
+      keyword,
+    ]
+    for (const q of conditions) {
+      await page.goto(workspaceUrl({ q }))
+      for (const [unit, label] of [["biosample", "BioSamples"], ["sra-experiment", "SRA Experiments"], ["bioproject", "BioProjects"]] as const) {
+        // The lookbehind keeps a count from matching the end of a longer number.
+        await expect(conditionRegion(page), `${label} of ${q}`).toContainText(new RegExp(`(?<![\\d,])${formatCount(await countOf(request, q, unit))}\\s*${label}`))
+      }
     }
   })
 
+  test("the assay and organism counts of the condition panel are counted without the condition on their own field", async ({ page, request }) => {
+    const data = await dataset(request)
+    const [organism, otherOrganism] = listedOrganisms(data)
+    const [assay, otherAssay] = data.targetAssays
+    skipUnless(organism && otherOrganism && assay && otherAssay, "the dataset has fewer than two listed organisms or two target assays")
+    const q = await select(request, await select(request, null, [{ field: "organism_id", value: organism.identifier }]), [{ field: "library_strategy", value: assay }])
+    const assayCount = (await countsOfElements(request, "library_strategy", [otherAssay], q, true)).get(otherAssay) ?? 0
+    const organismCount = (await countsOfElements(request, "organism_id", [otherOrganism.identifier], q, true)).get(otherOrganism.identifier) ?? 0
+    // Only a count that differs without self-exclusion shows that the panel does not count the condition on its own field.
+    const assayWithout = (await countsOfElements(request, "library_strategy", [otherAssay], q, false)).get(otherAssay)
+    const organismWithout = (await countsOfElements(request, "organism_id", [otherOrganism.identifier], q, false)).get(otherOrganism.identifier)
+    skipUnless(assayWithout !== assayCount && organismWithout !== organismCount, "the counts of the other assay and organism do not depend on self-exclusion")
+    await page.goto(workspaceUrl({ q }))
+    const panel = conditionPanel(page)
+    await expect(panel.getByRole("checkbox", { name: otherAssay, exact: true })).toHaveAccessibleDescription(formatCount(assayCount))
+    await expect(panel.getByRole("checkbox", { name: otherOrganism.name, exact: true })).toHaveAccessibleDescription(formatCount(organismCount))
+  })
+
+  test("the term picker shows the counts of the term search without the conditions on the field of each term", async ({ page, request }) => {
+    const { first, second } = await startingPoints(request)
+    skipUnless(second, "the dataset has a single disease")
+    const q = await select(request, null, first.clauses)
+    const hitOf = async (selfExclude: boolean) =>
+      (await termSearch(request, second.value, q, selfExclude)).find((term) => term.field === "disease" && term.termId === second.value)
+    const hit = await hitOf(true)
+    if (!hit) throw new Error("the term search does not return the second disease")
+    // Only a count that differs without self-exclusion shows that the picker does not count the condition on the field.
+    skipUnless(hit.count !== (await hitOf(false))?.count, "the count of the second disease does not depend on self-exclusion")
+    await page.goto(workspaceUrl({ q }))
+    await addTermButton(page).click()
+    await termPicker(page).getByRole("textbox", { name: "Search terms" }).fill(second.value)
+    const row = termPicker(page).getByRole("button").filter({ hasText: second.value })
+    await expect(row).toContainText(fieldLabel("disease"))
+    await expect(row.locator("span").last()).toHaveText(formatCount(hit.count))
+  })
+
+  test("choosing an organism in the panel puts the condition that the api derives from its clause in the URL", async ({ page, request }) => {
+    const [organism] = listedOrganisms(await dataset(request))
+    if (!organism) throw new Error("the dataset has no listed organism")
+    const expected = await select(request, null, [{ field: "organism_id", value: organism.identifier }])
+    await page.goto("/entries")
+    await conditionPanel(page).getByText(organism.name, { exact: true }).click()
+    await expectQ(page, expected)
+    await expect(conditionPanel(page).getByRole("checkbox", { name: organism.name, exact: true })).toBeChecked()
+  })
+
   test("typed words and phrases become the keywords of the condition and one row of the condition bar", async ({ page, request }) => {
+    const word = await aKeyword(request)
     await page.goto("/entries")
     const box = conditionPanel(page).getByRole("textbox", { name: "Keyword" })
-    await box.fill("hypoxia")
+    await box.fill(word)
     await box.press("Enter")
-    await expectQ(page, "hypoxia")
+    await expectQ(page, word)
     await expect(conditionRegion(page)).toContainText("Keyword")
-    await expect(page.getByRole("main")).toContainText(pageRangeText(await countOf(request, "hypoxia")))
+    await expect(page.getByRole("main")).toContainText(pageRangeText(await countOf(request, word)))
     await box.fill('"breast cancer" organoid')
     await expectQ(page, 'organoid AND "breast cancer"')
     await expect(conditionRegion(page).getByRole("button", { name: 'Remove organoid "breast cancer"', exact: true })).toBeVisible()
@@ -166,25 +251,28 @@ test.describe("condition", () => {
     await expect(panel.getByRole("button", { name: "All", exact: true })).toHaveAttribute("aria-pressed", "true")
   })
 
-  test("the status buttons show the status condition of the field that has one", async ({ page }) => {
-    await page.goto(workspaceUrl({ q: "tissue_status:no_value" }))
+  test("the status buttons show the status condition of the field that has one", async ({ page, request }) => {
+    // The select chooses the first field when the condition has no status, so the condition is on the second field.
+    const { first: firstField, second: conditionField } = await statusFields(request)
+    await page.goto(workspaceUrl({ q: `${conditionField}_status:no_value` }))
     const panel = conditionPanel(page)
-    await expectChosen(panel.getByRole("combobox", { name: "Status field" }), "Tissue")
+    await expectChosen(panel.getByRole("combobox", { name: "Status field" }), fieldLabel(conditionField))
     await expect(panel.getByRole("button", { name: "No value" })).toHaveAttribute("aria-pressed", "true")
     await expect(panel.getByRole("button", { name: "Mapped", exact: true })).toHaveAttribute("aria-pressed", "false")
-    await choose(panel.getByRole("combobox", { name: "Status field" }), "Disease")
+    await choose(panel.getByRole("combobox", { name: "Status field" }), fieldLabel(firstField))
     await expect(panel.getByRole("button", { name: "No value" })).toHaveAttribute("aria-pressed", "false")
     await panel.getByRole("button", { name: "Unmapped" }).click()
-    await expectQ(page, "tissue_status:no_value AND disease_status:unmapped")
+    await expectQ(page, `${conditionField}_status:no_value AND ${firstField}_status:unmapped`)
   })
 
   test("the keywords of the condition are shown in the box and removed from the condition bar", async ({ page, request }) => {
     const { first } = await startingPoints(request)
+    const word = await aKeyword(request, [first.label])
     const term = `disease:"${first.value}"`
-    await page.goto(workspaceUrl({ q: `${term} AND hypoxia` }))
+    await page.goto(workspaceUrl({ q: `${term} AND ${word}` }))
     const box = conditionPanel(page).getByRole("textbox", { name: "Keyword" })
-    await expect(box).toHaveValue("hypoxia")
-    await conditionRegion(page).getByRole("button", { name: "Remove hypoxia", exact: true }).click()
+    await expect(box).toHaveValue(word)
+    await conditionRegion(page).getByRole("button", { name: `Remove ${word}`, exact: true }).click()
     await expectQ(page, term)
     await expect(box).toHaveValue("")
   })

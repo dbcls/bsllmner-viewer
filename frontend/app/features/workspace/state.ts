@@ -11,14 +11,14 @@ export type Update = (patch: Patch, options?: { replace?: boolean }) => void
 /**
  * The workspace state read from the URL, an updater that writes a patch back to it, and a reader of the latest state.
  * Every write starts from the latest URL, not from the URL of the render that made the updater, so that a write after an
- * await does not undo a change made while it waited.
+ * await does not undo a change made during the await.
  */
 export const useWorkspaceState = (): [WorkspaceState, Update, () => WorkspaceState] => {
   const [params, setParams] = useSearchParams()
   const state = useMemo(() => readState(params), [params])
   const latestParams = useRef(params)
-  // A render that was not committed does not move the latest URL, and a render of the params of an earlier navigation
-  // does not replace what an update wrote after it, as the params change only when the router commits a location.
+  // A render that was not committed does not move the latest URL. A render of the params of an earlier navigation does
+  // not replace what an update wrote after it, because the params change only when the router commits a location.
   useLayoutEffect(() => {
     latestParams.current = params
   }, [params])

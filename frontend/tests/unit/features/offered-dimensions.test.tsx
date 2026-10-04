@@ -2,8 +2,9 @@ import { renderHook } from "@testing-library/react"
 import fc from "fast-check"
 import { describe, expect, it, vi } from "vitest"
 
+import { trendFields } from "~/features/workspace/trend/field"
 import { useReplaceUnofferedDimensions } from "~/features/workspace/use-offered-dimensions"
-import { crosstabAxes, offeredDimensionsPatch, trendAxis, trendLineField, trendParams } from "~/features/workspace/view-requests"
+import { crosstabAxes, crosstabDimensions, offeredDimensionsPatch, trendAxis, trendLineField, trendParams } from "~/features/workspace/view-requests"
 import { DEFAULTS, readState, type WorkspaceState } from "~/lib/workspace-state"
 
 const FIELDS = ["cell_line", "tissue", "disease"]
@@ -58,8 +59,13 @@ describe("offeredDimensionsPatch", () => {
           expect(crosstabAxes(next, offered)).toEqual(drawn)
           expect(next.row).toBe(drawn.row)
           expect(next.col).toBe(drawn.col)
+          expect(crosstabDimensions(offered)).toContain(next.row)
+          expect(crosstabDimensions(offered)).toContain(next.col)
         }
-        if (tab === "trend") expect(next.trendField).toBe(trendLineField(state, offered))
+        if (tab === "trend") {
+          expect(next.trendField).toBe(trendLineField(state, offered))
+          expect(trendFields(offered)).toContain(next.trendField)
+        }
       }),
     )
   })
@@ -73,6 +79,15 @@ describe("useReplaceUnofferedDimensions", () => {
     renderHook(() => useReplaceUnofferedDimensions(at("tab=heatmap&row=bogus&col=cell_line"), update, dataset(FIELDS)))
     expect(update).toHaveBeenCalledTimes(1)
     expect(update.mock.calls[0]?.[1]).toEqual({ replace: true })
+  })
+
+  it("writes a patch once, however often the view draws again before the URL changes", () => {
+    const update = vi.fn()
+    const state = at("tab=heatmap&row=bogus&col=cell_line")
+    const { rerender } = renderHook(() => useReplaceUnofferedDimensions(state, update, dataset(FIELDS)))
+    rerender()
+    rerender()
+    expect(update).toHaveBeenCalledTimes(1)
   })
 
   it("waits while the dataset is the copy of the last visit", () => {

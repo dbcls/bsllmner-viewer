@@ -22,14 +22,15 @@ type PickerSearchProps = {
   /** The mark after a term that `isSelected` holds, such as "✓ in condition". */
   selectedNote: string
   onPick: (hit: TermHit) => void
-  /** The list keeps its full height whatever the number of terms, so that a pane switched into its place keeps the dialog's height. */
+  /** The list always has its full height, so the dialog keeps the same height when another pane replaces the list. */
   fullHeight?: boolean
 }
 
 /**
- * Search terms by label, synonym, or ID, in one field or in every annotation field, with counts under the current
- * condition, in the given unit and without the condition on the term's own field, as in the condition panel. The picker that
- * builds the condition counts BioSamples whatever the counting unit of the views. It lives in a dialog and searches while it is drawn.
+ * Searches terms by label, synonym, or ID, in one field or in every annotation field. The counts use the current
+ * condition and the given unit, and they exclude the condition on the term's own field, as in the condition panel. The
+ * term picker that builds the condition counts BioSamples, whichever unit the views use. The caller renders
+ * `PickerSearch` in a dialog, and `PickerSearch` searches while the dialog shows it.
  */
 export const PickerSearch = ({ fieldOptions, field, unit, onField, fields, q, isSelected, selectedNote, onPick, fullHeight }: PickerSearchProps) => {
   const [query, setQuery] = useState("")

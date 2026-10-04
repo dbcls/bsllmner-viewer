@@ -23,10 +23,11 @@ services:
     volumes:
       - ./frontend:/app
       - ./docs:/docs:ro
+      # npm run gen:api-types reads backend/openapi.json.
+      - ./backend:/backend:ro
       - frontend-node-modules:/app/node_modules
     environment:
       BSLLMNER_VIEWER_API_URL: http://api:8000
-      BSLLMNER_VIEWER_OPENAPI_URL: http://api:8000/api/openapi.json
     ports:
       - "${BSLLMNER_VIEWER_FRONTEND_PORT:-5173}:5173"
     depends_on:

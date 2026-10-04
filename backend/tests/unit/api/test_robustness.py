@@ -37,16 +37,23 @@ class TestHugePages:
         assert body["pagination"]["hasNext"] is False
         assert body["pagination"]["page"] == page
 
-    @given(st.integers(min_value=1, max_value=2**80), st.integers(min_value=1, max_value=100))
-    def test_any_page_and_per_page_never_fail(self, client: TestClient, page: int, per_page: int) -> None:
+    @given(
+        st.one_of(st.integers(min_value=1, max_value=8), st.integers(min_value=1, max_value=2**80)),
+        st.integers(min_value=1, max_value=100),
+    )
+    def test_any_page_and_per_page_give_a_page_that_agrees_with_the_total(
+        self, client: TestClient, page: int, per_page: int
+    ) -> None:
         for path in ("/api/entries/biosample", "/api/projects"):
             response = client.get(path, params={"page": page, "perPage": per_page})
             assert response.status_code == 200, (path, page, per_page, response.text)
             body = response.json()
             pagination = body["pagination"]
             offset = (page - 1) * per_page
+            assert (pagination["page"], pagination["perPage"]) == (page, per_page)
             assert pagination["hasNext"] == (page * per_page < pagination["total"])
             assert (len(body["items"]) > 0) == (offset < pagination["total"])
+            assert len(body["items"]) == max(0, min(per_page, pagination["total"] - offset))
 
     def test_last_page_is_not_empty_and_the_page_after_it_is(self, client: TestClient) -> None:
         total = client.get("/api/entries/biosample", params={"perPage": 1}).json()["pagination"]["total"]
@@ -188,6 +195,25 @@ class TestAccessionListHeader:
         assert '; q=""; dataset=' in header
 
 
+_PATHS = [
+    "/api/dataset",
+    "/api/dsl/parse",
+    "/api/dsl/select",
+    "/api/dsl/keyword",
+    "/api/entries/{type}",
+    "/api/entries/biosample/{accession}",
+    "/api/distribution",
+    "/api/crosstab",
+    "/api/trend",
+    "/api/projects",
+    "/api/terms",
+    "/api/terms/children",
+    "/api/terms/{termId}",
+    "/api/export/accessions/{type}",
+    "/api/export/entries/{type}",
+    "/api/service-info",
+]
+
 _BAD_NUMBERS = ["09606", "+9606", "-1", "\uff19\uff16\uff10\uff16", "1e3", "0x10", "2147483648", "9" * 30]
 
 
@@ -233,12 +259,31 @@ class TestElementNumbers:
                 assert response.json()["type"] == PROBLEM_PREFIX + "invalid-element"
 
 
+_PATH_EXAMPLES = {
+    "/api/entries/{type}": "/api/entries/biosample",
+    "/api/entries/biosample/{accession}": "/api/entries/biosample/SAMN01000001",
+    "/api/terms/{termId}": "/api/terms/MONDO:0007254",
+    "/api/export/accessions/{type}": "/api/export/accessions/biosample",
+    "/api/export/entries/{type}": "/api/export/entries/biosample",
+}
+
+
 class TestMethodNotAllowed:
-    @pytest.mark.parametrize("path", ["/api/dataset", "/api/entries/biosample", "/api/distribution"])
-    def test_405_response_has_an_allow_header_that_lists_get(self, client: TestClient, path: str) -> None:
-        response = client.post(path)
-        assert response.status_code == 405
-        assert "GET" in {m.strip() for m in response.headers["allow"].split(",")}
+    def test_the_openapi_document_has_the_paths_that_the_405_test_covers(self, client: TestClient) -> None:
+        assert len(client.get("/api/openapi.json").json()["paths"]) == len(_PATHS)
+
+    @pytest.mark.parametrize("path", _PATHS)
+    def test_405_response_has_an_allow_header_that_lists_the_declared_methods(
+        self, client: TestClient, path: str
+    ) -> None:
+        declared = {m.upper() for m in client.get("/api/openapi.json").json()["paths"][path]}
+        url = _PATH_EXAMPLES.get(path, path)
+        undeclared = "POST" if declared == {"GET"} else "GET" if declared == {"POST"} else "PUT"
+        assert undeclared not in declared
+        response = client.request(undeclared, url)
+        assert response.status_code == 405, (path, response.text)
+        allowed = {m.strip() for m in response.headers["allow"].split(",")} - {"HEAD"}
+        assert allowed == declared
         assert response.headers["x-request-id"]
         assert response.json()["status"] == 405
 

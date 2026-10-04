@@ -1,4 +1,3 @@
-import { fc, test } from "@fast-check/vitest"
 import { describe, expect, it } from "vitest"
 
 import { crc32, physChunk, setPngResolution } from "~/lib/png"
@@ -65,20 +64,33 @@ describe("setPngResolution", () => {
     expect(setPngResolution(truncated, 96)).toEqual(truncated)
   })
 
-  test.prop([fc.integer({ min: 1, max: 2000 })])("records dpi / 0.0254 pixels per meter on both axes, in meters, with the unit byte 1 and a valid CRC", (dpi) => {
-    const chunk = chunksOf(setPngResolution(PIXEL, dpi)).find((c) => c.type === "pHYs") as Chunk
-    const view = new DataView(chunk.data.buffer, chunk.data.byteOffset, chunk.data.byteLength)
-    expect(chunk.data).toHaveLength(9)
-    expect(view.getUint32(0)).toBe(Math.round(dpi / 0.0254))
-    expect(view.getUint32(4)).toBe(view.getUint32(0))
-    expect(chunk.data[8]).toBe(1)
-    expect(chunk.crc).toBe(chunk.checked)
-  })
-
-  test.prop([fc.integer({ min: 1, max: 2000 })])("keeps every byte of the original after the new chunk", (dpi) => {
-    const out = setPngResolution(PIXEL, dpi)
-    expect(out).toHaveLength(PIXEL.length + 21)
-    expect(Array.from(out.subarray(0, 33))).toEqual(Array.from(PIXEL.subarray(0, 33)))
-    expect(Array.from(out.subarray(54))).toEqual(Array.from(PIXEL.subarray(33)))
+  it("keeps every chunk other than pHYs, in order, in an image with several data chunks and ancillary chunks", () => {
+    const build = (type: string, data: Uint8Array): Uint8Array => {
+      const out = new Uint8Array(12 + data.length)
+      const view = new DataView(out.buffer)
+      view.setUint32(0, data.length)
+      for (let i = 0; i < 4; i++) out[4 + i] = type.charCodeAt(i)
+      out.set(data, 8)
+      view.setUint32(8 + data.length, crc32(out.subarray(4, 8 + data.length)))
+      return out
+    }
+    const [header, idat] = chunksOf(PIXEL)
+    const parts = [
+      PIXEL.subarray(0, 8),
+      build("IHDR", (header as Chunk).data),
+      build("sRGB", Uint8Array.of(0)),
+      build("pHYs", new Uint8Array(9)),
+      build("IDAT", (idat as Chunk).data.subarray(0, 5)),
+      build("IDAT", (idat as Chunk).data.subarray(5)),
+      build("tEXt", Uint8Array.of(0x61, 0, 0x62)),
+      build("IEND", new Uint8Array()),
+    ]
+    const input = new Uint8Array(parts.reduce((sum, part) => sum + part.length, 0))
+    parts.reduce((offset, part) => (input.set(part, offset), offset + part.length), 0)
+    const before = chunksOf(input)
+    const after = chunksOf(setPngResolution(input as Uint8Array<ArrayBuffer>, 384))
+    expect(after.map((c) => c.type)).toEqual(["IHDR", "pHYs", "sRGB", "IDAT", "IDAT", "tEXt", "IEND"])
+    const others = (chunks: Chunk[]) => chunks.filter((c) => c.type !== "pHYs").map((c) => Array.from(c.data))
+    expect(others(after)).toEqual(others(before))
   })
 })

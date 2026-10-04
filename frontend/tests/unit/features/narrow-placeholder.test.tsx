@@ -90,7 +90,7 @@ describe.each(VIEWS)("$name", ({ View, state, target, clauses }) => {
   it("narrows the condition with the population and the condition of its table", async () => {
     mount()
     fireEvent.click(await target())
-    expect(toggleNarrow).toHaveBeenCalledExactlyOnceWith("POP-OLD", expect.arrayContaining(clauses), "OLD")
+    expect(toggleNarrow).toHaveBeenCalledExactlyOnceWith("POP-OLD", clauses, "OLD")
   })
 
   it("is not pressable while the table of the previous condition is shown, and narrows again with the new table", async () => {
@@ -108,7 +108,7 @@ describe.each(VIEWS)("$name", ({ View, state, target, clauses }) => {
     await act(async () => open())
     await vi.waitFor(async () => expect(await target()).not.toHaveAttribute("aria-disabled", "true"))
     fireEvent.click(await target())
-    expect(toggleNarrow).toHaveBeenCalledExactlyOnceWith("POP-NEW", expect.arrayContaining(clauses), "NEW")
+    expect(toggleNarrow).toHaveBeenCalledExactlyOnceWith("POP-NEW", clauses, "NEW")
   })
 
   it("keeps the focus while the table of the new condition loads, so that a keyboard user stays at the element", async () => {

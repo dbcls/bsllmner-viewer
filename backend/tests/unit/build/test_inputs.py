@@ -117,13 +117,27 @@ def test_parse_input_doc_requires_accession() -> None:
     [
         ("2021-03-05T02:11:27Z", datetime.datetime(2021, 3, 5, 2, 11, 27)),
         ("2018-11-27T16:18:18.683", datetime.datetime(2018, 11, 27, 16, 18, 18, 683000)),
+        ("2021-03-05T11:11:27+09:00", datetime.datetime(2021, 3, 5, 2, 11, 27)),
+        ("2021-03-05T05:00:00+09:00", datetime.datetime(2021, 3, 4, 20, 0)),
+        ("2021-03-04T20:00:00-05:00", datetime.datetime(2021, 3, 5, 1, 0)),
         ("not a date", None),
         (None, None),
         (12, None),
+        ("0001-01-01T00:00:00+01:00", None),
+        ("9999-12-31T23:59:59-01:00", None),
     ],
 )
 def test_parse_datetime_normalizes_to_naive_utc(value: object, expected: datetime.datetime | None) -> None:
     assert parse_datetime(value) == expected
+
+
+def test_read_input_with_a_publication_date_outside_the_range_of_utc_reads_the_entry_without_a_date(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "late.jsonl"
+    path.write_text(json.dumps({"accession": "SAMN1", "publication_date": "0001-01-01T00:00:00+01:00"}) + "\n")
+    docs = list(read_input(path))
+    assert [(d.accession, d.date_published) for d in docs] == [("SAMN1", None)]
 
 
 def test_read_input_reads_both_shapes_from_one_file(tmp_path: Path) -> None:
@@ -196,10 +210,20 @@ def test_parse_input_doc_reads_the_record_as_paths_without_the_description_attri
                 "Ids": {
                     "Id": [{"namespace": "BioSample", "content": "SAMN1"}, {"namespace": "SRA", "content": "SRS1"}]
                 },
-                "Description": {"Title": "T", "Organism": {"taxonomy_id": "9606", "OrganismName": "Homo sapiens"}},
+                "Description": {
+                    "Title": "T",
+                    "Comment": {"Paragraph": ["P"]},
+                    "SampleName": "N",
+                    "Synonym": [{"content": "S"}],
+                    "Organism": {"taxonomy_id": "9606", "OrganismName": "Homo sapiens"},
+                },
                 "Owner": {"Name": {"content": "Lab"}, "Contacts": {"Contact": {"Name": {"First": "Ann"}}}},
                 "Links": None,
                 "Status": {"status": "live", "when": "2020"},
+                "flag": True,
+                "empty": "",
+                "ratio": 1.5,
+                "nested": [["x"]],
                 "Attributes": {"Attribute": [{"attribute_name": "a", "content": "v"}]},
             },
             "accession": "SAMN1",
@@ -217,4 +241,6 @@ def test_parse_input_doc_reads_the_record_as_paths_without_the_description_attri
         ("Owner.Name", "Lab"),
         ("Status.status", "live"),
         ("Status.when", "2020"),
+        ("ratio", "1.5"),
+        ("nested", "x"),
     ]

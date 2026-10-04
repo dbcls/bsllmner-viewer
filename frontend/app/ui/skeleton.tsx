@@ -13,8 +13,8 @@ type SkeletonProps = {
 const ZERO_WIDTH_SPACE = "\u200b"
 
 /**
- * The place of content that is on its way, drawn at the size the content will take, so that nothing around it moves when
- * the content arrives. Hidden from assistive technology; the region that waits says so with `aria-busy`.
+ * The placeholder for content that has not loaded, drawn at the size the content will take, so that nothing around it
+ * moves when the content arrives. Hidden from assistive technology; the region that waits says so with `aria-busy`.
  */
 export const Skeleton = ({ kind = "text", className }: SkeletonProps) =>
   kind === "text" ? (
@@ -27,7 +27,7 @@ export const Skeleton = ({ kind = "text", className }: SkeletonProps) =>
   )
 
 /**
- * The classes of a region that shows a previous result while the next one is on its way: the content stays and turns
+ * The classes of a region that shows a previous result while the next one loads: the content stays and becomes
  * pale, after a short delay so that a fast answer does not make it blink. Pair it with `aria-busy`.
  */
 export const busyClass = (busy: boolean): string =>

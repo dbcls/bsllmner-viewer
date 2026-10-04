@@ -4,11 +4,15 @@ from __future__ import annotations
 
 import asyncio
 import gc
+import hashlib
+import itertools
 import os
 import shutil
+import tempfile
 import threading
 import time
 from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -17,7 +21,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from bsllmner_viewer.api.app import create_app
-from bsllmner_viewer.api.limits import QUEUE_PER_SLOT, DeadlineCursor, Gate, Limits, query_clock
+from bsllmner_viewer.api.limits import DeadlineCursor, Gate, Limits, query_clock
 from bsllmner_viewer.api.problems import ApiError
 from bsllmner_viewer.api.routers.export import _Stream
 from bsllmner_viewer.api.store import Store
@@ -49,8 +53,32 @@ def _setting(store: Store, name: str) -> str:
     return str(row[0])
 
 
+@contextmanager
+def _interrupt_after(cursor: Any, seconds: float = 30) -> Iterator[None]:
+    """Interrupt a query that the time limit did not stop, so that the test fails instead of running on."""
+    timer = threading.Timer(seconds, cursor.interrupt)
+    timer.daemon = True
+    timer.start()
+    try:
+        yield
+    finally:
+        timer.cancel()
+
+
+def _duckdb_accepts(size: str) -> bool:
+    con = duckdb.connect(":memory:")
+    try:
+        con.execute(f"SET memory_limit = '{size}'")
+        con.execute(f"SET max_temp_directory_size = '{size}'")
+    except duckdb.Error:
+        return False
+    finally:
+        con.close()
+    return True
+
+
 class TestLimits:
-    def test_the_defaults_are_the_values_that_the_docs_state(self) -> None:
+    def test_the_default_limits_are_4gb_memory_20gb_temp_60s_query_10s_queue_8_queries_and_2_exports(self) -> None:
         limits = Limits()
         assert (limits.memory_limit, limits.max_temp_size) == ("4GB", "20GB")
         assert (limits.query_timeout, limits.queue_timeout) == (60, 10)
@@ -85,12 +113,90 @@ class TestLimits:
             ("BSLLMNER_VIEWER_MAX_QUERIES", "0"),
             ("BSLLMNER_VIEWER_MAX_EXPORTS", "1.5"),
             ("BSLLMNER_VIEWER_QUEUE_TIMEOUT", "-1"),
+            ("BSLLMNER_VIEWER_QUERY_TIMEOUT", "nan"),
+            ("BSLLMNER_VIEWER_QUERY_TIMEOUT", "inf"),
+            ("BSLLMNER_VIEWER_QUEUE_TIMEOUT", "nan"),
+            ("BSLLMNER_VIEWER_QUEUE_TIMEOUT", "Infinity"),
+            ("BSLLMNER_VIEWER_MEMORY_LIMIT", "4\u3000GB"),
+            ("BSLLMNER_VIEWER_MAX_TEMP_SIZE", "4\tGB"),
         ],
     )
     def test_an_invalid_value_stops_the_start(self, monkeypatch: pytest.MonkeyPatch, name: str, value: str) -> None:
         monkeypatch.setenv(name, value)
         with pytest.raises(RuntimeError, match="invalid resource limit"):
             Limits.from_env()
+
+    @pytest.mark.parametrize(
+        "name",
+        [
+            "BSLLMNER_VIEWER_MEMORY_LIMIT",
+            "BSLLMNER_VIEWER_TEMP_DIRECTORY",
+            "BSLLMNER_VIEWER_MAX_TEMP_SIZE",
+            "BSLLMNER_VIEWER_QUERY_TIMEOUT",
+            "BSLLMNER_VIEWER_MAX_QUERIES",
+            "BSLLMNER_VIEWER_MAX_EXPORTS",
+            "BSLLMNER_VIEWER_QUEUE_TIMEOUT",
+        ],
+    )
+    def test_an_empty_environment_value_selects_the_default(self, monkeypatch: pytest.MonkeyPatch, name: str) -> None:
+        monkeypatch.setenv(name, "")
+        assert Limits.from_env() == Limits()
+
+    @pytest.mark.parametrize(
+        ("number", "unit"),
+        [
+            ("536870912", "B"),
+            ("524288", "KB"),
+            ("512", "MB"),
+            ("1", "GB"),
+            ("1", "TB"),
+            ("524288", "KiB"),
+            ("512", "MiB"),
+            ("1", "GiB"),
+            ("1", "TiB"),
+        ],
+    )
+    def test_a_size_with_each_documented_unit_is_accepted_by_the_api_and_by_duckdb(
+        self, number: str, unit: str
+    ) -> None:
+        size = number + unit
+        limits = Limits(memory_limit=size, max_temp_size=size)
+        assert (limits.memory_limit, limits.max_temp_size) == (size, size)
+        assert _duckdb_accepts(size)
+
+    @pytest.mark.parametrize(
+        ("number", "gap", "unit"),
+        list(
+            itertools.product(
+                ["4", "1.5", "0.25"],
+                ["", " ", "\t", "\u3000", "\xa0"],
+                ["B", "KB", "MB", "GB", "TB", "KiB", "MiB", "GiB", "TiB", "gb"],
+            )
+        ),
+    )
+    def test_every_size_that_the_api_accepts_is_a_size_that_duckdb_accepts(
+        self, number: str, gap: str, unit: str
+    ) -> None:
+        size = number + gap + unit
+        try:
+            Limits(memory_limit=size)
+        except ValueError:
+            return
+        assert _duckdb_accepts(size), size
+
+    def test_the_default_temporary_directory_is_in_the_system_temporary_directory(self) -> None:
+        assert Limits().temp_directory.parent == Path(tempfile.gettempdir())
+
+
+_READ_REQUESTS: tuple[tuple[str, dict[str, Any]], ...] = (
+    ("/api/dataset", {}),
+    ("/api/entries/biosample", {"q": "hypoxia"}),
+    ("/api/crosstab", {"row": "disease", "col": "tissue", "unit": "bioproject"}),
+    ("/api/trend", {"field": "organism_id"}),
+    ("/api/terms", {"query": "cancer"}),
+    ("/api/export/entries/biosample", {"format": "tsv"}),
+    ("/api/export/accessions/sra-run", {}),
+)
 
 
 class TestStoreConfiguration:
@@ -104,11 +210,19 @@ class TestStoreConfiguration:
         assert (tmp_path / "temp").is_dir()
 
     def test_a_query_that_needs_more_than_the_memory_limit_spills_to_the_temporary_directory(
-        self, configured: Store
+        self, copy_of_store: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        with configured.cursor() as cur:
-            row = cur.execute("SELECT count(*) FROM (SELECT i, hash(i) h FROM range(20000000) t(i) ORDER BY h)")
-            assert row.fetchone() == (20000000,)
+        # Every thread of DuckDB holds buffers, so two threads keep the sort within the limit however busy the host is.
+        monkeypatch.setenv("BSLLMNER_VIEWER_THREADS", "2")
+        store = Store(
+            copy_of_store, Limits(memory_limit="200MB", temp_directory=tmp_path / "temp", max_temp_size="1GB")
+        )
+        try:
+            with store.cursor() as cur:
+                row = cur.execute("SELECT count(*) FROM (SELECT i, hash(i) h FROM range(20000000) t(i) ORDER BY h)")
+                assert row.fetchone() == (20000000,)
+        finally:
+            store.close()
 
     def test_a_query_that_needs_more_than_the_temporary_size_is_an_out_of_memory_error(
         self, copy_of_store: Path, tmp_path: Path
@@ -167,7 +281,7 @@ class TestStoreConfiguration:
     def test_a_temporary_directory_of_another_owner_stops_the_start_with_the_owner_and_the_uid_of_the_api(
         self, copy_of_store: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # The tests run as root, which can write to any directory, so the file system refuses the directory here.
+        # A privileged user can create a directory anywhere, so the test makes Path.mkdir raise PermissionError.
         base = tmp_path / "temp"
         base.mkdir()
 
@@ -186,16 +300,34 @@ class TestStoreConfiguration:
 
     def test_the_api_reads_every_kind_of_request_under_the_configuration(self, configured: Store) -> None:
         with TestClient(create_app(configured.path)) as client:
-            for path, params in (
-                ("/api/dataset", {}),
-                ("/api/entries/biosample", {"q": "hypoxia"}),
-                ("/api/crosstab", {"row": "disease", "col": "tissue", "unit": "bioproject"}),
-                ("/api/trend", {"field": "organism_id"}),
-                ("/api/terms", {"query": "cancer"}),
-                ("/api/export/entries/biosample", {"format": "tsv"}),
-                ("/api/export/accessions/sra-run", {}),
-            ):
+            for path, params in _READ_REQUESTS:
                 assert client.get(path, params=params).status_code == 200, path
+
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            "CREATE TABLE written (x INTEGER)",
+            "INSERT INTO entry SELECT * FROM entry LIMIT 1",
+            "DELETE FROM biosample",
+            "DROP TABLE term",
+        ],
+    )
+    def test_store_opens_the_file_read_only_so_that_a_write_is_an_error(self, configured: Store, sql: str) -> None:
+        with configured.cursor() as cur, pytest.raises(duckdb.Error):
+            cur.execute(sql)
+
+    def test_a_request_does_not_change_the_store_file(self, configured: Store) -> None:
+        def digest() -> str:
+            return hashlib.sha256(configured.path.read_bytes()).hexdigest()
+
+        before = digest()
+        with TestClient(create_app(configured.path)) as client:
+            for path, params in _READ_REQUESTS:
+                assert client.get(path, params=params).status_code == 200, path
+            select = {"q": "hypoxia", "clauses": [{"field": "disease", "value": "MONDO:0007254"}]}
+            assert client.post("/api/dsl/select", json=select).status_code == 200
+            assert client.post("/api/dsl/keyword", json={"q": "hypoxia", "keyword": "cancer"}).status_code == 200
+        assert digest() == before
 
 
 class TestGate:
@@ -204,13 +336,16 @@ class TestGate:
         order: list[str] = []
         gate.acquire()
 
+        waiting = threading.Event()
+
         def second() -> None:
+            waiting.set()
             with gate.slot():
                 order.append("second")
 
         thread = threading.Thread(target=second)
         thread.start()
-        time.sleep(0.1)
+        assert waiting.wait(5)
         order.append("first released")
         gate.release()
         thread.join(5)
@@ -228,23 +363,55 @@ class TestGate:
         assert caught.value.headers is not None
         assert int(caught.value.headers["Retry-After"]) > 0
 
-    def test_a_request_is_busy_at_once_when_the_queue_is_full(self) -> None:
-        gate = Gate(1, wait=5)
-        gate.acquire()
-        threads = [threading.Thread(target=gate.acquire) for _ in range(QUEUE_PER_SLOT)]
+    @pytest.mark.parametrize("slots", [1, 2])
+    def test_a_gate_holds_four_waiting_requests_per_slot_and_refuses_the_next_at_once(self, slots: int) -> None:
+        gate = Gate(slots, wait=10)
+        for _ in range(slots):
+            gate.acquire()
+        failures: list[BaseException] = []
+        got: list[int] = []
+        entering = [threading.Event() for _ in range(4 * slots)]
+
+        def wait_for_a_slot(i: int) -> None:
+            entering[i].set()
+            try:
+                gate.acquire()
+            except BaseException as e:
+                failures.append(e)
+            else:
+                got.append(i)
+
+        threads = [threading.Thread(target=wait_for_a_slot, args=(i,)) for i in range(4 * slots)]
         for thread in threads:
             thread.start()
-        time.sleep(0.2)
+        for event in entering:
+            assert event.wait(5)
+        refused: list[ApiError] = []
+
+        def one_more() -> None:
+            try:
+                gate.acquire()
+            except ApiError as e:
+                refused.append(e)
+
+        probe = threading.Thread(target=one_more)
         started = time.monotonic()
-        with pytest.raises(ApiError):
-            gate.acquire()
+        probe.start()
+        probe.join(1)
+        assert not probe.is_alive()
         assert time.monotonic() - started < 1
-        for _ in threads:
+        assert len(refused) == 1
+        assert refused[0].status == 503
+        for taken in range(1, 4 * slots + 1):
             gate.release()
-            time.sleep(0.1)
-        gate.release()
+            # The next release waits until a waiting request has taken this slot, or the gate would be over-released.
+            deadline = time.monotonic() + 5
+            while len(got) < taken and time.monotonic() < deadline:
+                time.sleep(0.005)
         for thread in threads:
             thread.join(5)
+        assert failures == []
+        assert sorted(got) == list(range(4 * slots))
 
     def test_a_released_slot_can_be_taken_again(self) -> None:
         gate = Gate(2, wait=0)
@@ -258,7 +425,7 @@ class TestQueryClock:
         con = duckdb.connect(":memory:")
         cur = DeadlineCursor(con.cursor())
         started = time.monotonic()
-        with query_clock(cur, 0.2), pytest.raises(duckdb.InterruptException):
+        with _interrupt_after(cur), query_clock(cur, 0.2), pytest.raises(duckdb.InterruptException):
             cur.execute(FOREVER).fetchone()
         assert time.monotonic() - started < 5
 
@@ -266,7 +433,7 @@ class TestQueryClock:
         con = duckdb.connect(":memory:")
         cur = DeadlineCursor(con.cursor())
         started = time.monotonic()
-        with query_clock(cur, 0.2):
+        with _interrupt_after(cur), query_clock(cur, 0.2):
             cur.execute("SELECT 1").fetchone()
             time.sleep(0.6)
             with pytest.raises(duckdb.InterruptException):
@@ -301,8 +468,10 @@ class TestQueryClock:
 
         thread = threading.Thread(target=run_other)
         thread.start()
-        with query_clock(slow, 0.2), pytest.raises(duckdb.InterruptException):
+        started = time.monotonic()
+        with _interrupt_after(slow), query_clock(slow, 0.2), pytest.raises(duckdb.InterruptException):
             slow.execute(FOREVER).fetchone()
+        assert time.monotonic() - started < 5
         thread.join(30)
         assert results == [(300000000,)]
 
@@ -349,7 +518,8 @@ class TestRequestLimits:
                 with store.cursor(heavy=True) as cur:
                     started.set()
                     try:
-                        cur.execute(FOREVER).fetchone()
+                        with _interrupt_after(cur):
+                            cur.execute(FOREVER).fetchone()
                     except duckdb.InterruptException:
                         outcome.append("interrupted")
 
@@ -361,11 +531,26 @@ class TestRequestLimits:
             assert client.get("/api/projects").status_code == 200
             assert time.monotonic() - begin < 1.5
             thread.join(10)
+            assert not thread.is_alive()
             assert outcome == ["interrupted"]
 
-    def test_a_request_without_a_slot_is_a_503_with_retry_after(self, store_path: Path) -> None:
+    @pytest.mark.parametrize(
+        ("path", "params"),
+        [
+            ("/api/entries/biosample", {}),
+            ("/api/distribution", {"field": "disease"}),
+            ("/api/crosstab", {"row": "disease", "col": "tissue"}),
+            ("/api/trend", {"field": "organism_id"}),
+            ("/api/projects", {}),
+            ("/api/terms", {"query": "cancer"}),
+            ("/api/terms/children", {"field": "disease", "termId": "MONDO:0000001"}),
+        ],
+    )
+    def test_every_store_reading_request_without_a_slot_is_a_503_with_retry_after(
+        self, store_path: Path, path: str, params: dict[str, str]
+    ) -> None:
         with _client(store_path, max_queries=1, queue_timeout=0) as client, _store(client).cursor(heavy=True):
-            busy = client.get("/api/projects")
+            busy = client.get(path, params=params)
             assert busy.status_code == 503
             assert busy.json()["type"] == PROBLEM_PREFIX + "server-busy"
             assert int(busy.headers["retry-after"]) > 0
@@ -373,6 +558,24 @@ class TestRequestLimits:
             assert client.get("/api/dataset").status_code == 200
         with _client(store_path, max_queries=1, queue_timeout=0) as client:
             assert client.get("/api/projects").status_code == 200
+
+    def test_the_wait_for_a_slot_does_not_count_toward_the_query_time(self, store_path: Path) -> None:
+        with _client(store_path, max_queries=1, queue_timeout=10, query_timeout=1) as client:
+            store = _store(client)
+            holding = threading.Event()
+
+            def hold() -> None:
+                with store.cursor(heavy=True):
+                    holding.set()
+                    time.sleep(1.5)
+
+            thread = threading.Thread(target=hold)
+            thread.start()
+            assert holding.wait(5)
+            begin = time.monotonic()
+            assert client.get("/api/projects").status_code == 200
+            assert time.monotonic() - begin >= 1
+            thread.join(10)
 
     def test_a_request_waits_for_a_slot_within_the_queue_time(self, store_path: Path) -> None:
         with _client(store_path, max_queries=1, queue_timeout=10) as client:
@@ -391,6 +594,29 @@ class TestRequestLimits:
             assert client.get("/api/projects").status_code == 200
             assert time.monotonic() - begin >= 0.3
             thread.join(10)
+
+    @pytest.mark.parametrize("path", ["/api/export/entries/biosample", "/api/export/accessions/biosample"])
+    def test_an_export_time_limit_counts_each_page_and_not_the_client_read_time(
+        self, store_path: Path, path: str
+    ) -> None:
+        with _client(store_path, query_timeout=0.5, export_batch=1) as client:
+            total = client.get("/api/entries/biosample").json()["pagination"]["total"]
+            begin = time.monotonic()
+            messages = asyncio.run(call_asgi(client.app, path))
+            assert time.monotonic() - begin > 0.5
+        assert messages[0]["status"] == 200
+        assert messages[-1] == {"type": "http.response.body", "body": b"", "more_body": False}
+        body = b"".join(m.get("body", b"") for m in messages[1:])
+        assert len(body.decode().splitlines()) == total + 1
+
+    def test_an_export_past_the_time_limit_before_its_first_byte_is_a_503_and_gives_its_slot_back(
+        self, store_path: Path
+    ) -> None:
+        with _client(store_path, query_timeout=1e-9, max_exports=1, queue_timeout=0) as client:
+            response = client.get("/api/export/entries/biosample", params={"format": "ndjson"})
+            assert response.status_code == 503
+            assert response.json()["type"] == PROBLEM_PREFIX + "query-timeout"
+            _store(client).open_export().close()
 
     def test_exports_in_a_row_each_get_the_only_export_slot(self, store_path: Path) -> None:
         with _client(store_path, max_exports=1, queue_timeout=0) as client:
@@ -414,14 +640,20 @@ class TestRequestLimits:
                 session.close()
             assert client.get("/api/export/accessions/biosample").status_code == 200
 
-    @pytest.mark.parametrize("path", ["/api/export/entries/biosample", "/api/export/accessions/biosample"])
-    def test_an_export_gives_its_slot_back_when_the_client_disconnects(self, store_path: Path, path: str) -> None:
+    @pytest.mark.parametrize(
+        ("path", "query"),
+        [("/api/export/entries/biosample", b"format=ndjson"), ("/api/export/accessions/biosample", b"")],
+    )
+    def test_an_export_gives_its_slot_back_when_the_client_disconnects(
+        self, store_path: Path, path: str, query: bytes
+    ) -> None:
         # A cycle of references can keep a body alive until the garbage collector runs, so the collector is off.
         gc.disable()
         try:
             with _client(store_path, max_exports=1, queue_timeout=0, export_batch=1) as client:
                 store = _store(client)
-                messages = asyncio.run(call_asgi(client.app, path, b"format=ndjson", disconnect_after=3))
+                messages = asyncio.run(call_asgi(client.app, path, query, disconnect_after=3))
+                assert messages[0]["status"] == 200
                 assert len(messages) < 100
                 store.open_export().close()
         finally:
@@ -461,7 +693,7 @@ class TestRequestLimits:
                 )
             assert messages[0]["status"] == 200
             assert not any(m["type"] == "http.response.body" and not m.get("more_body") for m in messages)
-            # The slot is free: the next export fails on the closed store, and it is not told to wait.
+            # The slot is free. The next export fails because the store is closed, and not because it must wait.
             with pytest.raises(duckdb.ConnectionException):
                 store.open_export()
 
@@ -474,7 +706,7 @@ class TestRequestLimits:
             assert response.headers["content-type"].startswith("application/problem+json")
 
     def test_a_dropped_export_body_gives_its_slot_back(self, configured: Store) -> None:
-        # The limits of the fixture allow two exports.
+        # The fixture keeps the default of two exports.
         first, second = configured.open_export(), configured.open_export()
         with pytest.raises(ApiError):
             configured.open_export()
@@ -497,13 +729,17 @@ class TestCors:
 
 
 class TestLengths:
-    def test_a_search_text_of_the_most_characters_is_accepted(self, client: TestClient) -> None:
+    def test_a_search_text_at_the_length_limit_is_accepted_and_a_longer_one_is_rejected(
+        self, client: TestClient
+    ) -> None:
         assert client.get("/api/terms", params={"query": "a" * 4096}).status_code == 200
         response = client.get("/api/terms", params={"query": "a" * 4097})
         assert response.status_code == 422
         assert response.json()["type"] == "about:blank"
 
-    def test_a_term_id_or_a_field_name_of_the_most_characters_is_accepted(self, client: TestClient) -> None:
+    def test_a_term_id_or_a_field_name_at_the_length_limit_is_accepted_and_a_longer_one_is_rejected(
+        self, client: TestClient
+    ) -> None:
         assert client.get("/api/terms/children", params={"field": "disease", "termId": "T" * 256}).status_code == 404
         for params in ({"field": "disease", "termId": "T" * 257}, {"field": "d" * 257, "termId": "x"}):
             assert client.get("/api/terms/children", params=params).status_code == 422
@@ -512,11 +748,15 @@ class TestLengths:
         assert client.get("/api/distribution", params={"field": "d" * 257}).status_code == 422
         assert client.get("/api/crosstab", params={"row": "disease", "col": "d" * 257}).status_code == 422
 
-    def test_an_accession_of_the_most_characters_is_accepted(self, client: TestClient) -> None:
+    def test_an_accession_at_the_length_limit_is_accepted_and_a_longer_one_is_rejected(
+        self, client: TestClient
+    ) -> None:
         assert client.get("/api/entries/biosample/" + "S" * 64).status_code == 404
         assert client.get("/api/entries/biosample/" + "S" * 65).status_code == 422
 
-    def test_an_element_of_the_most_characters_is_accepted(self, client: TestClient) -> None:
+    def test_an_element_at_the_length_limit_is_accepted_and_a_longer_one_is_an_invalid_element(
+        self, client: TestClient
+    ) -> None:
         ok = client.get("/api/distribution", params={"field": "disease", "elements": "MONDO:" + "T" * 250})
         assert ok.status_code == 200
         too_long = client.get("/api/distribution", params={"field": "disease", "elements": "T" * 257})
@@ -528,6 +768,33 @@ class TestLengths:
         ):
             assert client.get(path, params=params).json()["type"] == PROBLEM_PREFIX + "invalid-element"
 
+    @pytest.mark.parametrize("ch", ["a", "\u00e9"])
+    @pytest.mark.parametrize(
+        ("path", "params"),
+        [
+            ("/api/entries/biosample", {}),
+            ("/api/distribution", {"field": "disease"}),
+            ("/api/crosstab", {"row": "disease", "col": "tissue"}),
+            ("/api/trend", {"field": "organism_id"}),
+            ("/api/projects", {}),
+            ("/api/terms", {"query": "cancer"}),
+            ("/api/terms/children", {"field": "disease", "termId": "MONDO:0000001"}),
+            ("/api/export/entries/biosample", {}),
+            ("/api/export/accessions/biosample", {}),
+            ("/api/dsl/parse", {}),
+        ],
+    )
+    def test_a_q_over_the_limit_is_an_unexpected_token_for_every_operation_that_takes_q(
+        self, client: TestClient, path: str, params: dict[str, str], ch: str
+    ) -> None:
+        head, tail = 'disease:"MONDO:', '"'
+        fits = head + ch * (4096 - len(head) - len(tail)) + tail
+        assert len(fits) == 4096
+        assert client.get(path, params={**params, "q": fits}).status_code == 200
+        response = client.get(path, params={**params, "q": fits + ch})
+        assert response.status_code == 400
+        assert response.json()["type"] == PROBLEM_PREFIX + "unexpected-token"
+
     def test_a_condition_in_a_body_has_at_most_the_characters_of_a_condition(self, client: TestClient) -> None:
         for path, body in (
             ("/api/dsl/select", {"q": "a" * 4097, "clauses": [{"field": "disease", "value": "x"}]}),
@@ -538,22 +805,31 @@ class TestLengths:
     def test_a_clause_has_at_most_the_characters_of_a_condition_in_its_value(self, client: TestClient) -> None:
         clause = {"field": "disease", "value": "x" * 4097}
         assert client.post("/api/dsl/select", json={"clauses": [clause]}).status_code == 422
+        # The longest value that the schema accepts reaches the parser, which refuses it as a condition.
+        longest = {"field": "disease", "value": "MONDO:" + "x" * 4090}
+        response = client.post("/api/dsl/select", json={"clauses": [longest]})
+        assert response.status_code == 400
+        assert response.json()["type"] == PROBLEM_PREFIX + "unexpected-token"
         assert client.post("/api/dsl/select", json={"clauses": [{"field": "d" * 257, "value": "x"}]}).status_code == 422
         too_long = {"field": "date_published", "from": "2020-01-01", "to": "2" * 4097}
         assert client.post("/api/dsl/select", json={"clauses": [too_long]}).status_code == 422
+        longest_date = {"field": "date_published", "from": "2020-01-01", "to": "2" * 4096}
+        response = client.post("/api/dsl/select", json={"clauses": [longest_date]})
+        assert response.status_code == 400
+        assert response.json()["type"] == PROBLEM_PREFIX + "invalid-date-format"
 
     def test_a_select_has_at_most_as_many_clauses_as_a_condition_has_nodes(self, client: TestClient) -> None:
         clauses = [
             {"field": "date_published", "from": f"{1000 + i}-01-01", "to": f"{1000 + i}-12-31"} for i in range(513)
         ]
-        # 512 clauses of date ranges make a condition that is too long.
+        # 512 date range clauses are within the clause limit, but they make a condition that is too long.
         assert client.post("/api/dsl/select", json={"clauses": clauses[:512]}).status_code == 400
         response = client.post("/api/dsl/select", json={"clauses": clauses})
         assert response.status_code == 422
         assert response.json()["type"] == "about:blank"
 
     def test_a_removal_of_many_date_ranges_is_accepted(self, client: TestClient) -> None:
-        # Selecting a clause that is present removes it, as the removal of every date range of a condition does.
+        # Selecting clauses that are all in the condition removes them. The request removes all 90 date ranges.
         ranges = [f"date_published:[{1000 + i}-01-01 TO {1000 + i}-12-31]" for i in range(90)]
         q = " OR ".join(ranges)
         clauses = [
@@ -573,18 +849,40 @@ class TestLengths:
 
 
 class TestElementLimit:
-    def test_a_request_names_at_most_100_elements_of_a_dimension(self, client: TestClient) -> None:
+    @pytest.mark.parametrize(
+        ("path", "params", "dimension"),
+        [
+            ("/api/distribution", {"field": "disease"}, "elements"),
+            ("/api/crosstab", {"row": "disease", "col": "tissue"}, "rowElements"),
+            ("/api/crosstab", {"row": "disease", "col": "tissue"}, "colElements"),
+            ("/api/trend", {"field": "disease"}, "elements"),
+        ],
+    )
+    def test_a_request_names_at_most_100_elements_of_a_dimension(
+        self, client: TestClient, path: str, params: dict[str, str], dimension: str
+    ) -> None:
         names = ",".join(f"MONDO:{i}" for i in range(100))
-        assert client.get("/api/distribution", params={"field": "disease", "elements": names}).status_code == 200
-        response = client.get("/api/distribution", params={"field": "disease", "elements": names + ",MONDO:100"})
+        assert client.get(path, params={**params, dimension: names}).status_code == 200
+        response = client.get(path, params={**params, dimension: names + ",MONDO:100"})
         assert response.status_code == 400
         assert response.json()["type"] == PROBLEM_PREFIX + "too-many-elements"
 
-    def test_the_limit_of_a_cross_tabulation_is_at_most_100(self, client: TestClient) -> None:
-        params = {"row": "disease", "col": "tissue"}
-        assert client.get("/api/crosstab", params={**params, "limit": 100}).status_code == 200
-        assert client.get("/api/crosstab", params={**params, "limit": 101}).status_code == 422
-        assert client.get("/api/distribution", params={"field": "disease", "limit": 200}).status_code == 200
+    @pytest.mark.parametrize(
+        ("path", "params", "maximum"),
+        [
+            ("/api/crosstab", {"row": "disease", "col": "tissue"}, 100),
+            ("/api/distribution", {"field": "disease"}, 200),
+            ("/api/terms", {"query": "cancer"}, 100),
+            ("/api/trend", {"field": "disease"}, 200),
+        ],
+    )
+    def test_the_limit_of_each_operation_accepts_1_to_its_maximum_and_rejects_0_and_one_more(
+        self, client: TestClient, path: str, params: dict[str, str], maximum: int
+    ) -> None:
+        for accepted in (1, maximum):
+            assert client.get(path, params={**params, "limit": accepted}).status_code == 200, accepted
+        for rejected in (0, maximum + 1):
+            assert client.get(path, params={**params, "limit": rejected}).status_code == 422, rejected
 
 
 class TestStaleTemporaryDirectories:

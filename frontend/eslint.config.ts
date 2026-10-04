@@ -147,10 +147,10 @@ export default tseslint.config(
       "react/forbid-elements": ["error", {
         forbid: [
           { element: "button", message: "Raw <button> is not allowed. Use <Button> from ~/ui instead." },
-          { element: "a", message: "Raw <a> is not allowed. Use react-router's <Link> or a ~/ui primitive instead." },
-          { element: "input", message: "Raw <input> is not allowed. Add a form primitive to ~/ui and use it instead." },
-          { element: "select", message: "Raw <select> is not allowed. Add a ~/ui <Select> primitive and use it instead." },
-          { element: "textarea", message: "Raw <textarea> is not allowed. Add a form primitive to ~/ui and use it instead." },
+          { element: "a", message: "Raw <a> is not allowed. Use <Link> from react-router, or <ExternalLink> or <DownloadLink> from ~/ui, instead." },
+          { element: "input", message: "Raw <input> is not allowed. Use <TextInput>, <CheckboxRow>, or <Toggle> from ~/ui instead." },
+          { element: "select", message: "Raw <select> is not allowed. Use <Select> from ~/ui instead." },
+          { element: "textarea", message: "Raw <textarea> is not allowed. Use <TextArea> from ~/ui instead." },
         ],
       }],
     },

@@ -3,7 +3,7 @@ import { defineConfig, devices } from "@playwright/test"
 /**
  * The end-to-end tests drive a deployment with its real dataset, not this source. The address comes
  * from the environment so that the same scenarios run against any deployment; the global setup stops
- * the run when it is missing.
+ * the run when the environment variable is not set.
  */
 const baseURL = process.env.BSLLMNER_VIEWER_E2E_BASE_URL
 
@@ -19,7 +19,7 @@ export const EXPECTED = {
   commit: process.env.BSLLMNER_VIEWER_E2E_COMMIT ?? "",
 }
 
-// The deployment serves real users, so the run is small and a failure is never retried away.
+// The deployment serves real users, so the run is small and a failed test is not retried.
 export default defineConfig({
   testDir: ".",
   globalSetup: "./global-setup.ts",
@@ -27,7 +27,7 @@ export default defineConfig({
   workers: 2,
   retries: 0,
   timeout: 90_000,
-  // Aggregations over the full dataset take up to about a second, and the site is across a network.
+  // Aggregations over the full dataset take up to about 1 second. The requests also cross a network.
   expect: { timeout: 15_000 },
   reporter: [["list"], ["html", { outputFolder: "../../playwright-report", open: "never" }]],
   outputDir: "../../test-results",

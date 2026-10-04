@@ -1,0 +1,4323 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "bsllmner-viewer API",
+    "description": "Queries, aggregations, and exports over ontology-mapped BioSample annotations. The conventions follow the DDBJ Search API.\n\nStart with [/llms.txt](/llms.txt): condition examples and recipes for common tasks. [/llms-full.txt](/llms-full.txt) has the rules that span operations: the condition language, the descendants of terms, counting units and populations, self-exclusion, default elements, expected counts, export formats, errors, limits, and caching with `ETag` and `If-None-Match`. A description in this document names the heading of the rule that it relies on.",
+    "contact": {
+      "name": "BioData Science Initiative",
+      "url": "https://github.com/dbcls/bsllmner-viewer"
+    },
+    "license": {
+      "name": "Apache-2.0",
+      "url": "https://www.apache.org/licenses/LICENSE-2.0"
+    },
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/dataset": {
+      "get": {
+        "tags": [
+          "Dataset"
+        ],
+        "summary": "Get the dataset version, the fields, and the population totals",
+        "description": "Returns what a client needs before it writes conditions: the version of the dataset, the target assays, the fields of the condition language with their kinds, the status groups, and the BioSample counts of the whole population per assay, organism, and field. Counts are in the BioSample unit, except `totals`, which has all three units.",
+        "operationId": "getDataset",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatasetResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity (the request does not match the operation)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/dsl/parse": {
+      "get": {
+        "tags": [
+          "Condition"
+        ],
+        "summary": "Parse a condition into an abstract syntax tree",
+        "description": "Parses `q` into the abstract syntax tree (AST) of the DDBJ Search API, with the display labels of its term IDs and organism IDs. An invalid condition gets 400 with the column of the error, so this operation also checks a condition before it is used. See \"Condition DSL\" in /llms-full.txt.",
+        "operationId": "parseCondition",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "description": "The condition to parse. It cannot be empty",
+              "title": "Q"
+            },
+            "description": "The condition to parse. It cannot be empty"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParseResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity (the request does not match the operation)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request. The slug that ends `type` is one of:\n\n- `unexpected-token`: The condition does not parse, is longer than 4096 characters, or is blank where a condition is required, or a keyword has a wildcard. Parse, select, and keyword also return this slug if the condition that they return would be longer than 4096 characters. Fix the condition at the column that `detail` gives. Quote a value that has a colon or a space. See \"Grammar\" in /llms-full.txt.\n- `unknown-field`: A condition, a clause, or a parameter (`field`, `row`, `col`) names a field that the dataset does not have. Use a field that `dslFields` of `GET /api/dataset` lists.\n- `invalid-date-format`: A value of `date_published` in the form `YYYY-MM-DD` is not a calendar date, such as `2020-13-45`, or a bound of a range is not a date in that form. Write the date as `YYYY-MM-DD`, such as `2020-12-31`. See \"Fields\" in /llms-full.txt.\n- `invalid-operator-for-field`: The form of a value does not fit the field, such as a range or a date on a field other than `date_published`, a value with a wildcard, or a value of `date_published` that is neither a date in the form `YYYY-MM-DD` nor a range (`2020-1-1`, a quoted date, or `\"\"`). Use `field:value` for the field, `date_published:YYYY-MM-DD` for a date, or `date_published:[a TO b]` for a range. See \"Fields\" in /llms-full.txt.\n- `invalid-value`: A value is not allowed for the field: a status that is not a status group, an assay that the dataset does not have, a term value that is not a term ID, an organism that is not a number, a keyword without a letter or a digit, or keywords over their limits. Use the values that `detail` lists. Find a term ID with `GET /api/terms`. See \"Fields\" and \"Keywords\" in /llms-full.txt.\n- `nest-depth-exceeded`: Groups nest deeper than 5 levels, or the condition has more than 512 nodes. Flatten the groups or split the condition. See \"Limits\" in /llms-full.txt.\n- `missing-value`: A clause on a field other than `date_published` has an empty value. Give the clause a value. See \"Fields\" in /llms-full.txt.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/dsl/select": {
+      "post": {
+        "tags": [
+          "Condition"
+        ],
+        "summary": "Apply the clauses of an aggregation element to a condition",
+        "description": "Applies the clauses of an aggregation element to `q`. `toggle` adds the clauses, or removes them when all of them are already in `q`. `narrow` adds each clause as a new `AND` conjunct. See \"From elements to conditions\" in /llms-full.txt for where a clause goes.",
+        "operationId": "selectElement",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SelectRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConditionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity (the request does not match the operation)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request. The slug that ends `type` is one of:\n\n- `unexpected-token`: The condition does not parse, is longer than 4096 characters, or is blank where a condition is required, or a keyword has a wildcard. Parse, select, and keyword also return this slug if the condition that they return would be longer than 4096 characters. Fix the condition at the column that `detail` gives. Quote a value that has a colon or a space. See \"Grammar\" in /llms-full.txt.\n- `unknown-field`: A condition, a clause, or a parameter (`field`, `row`, `col`) names a field that the dataset does not have. Use a field that `dslFields` of `GET /api/dataset` lists.\n- `invalid-date-format`: A value of `date_published` in the form `YYYY-MM-DD` is not a calendar date, such as `2020-13-45`, or a bound of a range is not a date in that form. Write the date as `YYYY-MM-DD`, such as `2020-12-31`. See \"Fields\" in /llms-full.txt.\n- `invalid-operator-for-field`: The form of a value does not fit the field, such as a range or a date on a field other than `date_published`, a value with a wildcard, or a value of `date_published` that is neither a date in the form `YYYY-MM-DD` nor a range (`2020-1-1`, a quoted date, or `\"\"`). Use `field:value` for the field, `date_published:YYYY-MM-DD` for a date, or `date_published:[a TO b]` for a range. See \"Fields\" in /llms-full.txt.\n- `invalid-value`: A value is not allowed for the field: a status that is not a status group, an assay that the dataset does not have, a term value that is not a term ID, an organism that is not a number, a keyword without a letter or a digit, or keywords over their limits. Use the values that `detail` lists. Find a term ID with `GET /api/terms`. See \"Fields\" and \"Keywords\" in /llms-full.txt.\n- `nest-depth-exceeded`: Groups nest deeper than 5 levels, or the condition has more than 512 nodes. Flatten the groups or split the condition. See \"Limits\" in /llms-full.txt.\n- `missing-value`: A clause on a field other than `date_published` has an empty value. Give the clause a value. See \"Fields\" in /llms-full.txt.\n- `invalid-ast`: A clause has neither `value`, nor `from` and `to` together. Give each clause `value`, or both `from` and `to`.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/dsl/keyword": {
+      "post": {
+        "tags": [
+          "Condition"
+        ],
+        "summary": "Replace the keywords of a condition",
+        "description": "Replaces the keywords among the top-level AND conjuncts of `q` with the keywords of `keyword`. The operation reads `keyword` as a search box reads text: quoted parts are phrases, and the other words form one keyword. Double quotes around a part make a phrase. A single quote (`'`) at the start of a word and another at the end of the same or a later word also make a phrase, as in `'cell line'`. Any other single quote is part of its word, as in `Alzheimer's` or `3'`. `AND`, `OR`, and `NOT` are ordinary words. An empty `keyword` removes the keywords.",
+        "operationId": "setKeyword",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/KeywordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConditionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity (the request does not match the operation)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request. The slug that ends `type` is one of:\n\n- `unexpected-token`: The condition does not parse, is longer than 4096 characters, or is blank where a condition is required, or a keyword has a wildcard. Parse, select, and keyword also return this slug if the condition that they return would be longer than 4096 characters. Fix the condition at the column that `detail` gives. Quote a value that has a colon or a space. See \"Grammar\" in /llms-full.txt.\n- `unknown-field`: A condition, a clause, or a parameter (`field`, `row`, `col`) names a field that the dataset does not have. Use a field that `dslFields` of `GET /api/dataset` lists.\n- `invalid-date-format`: A value of `date_published` in the form `YYYY-MM-DD` is not a calendar date, such as `2020-13-45`, or a bound of a range is not a date in that form. Write the date as `YYYY-MM-DD`, such as `2020-12-31`. See \"Fields\" in /llms-full.txt.\n- `invalid-operator-for-field`: The form of a value does not fit the field, such as a range or a date on a field other than `date_published`, a value with a wildcard, or a value of `date_published` that is neither a date in the form `YYYY-MM-DD` nor a range (`2020-1-1`, a quoted date, or `\"\"`). Use `field:value` for the field, `date_published:YYYY-MM-DD` for a date, or `date_published:[a TO b]` for a range. See \"Fields\" in /llms-full.txt.\n- `invalid-value`: A value is not allowed for the field: a status that is not a status group, an assay that the dataset does not have, a term value that is not a term ID, an organism that is not a number, a keyword without a letter or a digit, or keywords over their limits. Use the values that `detail` lists. Find a term ID with `GET /api/terms`. See \"Fields\" and \"Keywords\" in /llms-full.txt.\n- `nest-depth-exceeded`: Groups nest deeper than 5 levels, or the condition has more than 512 nodes. Flatten the groups or split the condition. See \"Limits\" in /llms-full.txt.\n- `missing-value`: A clause on a field other than `date_published` has an empty value. Give the clause a value. See \"Fields\" in /llms-full.txt.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/entries/{type}": {
+      "get": {
+        "tags": [
+          "Entries"
+        ],
+        "summary": "List the BioSamples that match a condition",
+        "description": "Lists the BioSamples that match `q`, one page at a time. `pagination.total` is the count of `q` in the BioSample unit. Each item lists the SRA Experiments of the BioSample that match `q`. An entry type that is not `biosample` gets 404. The Samples view of the UI uses this operation. See \"Entries\" in /llms-full.txt.",
+        "operationId": "listEntries",
+        "parameters": [
+          {
+            "name": "type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/EntryType",
+              "description": "Entry type. Only `biosample` has entries"
+            },
+            "description": "Entry type. Only `biosample` has entries"
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The condition, in the condition language: `field:value`, `field:\"phrase\"`, `field:[a TO b]`, keywords without a field, `AND`, `OR`, `NOT`, and parentheses. If `q` is omitted or empty, the condition is the whole population. The value of an annotation term field is a term ID. `GET /api/terms` finds term IDs. A term ID matches the term and its descendants. The value of `<field>_status` is a status group: `mapped`, `unmapped`, or `no_value`. The value of `library_strategy` is a target assay of `GET /api/dataset`. A keyword matches the searchable text of a BioSample. A keyword in the form of an accession matches the entries that have the accession instead. See \"Condition DSL\" in /llms-full.txt",
+              "examples": [
+                "disease:\"MONDO:0007254\"",
+                "cell_line:\"CVCL:0030\" AND library_strategy:ATAC-seq",
+                "organism_id:9606 AND date_published:[2015-01-01 TO 2020-12-31]",
+                "disease_status:unmapped",
+                "\"breast cancer\" AND NOT organism_id:10090"
+              ],
+              "title": "Q"
+            },
+            "description": "The condition, in the condition language: `field:value`, `field:\"phrase\"`, `field:[a TO b]`, keywords without a field, `AND`, `OR`, `NOT`, and parentheses. If `q` is omitted or empty, the condition is the whole population. The value of an annotation term field is a term ID. `GET /api/terms` finds term IDs. A term ID matches the term and its descendants. The value of `<field>_status` is a status group: `mapped`, `unmapped`, or `no_value`. The value of `library_strategy` is a target assay of `GET /api/dataset`. A keyword matches the searchable text of a BioSample. A keyword in the form of an accession matches the entries that have the accession instead. See \"Condition DSL\" in /llms-full.txt"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Page number, starting at 1. A page after the last page has empty `items`",
+              "default": 1,
+              "title": "Page"
+            },
+            "description": "Page number, starting at 1. A page after the last page has empty `items`"
+          },
+          {
+            "name": "perPage",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "Items per page, from 1 to 100",
+              "default": 25,
+              "title": "Perpage"
+            },
+            "description": "Items per page, from 1 to 100"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntriesResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity (the request does not match the operation)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request. The slug that ends `type` is one of:\n\n- `unexpected-token`: The condition does not parse, is longer than 4096 characters, or is blank where a condition is required, or a keyword has a wildcard. Parse, select, and keyword also return this slug if the condition that they return would be longer than 4096 characters. Fix the condition at the column that `detail` gives. Quote a value that has a colon or a space. See \"Grammar\" in /llms-full.txt.\n- `unknown-field`: A condition, a clause, or a parameter (`field`, `row`, `col`) names a field that the dataset does not have. Use a field that `dslFields` of `GET /api/dataset` lists.\n- `invalid-date-format`: A value of `date_published` in the form `YYYY-MM-DD` is not a calendar date, such as `2020-13-45`, or a bound of a range is not a date in that form. Write the date as `YYYY-MM-DD`, such as `2020-12-31`. See \"Fields\" in /llms-full.txt.\n- `invalid-operator-for-field`: The form of a value does not fit the field, such as a range or a date on a field other than `date_published`, a value with a wildcard, or a value of `date_published` that is neither a date in the form `YYYY-MM-DD` nor a range (`2020-1-1`, a quoted date, or `\"\"`). Use `field:value` for the field, `date_published:YYYY-MM-DD` for a date, or `date_published:[a TO b]` for a range. See \"Fields\" in /llms-full.txt.\n- `invalid-value`: A value is not allowed for the field: a status that is not a status group, an assay that the dataset does not have, a term value that is not a term ID, an organism that is not a number, a keyword without a letter or a digit, or keywords over their limits. Use the values that `detail` lists. Find a term ID with `GET /api/terms`. See \"Fields\" and \"Keywords\" in /llms-full.txt.\n- `nest-depth-exceeded`: Groups nest deeper than 5 levels, or the condition has more than 512 nodes. Flatten the groups or split the condition. See \"Limits\" in /llms-full.txt.\n- `missing-value`: A clause on a field other than `date_published` has an empty value. Give the clause a value. See \"Fields\" in /llms-full.txt.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable. The slug that ends `type` is one of:\n\n- `server-busy`: The api has no free slot for the request after waiting, or too many requests wait already. Wait for the `Retry-After` seconds and send the request again.\n- `query-timeout`: The query took longer than the time limit of a request and was stopped. Narrow the condition. The same request does not finish by itself.\n- `query-too-large`: The query needs more memory or temporary disk space than a worker may use and was stopped. Narrow the condition, or ask for fewer elements.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/entries/biosample/{accession}": {
+      "get": {
+        "tags": [
+          "Entries"
+        ],
+        "summary": "Get a BioSample with its annotations and evidence",
+        "description": "Returns one BioSample with its original metadata, annotations with evidence, SRA Experiments, and BioProjects. The BioSample does not have to be in the population: `inPopulation` of each SRA Experiment tells whether the SRA Experiment is in the population. `run` is the name of the bsllmner-mk2 run that analyzed the BioSample, not an SRA Run. An accession that is not that of a BioSample gets 404. Find the BioSample of another accession with the accession as a keyword in `q`. See \"Entries\" in /llms-full.txt.",
+        "operationId": "getEntry",
+        "parameters": [
+          {
+            "name": "accession",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 64,
+              "description": "BioSample accession, such as `SAMN14864678`",
+              "title": "Accession"
+            },
+            "description": "BioSample accession, such as `SAMN14864678`"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EntryResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity (the request does not match the operation)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/distribution": {
+      "get": {
+        "tags": [
+          "Aggregations"
+        ],
+        "summary": "Count the population per element of one dimension",
+        "description": "Counts the population per element of the dimension `field`, in `unit`. The population is `q`, or `q` without the conjuncts on `field` with `facetSelfExclude`. `total` is the count of the population. An element counts the units that have its value. For a term dimension, the units have the term or one of its descendants. The Distribution view of the UI calls this operation once per field. See \"Aggregations\" and \"Default elements\" in /llms-full.txt for the elements and their order.",
+        "operationId": "getDistribution",
+        "parameters": [
+          {
+            "name": "field",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 256,
+              "description": "Dimension of the counts. An annotation term field, `library_strategy`, `organism_id`, or `date_published`. `dslFields` of `GET /api/dataset` lists the fields with their kinds `term`, `assay`, `organism`, and `date`",
+              "title": "Field"
+            },
+            "description": "Dimension of the counts. An annotation term field, `library_strategy`, `organism_id`, or `date_published`. `dslFields` of `GET /api/dataset` lists the fields with their kinds `term`, `assay`, `organism`, and `date`"
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The condition, in the condition language: `field:value`, `field:\"phrase\"`, `field:[a TO b]`, keywords without a field, `AND`, `OR`, `NOT`, and parentheses. If `q` is omitted or empty, the condition is the whole population. The value of an annotation term field is a term ID. `GET /api/terms` finds term IDs. A term ID matches the term and its descendants. The value of `<field>_status` is a status group: `mapped`, `unmapped`, or `no_value`. The value of `library_strategy` is a target assay of `GET /api/dataset`. A keyword matches the searchable text of a BioSample. A keyword in the form of an accession matches the entries that have the accession instead. See \"Condition DSL\" in /llms-full.txt",
+              "examples": [
+                "disease:\"MONDO:0007254\"",
+                "cell_line:\"CVCL:0030\" AND library_strategy:ATAC-seq",
+                "organism_id:9606 AND date_published:[2015-01-01 TO 2020-12-31]",
+                "disease_status:unmapped",
+                "\"breast cancer\" AND NOT organism_id:10090"
+              ],
+              "title": "Q"
+            },
+            "description": "The condition, in the condition language: `field:value`, `field:\"phrase\"`, `field:[a TO b]`, keywords without a field, `AND`, `OR`, `NOT`, and parentheses. If `q` is omitted or empty, the condition is the whole population. The value of an annotation term field is a term ID. `GET /api/terms` finds term IDs. A term ID matches the term and its descendants. The value of `<field>_status` is a status group: `mapped`, `unmapped`, or `no_value`. The value of `library_strategy` is a target assay of `GET /api/dataset`. A keyword matches the searchable text of a BioSample. A keyword in the form of an accession matches the entries that have the accession instead. See \"Condition DSL\" in /llms-full.txt"
+          },
+          {
+            "name": "unit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Unit",
+              "description": "Counting unit. `biosample` counts distinct BioSamples, `sra-experiment` distinct SRA Experiments, and `bioproject` distinct BioProjects. See \"Counting\" in /llms-full.txt",
+              "default": "biosample"
+            },
+            "description": "Counting unit. `biosample` counts distinct BioSamples, `sra-experiment` distinct SRA Experiments, and `bioproject` distinct BioProjects. See \"Counting\" in /llms-full.txt"
+          },
+          {
+            "name": "facetSelfExclude",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "If true, the operation removes from `q` each top-level conjunct whose clauses are all on the dimensions of the operation, as the UI does. The top-level conjuncts are the operands of the `AND` at the root of `q`, or `q` itself if the root is not `AND`. A conjunct that has a keyword stays. The description of the operation names its dimensions. If false, the operation uses `q` as it is. See \"Self-exclusion\" in /llms-full.txt",
+              "default": false,
+              "title": "Facetselfexclude"
+            },
+            "description": "If true, the operation removes from `q` each top-level conjunct whose clauses are all on the dimensions of the operation, as the UI does. The top-level conjuncts are the operands of the `AND` at the root of `q`, or `q` itself if the root is not `AND`. A conjunct that has a keyword stays. The description of the operation names its dimensions. If false, the operation uses `q` as it is. See \"Self-exclusion\" in /llms-full.txt"
+          },
+          {
+            "name": "elements",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Comma-separated elements, at most 100. An element is a term ID for an annotation term field, a target assay for `library_strategy`, an NCBI Taxonomy ID for `organism_id`, and a year for `date_published`. See \"Default elements\" in /llms-full.txt",
+              "title": "Elements"
+            },
+            "description": "Comma-separated elements, at most 100. An element is a term ID for an annotation term field, a target assay for `library_strategy`, an NCBI Taxonomy ID for `organism_id`, and a year for `date_published`. See \"Default elements\" in /llms-full.txt"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "description": "Number of default elements, from 1 to 200, when `elements` is omitted. The elements that `q` names come in addition. It does not apply to `date_published`, which has every year",
+              "default": 10,
+              "title": "Limit"
+            },
+            "description": "Number of default elements, from 1 to 200, when `elements` is omitted. The elements that `q` names come in addition. It does not apply to `date_published`, which has every year"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DistributionResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity (the request does not match the operation)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request. The slug that ends `type` is one of:\n\n- `unexpected-token`: The condition does not parse, is longer than 4096 characters, or is blank where a condition is required, or a keyword has a wildcard. Parse, select, and keyword also return this slug if the condition that they return would be longer than 4096 characters. Fix the condition at the column that `detail` gives. Quote a value that has a colon or a space. See \"Grammar\" in /llms-full.txt.\n- `unknown-field`: A condition, a clause, or a parameter (`field`, `row`, `col`) names a field that the dataset does not have. Use a field that `dslFields` of `GET /api/dataset` lists.\n- `invalid-date-format`: A value of `date_published` in the form `YYYY-MM-DD` is not a calendar date, such as `2020-13-45`, or a bound of a range is not a date in that form. Write the date as `YYYY-MM-DD`, such as `2020-12-31`. See \"Fields\" in /llms-full.txt.\n- `invalid-operator-for-field`: The form of a value does not fit the field, such as a range or a date on a field other than `date_published`, a value with a wildcard, or a value of `date_published` that is neither a date in the form `YYYY-MM-DD` nor a range (`2020-1-1`, a quoted date, or `\"\"`). Use `field:value` for the field, `date_published:YYYY-MM-DD` for a date, or `date_published:[a TO b]` for a range. See \"Fields\" in /llms-full.txt.\n- `invalid-value`: A value is not allowed for the field: a status that is not a status group, an assay that the dataset does not have, a term value that is not a term ID, an organism that is not a number, a keyword without a letter or a digit, or keywords over their limits. Use the values that `detail` lists. Find a term ID with `GET /api/terms`. See \"Fields\" and \"Keywords\" in /llms-full.txt.\n- `nest-depth-exceeded`: Groups nest deeper than 5 levels, or the condition has more than 512 nodes. Flatten the groups or split the condition. See \"Limits\" in /llms-full.txt.\n- `missing-value`: A clause on a field other than `date_published` has an empty value. Give the clause a value. See \"Fields\" in /llms-full.txt.\n- `invalid-dimension`: A field exists but cannot be the dimension of the operation, or the two dimensions of a cross-tabulation are the same field. Choose from the fields that `detail` lists.\n- `invalid-element`: A named element does not fit its dimension, such as an organism that is not an NCBI Taxonomy ID or a year that is not a number. Name elements of the form that `detail` gives, or omit them to get the default elements.\n- `too-many-elements`: A request names more elements of one dimension than the limit of 100. Name at most 100 elements.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable. The slug that ends `type` is one of:\n\n- `server-busy`: The api has no free slot for the request after waiting, or too many requests wait already. Wait for the `Retry-After` seconds and send the request again.\n- `query-timeout`: The query took longer than the time limit of a request and was stopped. Narrow the condition. The same request does not finish by itself.\n- `query-too-large`: The query needs more memory or temporary disk space than a worker may use and was stopped. Narrow the condition, or ask for fewer elements.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/crosstab": {
+      "get": {
+        "tags": [
+          "Aggregations"
+        ],
+        "summary": "Count the population per cell of two dimensions, with expected counts",
+        "description": "Counts the population per pair of an element of `row` and an element of `col`, in `unit`. The population is `q`, or `q` without the conjuncts on `row` and `col` with `facetSelfExclude`. Each cell has the expected count under independence, the ratio and the residual against it, and a classification. The Heatmap view of the UI uses this operation. See \"Expected counts in cross-tabulations\" in /llms-full.txt for the formulas and the thresholds.",
+        "operationId": "getCrosstab",
+        "parameters": [
+          {
+            "name": "row",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 256,
+              "description": "Dimension of the rows. An annotation term field, `library_strategy`, `organism_id`, or `date_published`. `dslFields` of `GET /api/dataset` lists the fields with their kinds `term`, `assay`, `organism`, and `date`",
+              "title": "Row"
+            },
+            "description": "Dimension of the rows. An annotation term field, `library_strategy`, `organism_id`, or `date_published`. `dslFields` of `GET /api/dataset` lists the fields with their kinds `term`, `assay`, `organism`, and `date`"
+          },
+          {
+            "name": "col",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 256,
+              "description": "Dimension of the columns, a field other than `row`. An annotation term field, `library_strategy`, `organism_id`, or `date_published`. `dslFields` of `GET /api/dataset` lists the fields with their kinds `term`, `assay`, `organism`, and `date`",
+              "title": "Col"
+            },
+            "description": "Dimension of the columns, a field other than `row`. An annotation term field, `library_strategy`, `organism_id`, or `date_published`. `dslFields` of `GET /api/dataset` lists the fields with their kinds `term`, `assay`, `organism`, and `date`"
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The condition, in the condition language: `field:value`, `field:\"phrase\"`, `field:[a TO b]`, keywords without a field, `AND`, `OR`, `NOT`, and parentheses. If `q` is omitted or empty, the condition is the whole population. The value of an annotation term field is a term ID. `GET /api/terms` finds term IDs. A term ID matches the term and its descendants. The value of `<field>_status` is a status group: `mapped`, `unmapped`, or `no_value`. The value of `library_strategy` is a target assay of `GET /api/dataset`. A keyword matches the searchable text of a BioSample. A keyword in the form of an accession matches the entries that have the accession instead. See \"Condition DSL\" in /llms-full.txt",
+              "examples": [
+                "disease:\"MONDO:0007254\"",
+                "cell_line:\"CVCL:0030\" AND library_strategy:ATAC-seq",
+                "organism_id:9606 AND date_published:[2015-01-01 TO 2020-12-31]",
+                "disease_status:unmapped",
+                "\"breast cancer\" AND NOT organism_id:10090"
+              ],
+              "title": "Q"
+            },
+            "description": "The condition, in the condition language: `field:value`, `field:\"phrase\"`, `field:[a TO b]`, keywords without a field, `AND`, `OR`, `NOT`, and parentheses. If `q` is omitted or empty, the condition is the whole population. The value of an annotation term field is a term ID. `GET /api/terms` finds term IDs. A term ID matches the term and its descendants. The value of `<field>_status` is a status group: `mapped`, `unmapped`, or `no_value`. The value of `library_strategy` is a target assay of `GET /api/dataset`. A keyword matches the searchable text of a BioSample. A keyword in the form of an accession matches the entries that have the accession instead. See \"Condition DSL\" in /llms-full.txt"
+          },
+          {
+            "name": "unit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Unit",
+              "description": "Counting unit. `biosample` counts distinct BioSamples, `sra-experiment` distinct SRA Experiments, and `bioproject` distinct BioProjects. See \"Counting\" in /llms-full.txt",
+              "default": "biosample"
+            },
+            "description": "Counting unit. `biosample` counts distinct BioSamples, `sra-experiment` distinct SRA Experiments, and `bioproject` distinct BioProjects. See \"Counting\" in /llms-full.txt"
+          },
+          {
+            "name": "facetSelfExclude",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "If true, the operation removes from `q` each top-level conjunct whose clauses are all on the dimensions of the operation, as the UI does. The top-level conjuncts are the operands of the `AND` at the root of `q`, or `q` itself if the root is not `AND`. A conjunct that has a keyword stays. The description of the operation names its dimensions. If false, the operation uses `q` as it is. See \"Self-exclusion\" in /llms-full.txt",
+              "default": false,
+              "title": "Facetselfexclude"
+            },
+            "description": "If true, the operation removes from `q` each top-level conjunct whose clauses are all on the dimensions of the operation, as the UI does. The top-level conjuncts are the operands of the `AND` at the root of `q`, or `q` itself if the root is not `AND`. A conjunct that has a keyword stays. The description of the operation names its dimensions. If false, the operation uses `q` as it is. See \"Self-exclusion\" in /llms-full.txt"
+          },
+          {
+            "name": "rowElements",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Elements of the rows. Omitted means the default elements. Comma-separated elements, at most 100. An element is a term ID for an annotation term field, a target assay for `library_strategy`, an NCBI Taxonomy ID for `organism_id`, and a year for `date_published`. See \"Default elements\" in /llms-full.txt",
+              "title": "Rowelements"
+            },
+            "description": "Elements of the rows. Omitted means the default elements. Comma-separated elements, at most 100. An element is a term ID for an annotation term field, a target assay for `library_strategy`, an NCBI Taxonomy ID for `organism_id`, and a year for `date_published`. See \"Default elements\" in /llms-full.txt"
+          },
+          {
+            "name": "colElements",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Elements of the columns. Omitted means the default elements. Comma-separated elements, at most 100. An element is a term ID for an annotation term field, a target assay for `library_strategy`, an NCBI Taxonomy ID for `organism_id`, and a year for `date_published`. See \"Default elements\" in /llms-full.txt",
+              "title": "Colelements"
+            },
+            "description": "Elements of the columns. Omitted means the default elements. Comma-separated elements, at most 100. An element is a term ID for an annotation term field, a target assay for `library_strategy`, an NCBI Taxonomy ID for `organism_id`, and a year for `date_published`. See \"Default elements\" in /llms-full.txt"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "Number of default elements of each axis, from 1 to 100, when the elements of the axis are omitted. The elements that `q` names come in addition",
+              "default": 10,
+              "title": "Limit"
+            },
+            "description": "Number of default elements of each axis, from 1 to 100, when the elements of the axis are omitted. The elements that `q` names come in addition"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CrosstabResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity (the request does not match the operation)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request. The slug that ends `type` is one of:\n\n- `unexpected-token`: The condition does not parse, is longer than 4096 characters, or is blank where a condition is required, or a keyword has a wildcard. Parse, select, and keyword also return this slug if the condition that they return would be longer than 4096 characters. Fix the condition at the column that `detail` gives. Quote a value that has a colon or a space. See \"Grammar\" in /llms-full.txt.\n- `unknown-field`: A condition, a clause, or a parameter (`field`, `row`, `col`) names a field that the dataset does not have. Use a field that `dslFields` of `GET /api/dataset` lists.\n- `invalid-date-format`: A value of `date_published` in the form `YYYY-MM-DD` is not a calendar date, such as `2020-13-45`, or a bound of a range is not a date in that form. Write the date as `YYYY-MM-DD`, such as `2020-12-31`. See \"Fields\" in /llms-full.txt.\n- `invalid-operator-for-field`: The form of a value does not fit the field, such as a range or a date on a field other than `date_published`, a value with a wildcard, or a value of `date_published` that is neither a date in the form `YYYY-MM-DD` nor a range (`2020-1-1`, a quoted date, or `\"\"`). Use `field:value` for the field, `date_published:YYYY-MM-DD` for a date, or `date_published:[a TO b]` for a range. See \"Fields\" in /llms-full.txt.\n- `invalid-value`: A value is not allowed for the field: a status that is not a status group, an assay that the dataset does not have, a term value that is not a term ID, an organism that is not a number, a keyword without a letter or a digit, or keywords over their limits. Use the values that `detail` lists. Find a term ID with `GET /api/terms`. See \"Fields\" and \"Keywords\" in /llms-full.txt.\n- `nest-depth-exceeded`: Groups nest deeper than 5 levels, or the condition has more than 512 nodes. Flatten the groups or split the condition. See \"Limits\" in /llms-full.txt.\n- `missing-value`: A clause on a field other than `date_published` has an empty value. Give the clause a value. See \"Fields\" in /llms-full.txt.\n- `invalid-dimension`: A field exists but cannot be the dimension of the operation, or the two dimensions of a cross-tabulation are the same field. Choose from the fields that `detail` lists.\n- `invalid-element`: A named element does not fit its dimension, such as an organism that is not an NCBI Taxonomy ID or a year that is not a number. Name elements of the form that `detail` gives, or omit them to get the default elements.\n- `too-many-elements`: A request names more elements of one dimension than the limit of 100. Name at most 100 elements.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable. The slug that ends `type` is one of:\n\n- `server-busy`: The api has no free slot for the request after waiting, or too many requests wait already. Wait for the `Retry-After` seconds and send the request again.\n- `query-timeout`: The query took longer than the time limit of a request and was stopped. Narrow the condition. The same request does not finish by itself.\n- `query-too-large`: The query needs more memory or temporary disk space than a worker may use and was stopped. Narrow the condition, or ask for fewer elements.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/trend": {
+      "get": {
+        "tags": [
+          "Aggregations"
+        ],
+        "summary": "Count the population per publication year of the BioSample",
+        "description": "Counts the population per publication year of the BioSample, in `unit`: `total` for `q`, `series` for each element of `field`, and `allEntries` for the whole population without `q`. With `facetSelfExclude`, `total` is counted without the conjuncts on `date_published`, and `series` also without the conjuncts on `field`. Otherwise both count `q`. `yearFrom` and `yearTo` limit the years returned without changing the counts or the elements, and `firstYear` and `lastYear` ignore them. The Trend view of the UI uses this operation. See \"Trend\" in /llms-full.txt.",
+        "operationId": "getTrend",
+        "parameters": [
+          {
+            "name": "field",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 256
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Dimension of the series: an annotation term field, `library_strategy`, or `organism_id`. Omitted means no series. `dslFields` of `GET /api/dataset` lists the fields with their kinds",
+              "title": "Field"
+            },
+            "description": "Dimension of the series: an annotation term field, `library_strategy`, or `organism_id`. Omitted means no series. `dslFields` of `GET /api/dataset` lists the fields with their kinds"
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The condition, in the condition language: `field:value`, `field:\"phrase\"`, `field:[a TO b]`, keywords without a field, `AND`, `OR`, `NOT`, and parentheses. If `q` is omitted or empty, the condition is the whole population. The value of an annotation term field is a term ID. `GET /api/terms` finds term IDs. A term ID matches the term and its descendants. The value of `<field>_status` is a status group: `mapped`, `unmapped`, or `no_value`. The value of `library_strategy` is a target assay of `GET /api/dataset`. A keyword matches the searchable text of a BioSample. A keyword in the form of an accession matches the entries that have the accession instead. See \"Condition DSL\" in /llms-full.txt",
+              "examples": [
+                "disease:\"MONDO:0007254\"",
+                "cell_line:\"CVCL:0030\" AND library_strategy:ATAC-seq",
+                "organism_id:9606 AND date_published:[2015-01-01 TO 2020-12-31]",
+                "disease_status:unmapped",
+                "\"breast cancer\" AND NOT organism_id:10090"
+              ],
+              "title": "Q"
+            },
+            "description": "The condition, in the condition language: `field:value`, `field:\"phrase\"`, `field:[a TO b]`, keywords without a field, `AND`, `OR`, `NOT`, and parentheses. If `q` is omitted or empty, the condition is the whole population. The value of an annotation term field is a term ID. `GET /api/terms` finds term IDs. A term ID matches the term and its descendants. The value of `<field>_status` is a status group: `mapped`, `unmapped`, or `no_value`. The value of `library_strategy` is a target assay of `GET /api/dataset`. A keyword matches the searchable text of a BioSample. A keyword in the form of an accession matches the entries that have the accession instead. See \"Condition DSL\" in /llms-full.txt"
+          },
+          {
+            "name": "unit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Unit",
+              "description": "Counting unit. `biosample` counts distinct BioSamples, `sra-experiment` distinct SRA Experiments, and `bioproject` distinct BioProjects. See \"Counting\" in /llms-full.txt",
+              "default": "biosample"
+            },
+            "description": "Counting unit. `biosample` counts distinct BioSamples, `sra-experiment` distinct SRA Experiments, and `bioproject` distinct BioProjects. See \"Counting\" in /llms-full.txt"
+          },
+          {
+            "name": "facetSelfExclude",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "If true, the operation removes from `q` each top-level conjunct whose clauses are all on the dimensions of the operation, as the UI does. The top-level conjuncts are the operands of the `AND` at the root of `q`, or `q` itself if the root is not `AND`. A conjunct that has a keyword stays. The description of the operation names its dimensions. If false, the operation uses `q` as it is. See \"Self-exclusion\" in /llms-full.txt",
+              "default": false,
+              "title": "Facetselfexclude"
+            },
+            "description": "If true, the operation removes from `q` each top-level conjunct whose clauses are all on the dimensions of the operation, as the UI does. The top-level conjuncts are the operands of the `AND` at the root of `q`, or `q` itself if the root is not `AND`. A conjunct that has a keyword stays. The description of the operation names its dimensions. If false, the operation uses `q` as it is. See \"Self-exclusion\" in /llms-full.txt"
+          },
+          {
+            "name": "elements",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Elements of the series. Comma-separated elements, at most 100. An element is a term ID for an annotation term field, a target assay for `library_strategy`, and an NCBI Taxonomy ID for `organism_id`. See \"Default elements\" in /llms-full.txt",
+              "title": "Elements"
+            },
+            "description": "Elements of the series. Comma-separated elements, at most 100. An element is a term ID for an annotation term field, a target assay for `library_strategy`, and an NCBI Taxonomy ID for `organism_id`. See \"Default elements\" in /llms-full.txt"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 200,
+              "minimum": 1,
+              "description": "Number of default elements, from 1 to 200, when `elements` is omitted. The elements that `q` names come in addition",
+              "default": 5,
+              "title": "Limit"
+            },
+            "description": "Number of default elements, from 1 to 200, when `elements` is omitted. The elements that `q` names come in addition"
+          },
+          {
+            "name": "yearFrom",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "First year to return; omitted means no lower limit",
+              "title": "Yearfrom"
+            },
+            "description": "First year to return; omitted means no lower limit"
+          },
+          {
+            "name": "yearTo",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Last year to return; omitted means no upper limit",
+              "title": "Yearto"
+            },
+            "description": "Last year to return; omitted means no upper limit"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrendResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity (the request does not match the operation)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request. The slug that ends `type` is one of:\n\n- `unexpected-token`: The condition does not parse, is longer than 4096 characters, or is blank where a condition is required, or a keyword has a wildcard. Parse, select, and keyword also return this slug if the condition that they return would be longer than 4096 characters. Fix the condition at the column that `detail` gives. Quote a value that has a colon or a space. See \"Grammar\" in /llms-full.txt.\n- `unknown-field`: A condition, a clause, or a parameter (`field`, `row`, `col`) names a field that the dataset does not have. Use a field that `dslFields` of `GET /api/dataset` lists.\n- `invalid-date-format`: A value of `date_published` in the form `YYYY-MM-DD` is not a calendar date, such as `2020-13-45`, or a bound of a range is not a date in that form. Write the date as `YYYY-MM-DD`, such as `2020-12-31`. See \"Fields\" in /llms-full.txt.\n- `invalid-operator-for-field`: The form of a value does not fit the field, such as a range or a date on a field other than `date_published`, a value with a wildcard, or a value of `date_published` that is neither a date in the form `YYYY-MM-DD` nor a range (`2020-1-1`, a quoted date, or `\"\"`). Use `field:value` for the field, `date_published:YYYY-MM-DD` for a date, or `date_published:[a TO b]` for a range. See \"Fields\" in /llms-full.txt.\n- `invalid-value`: A value is not allowed for the field: a status that is not a status group, an assay that the dataset does not have, a term value that is not a term ID, an organism that is not a number, a keyword without a letter or a digit, or keywords over their limits. Use the values that `detail` lists. Find a term ID with `GET /api/terms`. See \"Fields\" and \"Keywords\" in /llms-full.txt.\n- `nest-depth-exceeded`: Groups nest deeper than 5 levels, or the condition has more than 512 nodes. Flatten the groups or split the condition. See \"Limits\" in /llms-full.txt.\n- `missing-value`: A clause on a field other than `date_published` has an empty value. Give the clause a value. See \"Fields\" in /llms-full.txt.\n- `invalid-dimension`: A field exists but cannot be the dimension of the operation, or the two dimensions of a cross-tabulation are the same field. Choose from the fields that `detail` lists.\n- `invalid-element`: A named element does not fit its dimension, such as an organism that is not an NCBI Taxonomy ID or a year that is not a number. Name elements of the form that `detail` gives, or omit them to get the default elements.\n- `too-many-elements`: A request names more elements of one dimension than the limit of 100. Name at most 100 elements.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable. The slug that ends `type` is one of:\n\n- `server-busy`: The api has no free slot for the request after waiting, or too many requests wait already. Wait for the `Retry-After` seconds and send the request again.\n- `query-timeout`: The query took longer than the time limit of a request and was stopped. Narrow the condition. The same request does not finish by itself.\n- `query-too-large`: The query needs more memory or temporary disk space than a worker may use and was stopped. Narrow the condition, or ask for fewer elements.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/projects": {
+      "get": {
+        "tags": [
+          "Projects"
+        ],
+        "summary": "List the BioProjects of the BioSamples that match a condition",
+        "description": "Lists the BioProjects of the BioSamples in the population. The population is `q`. With `facetSelfExclude`, it is `q` without the conjuncts on `bioproject`. `biosampleCount`, `experimentCount`, and `assays` of a BioProject count only the BioSamples and SRA Experiments of the population, not the whole BioProject. `pagination.total` is the number of BioProjects. The Projects view of the UI uses this operation. See \"Aggregations\" in /llms-full.txt.",
+        "operationId": "listProjects",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The condition, in the condition language: `field:value`, `field:\"phrase\"`, `field:[a TO b]`, keywords without a field, `AND`, `OR`, `NOT`, and parentheses. If `q` is omitted or empty, the condition is the whole population. The value of an annotation term field is a term ID. `GET /api/terms` finds term IDs. A term ID matches the term and its descendants. The value of `<field>_status` is a status group: `mapped`, `unmapped`, or `no_value`. The value of `library_strategy` is a target assay of `GET /api/dataset`. A keyword matches the searchable text of a BioSample. A keyword in the form of an accession matches the entries that have the accession instead. See \"Condition DSL\" in /llms-full.txt",
+              "examples": [
+                "disease:\"MONDO:0007254\"",
+                "cell_line:\"CVCL:0030\" AND library_strategy:ATAC-seq",
+                "organism_id:9606 AND date_published:[2015-01-01 TO 2020-12-31]",
+                "disease_status:unmapped",
+                "\"breast cancer\" AND NOT organism_id:10090"
+              ],
+              "title": "Q"
+            },
+            "description": "The condition, in the condition language: `field:value`, `field:\"phrase\"`, `field:[a TO b]`, keywords without a field, `AND`, `OR`, `NOT`, and parentheses. If `q` is omitted or empty, the condition is the whole population. The value of an annotation term field is a term ID. `GET /api/terms` finds term IDs. A term ID matches the term and its descendants. The value of `<field>_status` is a status group: `mapped`, `unmapped`, or `no_value`. The value of `library_strategy` is a target assay of `GET /api/dataset`. A keyword matches the searchable text of a BioSample. A keyword in the form of an accession matches the entries that have the accession instead. See \"Condition DSL\" in /llms-full.txt"
+          },
+          {
+            "name": "facetSelfExclude",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "If true, the operation removes from `q` each top-level conjunct whose clauses are all on the dimensions of the operation, as the UI does. The top-level conjuncts are the operands of the `AND` at the root of `q`, or `q` itself if the root is not `AND`. A conjunct that has a keyword stays. The description of the operation names its dimensions. If false, the operation uses `q` as it is. See \"Self-exclusion\" in /llms-full.txt",
+              "default": false,
+              "title": "Facetselfexclude"
+            },
+            "description": "If true, the operation removes from `q` each top-level conjunct whose clauses are all on the dimensions of the operation, as the UI does. The top-level conjuncts are the operands of the `AND` at the root of `q`, or `q` itself if the root is not `AND`. A conjunct that has a keyword stays. The description of the operation names its dimensions. If false, the operation uses `q` as it is. See \"Self-exclusion\" in /llms-full.txt"
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/ProjectSort",
+              "description": "Order of the projects: the count and the direction. Equal counts are ordered by the other count in the same direction, then by the accession",
+              "default": "biosampleCount:desc"
+            },
+            "description": "Order of the projects: the count and the direction. Equal counts are ordered by the other count in the same direction, then by the accession"
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Page number, starting at 1. A page after the last page has empty `items`",
+              "default": 1,
+              "title": "Page"
+            },
+            "description": "Page number, starting at 1. A page after the last page has empty `items`"
+          },
+          {
+            "name": "perPage",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "Items per page, from 1 to 100",
+              "default": 25,
+              "title": "Perpage"
+            },
+            "description": "Items per page, from 1 to 100"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProjectsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity (the request does not match the operation)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request. The slug that ends `type` is one of:\n\n- `unexpected-token`: The condition does not parse, is longer than 4096 characters, or is blank where a condition is required, or a keyword has a wildcard. Parse, select, and keyword also return this slug if the condition that they return would be longer than 4096 characters. Fix the condition at the column that `detail` gives. Quote a value that has a colon or a space. See \"Grammar\" in /llms-full.txt.\n- `unknown-field`: A condition, a clause, or a parameter (`field`, `row`, `col`) names a field that the dataset does not have. Use a field that `dslFields` of `GET /api/dataset` lists.\n- `invalid-date-format`: A value of `date_published` in the form `YYYY-MM-DD` is not a calendar date, such as `2020-13-45`, or a bound of a range is not a date in that form. Write the date as `YYYY-MM-DD`, such as `2020-12-31`. See \"Fields\" in /llms-full.txt.\n- `invalid-operator-for-field`: The form of a value does not fit the field, such as a range or a date on a field other than `date_published`, a value with a wildcard, or a value of `date_published` that is neither a date in the form `YYYY-MM-DD` nor a range (`2020-1-1`, a quoted date, or `\"\"`). Use `field:value` for the field, `date_published:YYYY-MM-DD` for a date, or `date_published:[a TO b]` for a range. See \"Fields\" in /llms-full.txt.\n- `invalid-value`: A value is not allowed for the field: a status that is not a status group, an assay that the dataset does not have, a term value that is not a term ID, an organism that is not a number, a keyword without a letter or a digit, or keywords over their limits. Use the values that `detail` lists. Find a term ID with `GET /api/terms`. See \"Fields\" and \"Keywords\" in /llms-full.txt.\n- `nest-depth-exceeded`: Groups nest deeper than 5 levels, or the condition has more than 512 nodes. Flatten the groups or split the condition. See \"Limits\" in /llms-full.txt.\n- `missing-value`: A clause on a field other than `date_published` has an empty value. Give the clause a value. See \"Fields\" in /llms-full.txt.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable. The slug that ends `type` is one of:\n\n- `server-busy`: The api has no free slot for the request after waiting, or too many requests wait already. Wait for the `Retry-After` seconds and send the request again.\n- `query-timeout`: The query took longer than the time limit of a request and was stopped. Narrow the condition. The same request does not finish by itself.\n- `query-too-large`: The query needs more memory or temporary disk space than a worker may use and was stopped. Narrow the condition, or ask for fewer elements.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/terms": {
+      "get": {
+        "tags": [
+          "Terms"
+        ],
+        "summary": "Search the terms annotated in a field, or in every annotation field",
+        "description": "Searches the terms of a field, or of every annotation field, and counts each hit in `unit`. Hits are ordered by how they match `query`, then by `count`. Each hit is counted in the population of its own field. The population is `q`. With `facetSelfExclude`, it is `q` without the conjuncts on that field. See \"Default elements\" in /llms-full.txt for the hits that `limit` keeps. Use the `termId` of a hit in a condition.",
+        "operationId": "searchTerms",
+        "parameters": [
+          {
+            "name": "field",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 256
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Annotation field, such as `disease`; omitted means every annotation field",
+              "title": "Field"
+            },
+            "description": "Annotation field, such as `disease`; omitted means every annotation field"
+          },
+          {
+            "name": "query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "maxLength": 4096,
+              "description": "Text to find in the label, a synonym, or the ID of a term, ignoring letter case; empty lists the most annotated terms. This is not the condition `q`",
+              "default": "",
+              "title": "Query"
+            },
+            "description": "Text to find in the label, a synonym, or the ID of a term, ignoring letter case; empty lists the most annotated terms. This is not the condition `q`"
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The condition, in the condition language: `field:value`, `field:\"phrase\"`, `field:[a TO b]`, keywords without a field, `AND`, `OR`, `NOT`, and parentheses. If `q` is omitted or empty, the condition is the whole population. The value of an annotation term field is a term ID. `GET /api/terms` finds term IDs. A term ID matches the term and its descendants. The value of `<field>_status` is a status group: `mapped`, `unmapped`, or `no_value`. The value of `library_strategy` is a target assay of `GET /api/dataset`. A keyword matches the searchable text of a BioSample. A keyword in the form of an accession matches the entries that have the accession instead. See \"Condition DSL\" in /llms-full.txt",
+              "examples": [
+                "disease:\"MONDO:0007254\"",
+                "cell_line:\"CVCL:0030\" AND library_strategy:ATAC-seq",
+                "organism_id:9606 AND date_published:[2015-01-01 TO 2020-12-31]",
+                "disease_status:unmapped",
+                "\"breast cancer\" AND NOT organism_id:10090"
+              ],
+              "title": "Q"
+            },
+            "description": "The condition, in the condition language: `field:value`, `field:\"phrase\"`, `field:[a TO b]`, keywords without a field, `AND`, `OR`, `NOT`, and parentheses. If `q` is omitted or empty, the condition is the whole population. The value of an annotation term field is a term ID. `GET /api/terms` finds term IDs. A term ID matches the term and its descendants. The value of `<field>_status` is a status group: `mapped`, `unmapped`, or `no_value`. The value of `library_strategy` is a target assay of `GET /api/dataset`. A keyword matches the searchable text of a BioSample. A keyword in the form of an accession matches the entries that have the accession instead. See \"Condition DSL\" in /llms-full.txt"
+          },
+          {
+            "name": "unit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Unit",
+              "description": "Counting unit. `biosample` counts distinct BioSamples, `sra-experiment` distinct SRA Experiments, and `bioproject` distinct BioProjects. See \"Counting\" in /llms-full.txt",
+              "default": "biosample"
+            },
+            "description": "Counting unit. `biosample` counts distinct BioSamples, `sra-experiment` distinct SRA Experiments, and `bioproject` distinct BioProjects. See \"Counting\" in /llms-full.txt"
+          },
+          {
+            "name": "facetSelfExclude",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "If true, the operation removes from `q` each top-level conjunct whose clauses are all on the dimensions of the operation, as the UI does. The top-level conjuncts are the operands of the `AND` at the root of `q`, or `q` itself if the root is not `AND`. A conjunct that has a keyword stays. The description of the operation names its dimensions. If false, the operation uses `q` as it is. See \"Self-exclusion\" in /llms-full.txt",
+              "default": false,
+              "title": "Facetselfexclude"
+            },
+            "description": "If true, the operation removes from `q` each top-level conjunct whose clauses are all on the dimensions of the operation, as the UI does. The top-level conjuncts are the operands of the `AND` at the root of `q`, or `q` itself if the root is not `AND`. A conjunct that has a keyword stays. The description of the operation names its dimensions. If false, the operation uses `q` as it is. See \"Self-exclusion\" in /llms-full.txt"
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "maximum": 100,
+              "minimum": 1,
+              "description": "Number of hits to return, from 1 to 100",
+              "default": 20,
+              "title": "Limit"
+            },
+            "description": "Number of hits to return, from 1 to 100"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TermsResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity (the request does not match the operation)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request. The slug that ends `type` is one of:\n\n- `unexpected-token`: The condition does not parse, is longer than 4096 characters, or is blank where a condition is required, or a keyword has a wildcard. Parse, select, and keyword also return this slug if the condition that they return would be longer than 4096 characters. Fix the condition at the column that `detail` gives. Quote a value that has a colon or a space. See \"Grammar\" in /llms-full.txt.\n- `unknown-field`: A condition, a clause, or a parameter (`field`, `row`, `col`) names a field that the dataset does not have. Use a field that `dslFields` of `GET /api/dataset` lists.\n- `invalid-date-format`: A value of `date_published` in the form `YYYY-MM-DD` is not a calendar date, such as `2020-13-45`, or a bound of a range is not a date in that form. Write the date as `YYYY-MM-DD`, such as `2020-12-31`. See \"Fields\" in /llms-full.txt.\n- `invalid-operator-for-field`: The form of a value does not fit the field, such as a range or a date on a field other than `date_published`, a value with a wildcard, or a value of `date_published` that is neither a date in the form `YYYY-MM-DD` nor a range (`2020-1-1`, a quoted date, or `\"\"`). Use `field:value` for the field, `date_published:YYYY-MM-DD` for a date, or `date_published:[a TO b]` for a range. See \"Fields\" in /llms-full.txt.\n- `invalid-value`: A value is not allowed for the field: a status that is not a status group, an assay that the dataset does not have, a term value that is not a term ID, an organism that is not a number, a keyword without a letter or a digit, or keywords over their limits. Use the values that `detail` lists. Find a term ID with `GET /api/terms`. See \"Fields\" and \"Keywords\" in /llms-full.txt.\n- `nest-depth-exceeded`: Groups nest deeper than 5 levels, or the condition has more than 512 nodes. Flatten the groups or split the condition. See \"Limits\" in /llms-full.txt.\n- `missing-value`: A clause on a field other than `date_published` has an empty value. Give the clause a value. See \"Fields\" in /llms-full.txt.\n- `invalid-dimension`: A field exists but cannot be the dimension of the operation, or the two dimensions of a cross-tabulation are the same field. Choose from the fields that `detail` lists.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable. The slug that ends `type` is one of:\n\n- `server-busy`: The api has no free slot for the request after waiting, or too many requests wait already. Wait for the `Retry-After` seconds and send the request again.\n- `query-timeout`: The query took longer than the time limit of a request and was stopped. Narrow the condition. The same request does not finish by itself.\n- `query-too-large`: The query needs more memory or temporary disk space than a worker may use and was stopped. Narrow the condition, or ask for fewer elements.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/terms/children": {
+      "get": {
+        "tags": [
+          "Terms"
+        ],
+        "summary": "List the child terms of a term annotated in a field",
+        "description": "Lists the direct child terms of `termId` that have a count above 0 in the population, in `unit`, in the order of their direct counts in the whole dataset. `count` of a child includes its descendants. The population is `q`. With `facetSelfExclude`, it is `q` without the conjuncts on `field`. To expand a term of a cross-tabulation, pass its `populationQ` as `q`. See \"Aggregations\" in /llms-full.txt.",
+        "operationId": "listTermChildren",
+        "parameters": [
+          {
+            "name": "field",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 256,
+              "description": "Annotation field of the term, such as `disease`",
+              "title": "Field"
+            },
+            "description": "Annotation field of the term, such as `disease`"
+          },
+          {
+            "name": "termId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 256,
+              "description": "ID of the term, such as `MONDO:0007254`",
+              "title": "Termid"
+            },
+            "description": "ID of the term, such as `MONDO:0007254`"
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The condition, in the condition language: `field:value`, `field:\"phrase\"`, `field:[a TO b]`, keywords without a field, `AND`, `OR`, `NOT`, and parentheses. If `q` is omitted or empty, the condition is the whole population. The value of an annotation term field is a term ID. `GET /api/terms` finds term IDs. A term ID matches the term and its descendants. The value of `<field>_status` is a status group: `mapped`, `unmapped`, or `no_value`. The value of `library_strategy` is a target assay of `GET /api/dataset`. A keyword matches the searchable text of a BioSample. A keyword in the form of an accession matches the entries that have the accession instead. See \"Condition DSL\" in /llms-full.txt",
+              "examples": [
+                "disease:\"MONDO:0007254\"",
+                "cell_line:\"CVCL:0030\" AND library_strategy:ATAC-seq",
+                "organism_id:9606 AND date_published:[2015-01-01 TO 2020-12-31]",
+                "disease_status:unmapped",
+                "\"breast cancer\" AND NOT organism_id:10090"
+              ],
+              "title": "Q"
+            },
+            "description": "The condition, in the condition language: `field:value`, `field:\"phrase\"`, `field:[a TO b]`, keywords without a field, `AND`, `OR`, `NOT`, and parentheses. If `q` is omitted or empty, the condition is the whole population. The value of an annotation term field is a term ID. `GET /api/terms` finds term IDs. A term ID matches the term and its descendants. The value of `<field>_status` is a status group: `mapped`, `unmapped`, or `no_value`. The value of `library_strategy` is a target assay of `GET /api/dataset`. A keyword matches the searchable text of a BioSample. A keyword in the form of an accession matches the entries that have the accession instead. See \"Condition DSL\" in /llms-full.txt"
+          },
+          {
+            "name": "unit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "$ref": "#/components/schemas/Unit",
+              "description": "Counting unit. `biosample` counts distinct BioSamples, `sra-experiment` distinct SRA Experiments, and `bioproject` distinct BioProjects. See \"Counting\" in /llms-full.txt",
+              "default": "biosample"
+            },
+            "description": "Counting unit. `biosample` counts distinct BioSamples, `sra-experiment` distinct SRA Experiments, and `bioproject` distinct BioProjects. See \"Counting\" in /llms-full.txt"
+          },
+          {
+            "name": "facetSelfExclude",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "description": "If true, the operation removes from `q` each top-level conjunct whose clauses are all on the dimensions of the operation, as the UI does. The top-level conjuncts are the operands of the `AND` at the root of `q`, or `q` itself if the root is not `AND`. A conjunct that has a keyword stays. The description of the operation names its dimensions. If false, the operation uses `q` as it is. See \"Self-exclusion\" in /llms-full.txt",
+              "default": false,
+              "title": "Facetselfexclude"
+            },
+            "description": "If true, the operation removes from `q` each top-level conjunct whose clauses are all on the dimensions of the operation, as the UI does. The top-level conjuncts are the operands of the `AND` at the root of `q`, or `q` itself if the root is not `AND`. A conjunct that has a keyword stays. The description of the operation names its dimensions. If false, the operation uses `q` as it is. See \"Self-exclusion\" in /llms-full.txt"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TermChildrenResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity (the request does not match the operation)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request. The slug that ends `type` is one of:\n\n- `unexpected-token`: The condition does not parse, is longer than 4096 characters, or is blank where a condition is required, or a keyword has a wildcard. Parse, select, and keyword also return this slug if the condition that they return would be longer than 4096 characters. Fix the condition at the column that `detail` gives. Quote a value that has a colon or a space. See \"Grammar\" in /llms-full.txt.\n- `unknown-field`: A condition, a clause, or a parameter (`field`, `row`, `col`) names a field that the dataset does not have. Use a field that `dslFields` of `GET /api/dataset` lists.\n- `invalid-date-format`: A value of `date_published` in the form `YYYY-MM-DD` is not a calendar date, such as `2020-13-45`, or a bound of a range is not a date in that form. Write the date as `YYYY-MM-DD`, such as `2020-12-31`. See \"Fields\" in /llms-full.txt.\n- `invalid-operator-for-field`: The form of a value does not fit the field, such as a range or a date on a field other than `date_published`, a value with a wildcard, or a value of `date_published` that is neither a date in the form `YYYY-MM-DD` nor a range (`2020-1-1`, a quoted date, or `\"\"`). Use `field:value` for the field, `date_published:YYYY-MM-DD` for a date, or `date_published:[a TO b]` for a range. See \"Fields\" in /llms-full.txt.\n- `invalid-value`: A value is not allowed for the field: a status that is not a status group, an assay that the dataset does not have, a term value that is not a term ID, an organism that is not a number, a keyword without a letter or a digit, or keywords over their limits. Use the values that `detail` lists. Find a term ID with `GET /api/terms`. See \"Fields\" and \"Keywords\" in /llms-full.txt.\n- `nest-depth-exceeded`: Groups nest deeper than 5 levels, or the condition has more than 512 nodes. Flatten the groups or split the condition. See \"Limits\" in /llms-full.txt.\n- `missing-value`: A clause on a field other than `date_published` has an empty value. Give the clause a value. See \"Fields\" in /llms-full.txt.\n- `invalid-dimension`: A field exists but cannot be the dimension of the operation, or the two dimensions of a cross-tabulation are the same field. Choose from the fields that `detail` lists.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable. The slug that ends `type` is one of:\n\n- `server-busy`: The api has no free slot for the request after waiting, or too many requests wait already. Wait for the `Retry-After` seconds and send the request again.\n- `query-timeout`: The query took longer than the time limit of a request and was stopped. Narrow the condition. The same request does not finish by itself.\n- `query-too-large`: The query needs more memory or temporary disk space than a worker may use and was stopped. Narrow the condition, or ask for fewer elements.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/terms/{termId}": {
+      "get": {
+        "tags": [
+          "Terms"
+        ],
+        "summary": "Get a term with its synonyms, parents, ontology, and page",
+        "description": "Returns one term of the dataset: its label, synonyms, direct parent terms, ontology, and the address of its page. `parents` is empty for a root of an ontology and for a term of an ontology without hierarchy. See \"Term hierarchy\" in /llms-full.txt.",
+        "operationId": "getTerm",
+        "parameters": [
+          {
+            "name": "termId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 256,
+              "description": "ID of the term, such as `UBERON:0000955`",
+              "title": "Termid"
+            },
+            "description": "ID of the term, such as `UBERON:0000955`"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TermResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity (the request does not match the operation)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/export/accessions/{type}": {
+      "get": {
+        "tags": [
+          "Export"
+        ],
+        "summary": "Export the accessions of the entries that match a condition",
+        "description": "Returns every distinct accession of `type` among the entries that match `q`, as plain text: a header line that starts with `#` and names `q` and the dataset version, then one accession per line in ascending order. See \"Entries\" in /llms-full.txt.",
+        "operationId": "exportAccessions",
+        "parameters": [
+          {
+            "name": "type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/AccessionType",
+              "description": "Kind of accession to list"
+            },
+            "description": "Kind of accession to list"
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The condition, in the condition language: `field:value`, `field:\"phrase\"`, `field:[a TO b]`, keywords without a field, `AND`, `OR`, `NOT`, and parentheses. If `q` is omitted or empty, the condition is the whole population. The value of an annotation term field is a term ID. `GET /api/terms` finds term IDs. A term ID matches the term and its descendants. The value of `<field>_status` is a status group: `mapped`, `unmapped`, or `no_value`. The value of `library_strategy` is a target assay of `GET /api/dataset`. A keyword matches the searchable text of a BioSample. A keyword in the form of an accession matches the entries that have the accession instead. See \"Condition DSL\" in /llms-full.txt",
+              "examples": [
+                "disease:\"MONDO:0007254\"",
+                "cell_line:\"CVCL:0030\" AND library_strategy:ATAC-seq",
+                "organism_id:9606 AND date_published:[2015-01-01 TO 2020-12-31]",
+                "disease_status:unmapped",
+                "\"breast cancer\" AND NOT organism_id:10090"
+              ],
+              "title": "Q"
+            },
+            "description": "The condition, in the condition language: `field:value`, `field:\"phrase\"`, `field:[a TO b]`, keywords without a field, `AND`, `OR`, `NOT`, and parentheses. If `q` is omitted or empty, the condition is the whole population. The value of an annotation term field is a term ID. `GET /api/terms` finds term IDs. A term ID matches the term and its descendants. The value of `<field>_status` is a status group: `mapped`, `unmapped`, or `no_value`. The value of `library_strategy` is a target assay of `GET /api/dataset`. A keyword matches the searchable text of a BioSample. A keyword in the form of an accession matches the entries that have the accession instead. See \"Condition DSL\" in /llms-full.txt"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The header line and the accessions",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "headers": {
+              "X-Dataset-Version": {
+                "description": "Dataset version of the export: the name as a JSON string, the creation time, and the digest",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity (the request does not match the operation)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request. The slug that ends `type` is one of:\n\n- `unexpected-token`: The condition does not parse, is longer than 4096 characters, or is blank where a condition is required, or a keyword has a wildcard. Parse, select, and keyword also return this slug if the condition that they return would be longer than 4096 characters. Fix the condition at the column that `detail` gives. Quote a value that has a colon or a space. See \"Grammar\" in /llms-full.txt.\n- `unknown-field`: A condition, a clause, or a parameter (`field`, `row`, `col`) names a field that the dataset does not have. Use a field that `dslFields` of `GET /api/dataset` lists.\n- `invalid-date-format`: A value of `date_published` in the form `YYYY-MM-DD` is not a calendar date, such as `2020-13-45`, or a bound of a range is not a date in that form. Write the date as `YYYY-MM-DD`, such as `2020-12-31`. See \"Fields\" in /llms-full.txt.\n- `invalid-operator-for-field`: The form of a value does not fit the field, such as a range or a date on a field other than `date_published`, a value with a wildcard, or a value of `date_published` that is neither a date in the form `YYYY-MM-DD` nor a range (`2020-1-1`, a quoted date, or `\"\"`). Use `field:value` for the field, `date_published:YYYY-MM-DD` for a date, or `date_published:[a TO b]` for a range. See \"Fields\" in /llms-full.txt.\n- `invalid-value`: A value is not allowed for the field: a status that is not a status group, an assay that the dataset does not have, a term value that is not a term ID, an organism that is not a number, a keyword without a letter or a digit, or keywords over their limits. Use the values that `detail` lists. Find a term ID with `GET /api/terms`. See \"Fields\" and \"Keywords\" in /llms-full.txt.\n- `nest-depth-exceeded`: Groups nest deeper than 5 levels, or the condition has more than 512 nodes. Flatten the groups or split the condition. See \"Limits\" in /llms-full.txt.\n- `missing-value`: A clause on a field other than `date_published` has an empty value. Give the clause a value. See \"Fields\" in /llms-full.txt.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable. The slug that ends `type` is one of:\n\n- `server-busy`: The api has no free slot for the request after waiting, or too many requests wait already. Wait for the `Retry-After` seconds and send the request again.\n- `query-timeout`: The query took longer than the time limit of a request and was stopped. Narrow the condition. The same request does not finish by itself.\n- `query-too-large`: The query needs more memory or temporary disk space than a worker may use and was stopped. Narrow the condition, or ask for fewer elements.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/export/entries/{type}": {
+      "get": {
+        "tags": [
+          "Export"
+        ],
+        "summary": "Export the BioSamples that match a condition as TSV or NDJSON",
+        "description": "Returns every BioSample that matches `q`, in the order of the entry list, as TSV or as NDJSON. NDJSON is newline-delimited JSON: one JSON object per line. See \"Entries\" in /llms-full.txt for the columns and the cells.",
+        "operationId": "exportEntries",
+        "parameters": [
+          {
+            "name": "type",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/EntryType",
+              "description": "Entry type. Only `biosample` has entries"
+            },
+            "description": "Entry type. Only `biosample` has entries"
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The condition, in the condition language: `field:value`, `field:\"phrase\"`, `field:[a TO b]`, keywords without a field, `AND`, `OR`, `NOT`, and parentheses. If `q` is omitted or empty, the condition is the whole population. The value of an annotation term field is a term ID. `GET /api/terms` finds term IDs. A term ID matches the term and its descendants. The value of `<field>_status` is a status group: `mapped`, `unmapped`, or `no_value`. The value of `library_strategy` is a target assay of `GET /api/dataset`. A keyword matches the searchable text of a BioSample. A keyword in the form of an accession matches the entries that have the accession instead. See \"Condition DSL\" in /llms-full.txt",
+              "examples": [
+                "disease:\"MONDO:0007254\"",
+                "cell_line:\"CVCL:0030\" AND library_strategy:ATAC-seq",
+                "organism_id:9606 AND date_published:[2015-01-01 TO 2020-12-31]",
+                "disease_status:unmapped",
+                "\"breast cancer\" AND NOT organism_id:10090"
+              ],
+              "title": "Q"
+            },
+            "description": "The condition, in the condition language: `field:value`, `field:\"phrase\"`, `field:[a TO b]`, keywords without a field, `AND`, `OR`, `NOT`, and parentheses. If `q` is omitted or empty, the condition is the whole population. The value of an annotation term field is a term ID. `GET /api/terms` finds term IDs. A term ID matches the term and its descendants. The value of `<field>_status` is a status group: `mapped`, `unmapped`, or `no_value`. The value of `library_strategy` is a target assay of `GET /api/dataset`. A keyword matches the searchable text of a BioSample. A keyword in the form of an accession matches the entries that have the accession instead. See \"Condition DSL\" in /llms-full.txt"
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "enum": [
+                "tsv",
+                "ndjson"
+              ],
+              "type": "string",
+              "description": "File format of the entries",
+              "default": "tsv",
+              "title": "Format"
+            },
+            "description": "File format of the entries"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The entries, one per line after the header line of the TSV",
+            "content": {
+              "text/tab-separated-values": {
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "application/x-ndjson": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            },
+            "headers": {
+              "X-Dataset-Version": {
+                "description": "Dataset version of the export: the name as a JSON string, the creation time, and the digest",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity (the request does not match the operation)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Bad Request. The slug that ends `type` is one of:\n\n- `unexpected-token`: The condition does not parse, is longer than 4096 characters, or is blank where a condition is required, or a keyword has a wildcard. Parse, select, and keyword also return this slug if the condition that they return would be longer than 4096 characters. Fix the condition at the column that `detail` gives. Quote a value that has a colon or a space. See \"Grammar\" in /llms-full.txt.\n- `unknown-field`: A condition, a clause, or a parameter (`field`, `row`, `col`) names a field that the dataset does not have. Use a field that `dslFields` of `GET /api/dataset` lists.\n- `invalid-date-format`: A value of `date_published` in the form `YYYY-MM-DD` is not a calendar date, such as `2020-13-45`, or a bound of a range is not a date in that form. Write the date as `YYYY-MM-DD`, such as `2020-12-31`. See \"Fields\" in /llms-full.txt.\n- `invalid-operator-for-field`: The form of a value does not fit the field, such as a range or a date on a field other than `date_published`, a value with a wildcard, or a value of `date_published` that is neither a date in the form `YYYY-MM-DD` nor a range (`2020-1-1`, a quoted date, or `\"\"`). Use `field:value` for the field, `date_published:YYYY-MM-DD` for a date, or `date_published:[a TO b]` for a range. See \"Fields\" in /llms-full.txt.\n- `invalid-value`: A value is not allowed for the field: a status that is not a status group, an assay that the dataset does not have, a term value that is not a term ID, an organism that is not a number, a keyword without a letter or a digit, or keywords over their limits. Use the values that `detail` lists. Find a term ID with `GET /api/terms`. See \"Fields\" and \"Keywords\" in /llms-full.txt.\n- `nest-depth-exceeded`: Groups nest deeper than 5 levels, or the condition has more than 512 nodes. Flatten the groups or split the condition. See \"Limits\" in /llms-full.txt.\n- `missing-value`: A clause on a field other than `date_published` has an empty value. Give the clause a value. See \"Fields\" in /llms-full.txt.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not Found",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Service Unavailable. The slug that ends `type` is one of:\n\n- `server-busy`: The api has no free slot for the request after waiting, or too many requests wait already. Wait for the `Retry-After` seconds and send the request again.\n- `query-timeout`: The query took longer than the time limit of a request and was stopped. Narrow the condition. The same request does not finish by itself.\n- `query-too-large`: The query needs more memory or temporary disk space than a worker may use and was stopped. Narrow the condition, or ask for fewer elements.",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/service-info": {
+      "get": {
+        "tags": [
+          "Service Info"
+        ],
+        "summary": "Get service information",
+        "description": "The name, the version, and the state of the store, for health monitoring. See \"Service information\" in /llms-full.txt.",
+        "operationId": "getServiceInfo",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceInfoResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Unprocessable Entity (the request does not match the operation)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Internal Server Error",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AccessionType": {
+        "type": "string",
+        "enum": [
+          "biosample",
+          "sra-experiment",
+          "sra-run",
+          "bioproject"
+        ]
+      },
+      "AnnotationValue": {
+        "properties": {
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value",
+            "description": "The extracted value; null when none was extracted"
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status",
+            "description": "Annotation status. The UI shows `mapped_exact` as \"Exact match\", `mapped_selected` as \"LLM selected\" (LLM: large language model), `unmapped_no_candidate` as \"No candidate\", `unmapped_rejected` as \"Rejected\", `not_stated` as \"Not stated\", and `extraction_failed` as \"Extraction failed\". See \"Annotation status\" in /llms-full.txt for the meanings"
+          },
+          "termId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Termid",
+            "description": "ID of the mapped term; null when the value has no term"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label",
+            "description": "Label of the mapped term; null when the value has no term"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "value",
+          "status",
+          "termId",
+          "label"
+        ],
+        "title": "AnnotationValue"
+      },
+      "AstBetween": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "title": "Field"
+          },
+          "op": {
+            "type": "string",
+            "const": "between",
+            "title": "Op"
+          },
+          "from": {
+            "type": "string",
+            "title": "From"
+          },
+          "to": {
+            "type": "string",
+            "title": "To"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "field",
+          "op",
+          "from",
+          "to"
+        ],
+        "title": "AstBetween"
+      },
+      "AstBool": {
+        "properties": {
+          "op": {
+            "type": "string",
+            "enum": [
+              "AND",
+              "OR",
+              "NOT"
+            ],
+            "title": "Op"
+          },
+          "rules": {
+            "items": {
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/AstBool"
+                },
+                {
+                  "$ref": "#/components/schemas/AstEq"
+                },
+                {
+                  "$ref": "#/components/schemas/AstBetween"
+                },
+                {
+                  "$ref": "#/components/schemas/AstFreeText"
+                }
+              ],
+              "discriminator": {
+                "propertyName": "op",
+                "mapping": {
+                  "AND": "#/components/schemas/AstBool",
+                  "NOT": "#/components/schemas/AstBool",
+                  "OR": "#/components/schemas/AstBool",
+                  "between": "#/components/schemas/AstBetween",
+                  "eq": "#/components/schemas/AstEq",
+                  "free_text": "#/components/schemas/AstFreeText"
+                }
+              }
+            },
+            "type": "array",
+            "minItems": 1,
+            "title": "Rules",
+            "description": "Operands. `NOT` has exactly one"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "op",
+          "rules"
+        ],
+        "title": "AstBool"
+      },
+      "AstEq": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "title": "Field"
+          },
+          "op": {
+            "type": "string",
+            "const": "eq",
+            "title": "Op"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "field",
+          "op",
+          "value"
+        ],
+        "title": "AstEq"
+      },
+      "AstFreeText": {
+        "properties": {
+          "op": {
+            "type": "string",
+            "const": "free_text",
+            "title": "Op"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value"
+          },
+          "is_phrase": {
+            "type": "boolean",
+            "title": "Is Phrase"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "op",
+          "value",
+          "is_phrase"
+        ],
+        "title": "AstFreeText"
+      },
+      "Cell": {
+        "properties": {
+          "row": {
+            "type": "string",
+            "title": "Row",
+            "description": "Element of the row"
+          },
+          "col": {
+            "type": "string",
+            "title": "Col",
+            "description": "Element of the column"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "description": "Count of the units that have both elements"
+          },
+          "expected": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Expected",
+            "description": "Count that the cell would have if the dimensions were independent; null when the total is zero"
+          },
+          "ratio": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ratio",
+            "description": "The count divided by the expected count; null when the expected count is null or zero"
+          },
+          "residual": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Residual",
+            "description": "Adjusted standardized residual of the count against the expected count; null when undefined"
+          },
+          "classification": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "gap",
+                  "under",
+                  "over"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classification",
+            "description": "`gap`, `under` (under-represented), `over` (over-represented), or null when not classified"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "row",
+          "col",
+          "count",
+          "expected",
+          "ratio",
+          "residual",
+          "classification"
+        ],
+        "title": "Cell"
+      },
+      "Clause-Input": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "maxLength": 256,
+            "title": "Field"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 4096
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "from": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 4096
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "From"
+          },
+          "to": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 4096
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "To"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "field"
+        ],
+        "title": "Clause",
+        "description": "One DSL clause, as `field` with `value` or with a date range `from`/`to`."
+      },
+      "Clause-Output": {
+        "$ref": "#/components/schemas/ClauseJson"
+      },
+      "ClauseJson": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "title": "Field"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value"
+          },
+          "from": {
+            "type": "string",
+            "title": "From"
+          },
+          "to": {
+            "type": "string",
+            "title": "To"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "field"
+        ],
+        "title": "ClauseJson"
+      },
+      "ConditionResponse": {
+        "properties": {
+          "datasetVersion": {
+            "$ref": "#/components/schemas/DatasetVersionRef"
+          },
+          "dsl": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dsl",
+            "description": "The condition string"
+          },
+          "ast": {
+            "anyOf": [
+              {
+                "oneOf": [
+                  {
+                    "$ref": "#/components/schemas/AstBool"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AstEq"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AstBetween"
+                  },
+                  {
+                    "$ref": "#/components/schemas/AstFreeText"
+                  }
+                ],
+                "discriminator": {
+                  "propertyName": "op",
+                  "mapping": {
+                    "AND": "#/components/schemas/AstBool",
+                    "NOT": "#/components/schemas/AstBool",
+                    "OR": "#/components/schemas/AstBool",
+                    "between": "#/components/schemas/AstBetween",
+                    "eq": "#/components/schemas/AstEq",
+                    "free_text": "#/components/schemas/AstFreeText"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ast"
+          },
+          "labels": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Labels",
+            "description": "Display labels of the term IDs and organism IDs used in the condition"
+          },
+          "selected": {
+            "items": {
+              "$ref": "#/components/schemas/Clause-Output"
+            },
+            "type": "array",
+            "title": "Selected",
+            "description": "The clauses that `POST /api/dsl/select` treats as already present in `toggle` mode: the top-level clauses and the clauses of a top-level OR on one field, outside any NOT. When every clause of an element is in this list, selecting the element removes the clauses"
+          },
+          "keyword": {
+            "type": "string",
+            "title": "Keyword",
+            "description": "The text of a keyword box for the top-level keywords of the condition: the words, then the phrases in double quotes. `POST /api/dsl/keyword` reads it back as the same keywords"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "datasetVersion",
+          "dsl",
+          "ast",
+          "labels",
+          "selected",
+          "keyword"
+        ],
+        "title": "ConditionResponse"
+      },
+      "CrosstabResponse": {
+        "properties": {
+          "datasetVersion": {
+            "$ref": "#/components/schemas/DatasetVersionRef"
+          },
+          "q": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Q"
+          },
+          "populationQ": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Populationq",
+            "description": "The condition the counts were computed from"
+          },
+          "rowField": {
+            "type": "string",
+            "title": "Rowfield"
+          },
+          "colField": {
+            "type": "string",
+            "title": "Colfield"
+          },
+          "unit": {
+            "$ref": "#/components/schemas/Unit"
+          },
+          "facetSelfExclude": {
+            "type": "boolean",
+            "title": "Facetselfexclude"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "description": "Count of the population in the unit, the `N` of the expected counts"
+          },
+          "rows": {
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/TermElement"
+                },
+                {
+                  "$ref": "#/components/schemas/Element"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Rows"
+          },
+          "cols": {
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/TermElement"
+                },
+                {
+                  "$ref": "#/components/schemas/Element"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Cols"
+          },
+          "cells": {
+            "items": {
+              "$ref": "#/components/schemas/Cell"
+            },
+            "type": "array",
+            "title": "Cells"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "datasetVersion",
+          "q",
+          "populationQ",
+          "rowField",
+          "colField",
+          "unit",
+          "facetSelfExclude",
+          "total",
+          "rows",
+          "cols",
+          "cells"
+        ],
+        "title": "CrosstabResponse"
+      },
+      "DatasetAssay": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Target assay, as a `library_strategy` value"
+          },
+          "biosampleCount": {
+            "type": "integer",
+            "title": "Biosamplecount",
+            "description": "BioSamples of the whole population with an SRA Experiment of the assay"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "biosampleCount"
+        ],
+        "title": "DatasetAssay"
+      },
+      "DatasetOntology": {
+        "properties": {
+          "prefix": {
+            "type": "string",
+            "title": "Prefix",
+            "description": "Prefix of term IDs"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Name of the ontology that the prefix names"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "prefix",
+          "name"
+        ],
+        "title": "DatasetOntology"
+      },
+      "DatasetOrganism": {
+        "properties": {
+          "identifier": {
+            "type": "string",
+            "title": "Identifier",
+            "description": "NCBI Taxonomy ID"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name",
+            "description": "Name of the organism; null when no name is known"
+          },
+          "biosampleCount": {
+            "type": "integer",
+            "title": "Biosamplecount",
+            "description": "BioSamples of the whole population of the organism"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "identifier",
+          "name",
+          "biosampleCount"
+        ],
+        "title": "DatasetOrganism"
+      },
+      "DatasetResponse": {
+        "properties": {
+          "datasetVersion": {
+            "$ref": "#/components/schemas/DatasetVersionRef"
+          },
+          "version": {
+            "additionalProperties": true,
+            "type": "object",
+            "title": "Version",
+            "description": "Full dataset version information"
+          },
+          "targetAssays": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Targetassays",
+            "description": "Target assays of the dataset. They are the values that `library_strategy` accepts in a condition"
+          },
+          "assays": {
+            "items": {
+              "$ref": "#/components/schemas/DatasetAssay"
+            },
+            "type": "array",
+            "title": "Assays",
+            "description": "Target assays in descending order of their BioSamples"
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/FieldDescription"
+            },
+            "type": "array",
+            "title": "Fields",
+            "description": "Annotation fields, in the order of the select configuration"
+          },
+          "dslFields": {
+            "items": {
+              "$ref": "#/components/schemas/DslFieldDescription"
+            },
+            "type": "array",
+            "title": "Dslfields",
+            "description": "Every field that a condition can name"
+          },
+          "statuses": {
+            "additionalProperties": {
+              "items": {
+                "$ref": "#/components/schemas/Status"
+              },
+              "type": "array"
+            },
+            "propertyNames": {
+              "$ref": "#/components/schemas/GroupName"
+            },
+            "type": "object",
+            "title": "Statuses",
+            "description": "Status groups and the statuses under them. A condition names a group. An entry and an export report the status of each annotation"
+          },
+          "totals": {
+            "$ref": "#/components/schemas/Totals",
+            "description": "Counts of the whole population in each counting unit"
+          },
+          "organisms": {
+            "items": {
+              "$ref": "#/components/schemas/DatasetOrganism"
+            },
+            "type": "array",
+            "title": "Organisms",
+            "description": "Organisms of the population in descending order of their BioSamples"
+          },
+          "ontologies": {
+            "items": {
+              "$ref": "#/components/schemas/DatasetOntology"
+            },
+            "type": "array",
+            "title": "Ontologies",
+            "description": "Names of the prefixes of the terms of the dataset"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "datasetVersion",
+          "version",
+          "targetAssays",
+          "assays",
+          "fields",
+          "dslFields",
+          "statuses",
+          "totals",
+          "organisms",
+          "ontologies"
+        ],
+        "title": "DatasetResponse"
+      },
+      "DatasetVersionRef": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Name of the dataset version"
+          },
+          "createdAt": {
+            "type": "string",
+            "title": "Createdat",
+            "description": "Time when the store was built, ISO 8601"
+          },
+          "model": {
+            "type": "string",
+            "title": "Model",
+            "description": "The model that the bsllmner-mk2 runs of the dataset used"
+          },
+          "digest": {
+            "type": "string",
+            "title": "Digest",
+            "description": "Short hash of the full version information"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "createdAt",
+          "model",
+          "digest"
+        ],
+        "title": "DatasetVersionRef",
+        "description": "Identifies the store a response was computed from. Full details are returned by the dataset endpoint."
+      },
+      "DistributionResponse": {
+        "properties": {
+          "datasetVersion": {
+            "$ref": "#/components/schemas/DatasetVersionRef"
+          },
+          "q": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Q"
+          },
+          "populationQ": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Populationq",
+            "description": "The condition the counts were computed from"
+          },
+          "field": {
+            "type": "string",
+            "title": "Field"
+          },
+          "unit": {
+            "$ref": "#/components/schemas/Unit"
+          },
+          "facetSelfExclude": {
+            "type": "boolean",
+            "title": "Facetselfexclude",
+            "description": "The value of the request parameter"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "description": "Count of the population in the unit"
+          },
+          "elements": {
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/TermElement"
+                },
+                {
+                  "$ref": "#/components/schemas/Element"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Elements"
+          },
+          "withoutTerm": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Withoutterm",
+            "description": "For an annotation term dimension, the count of the population whose BioSamples have no term of the field: the population combined by AND with `NOT <field>_status:mapped`, in the unit"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "datasetVersion",
+          "q",
+          "populationQ",
+          "field",
+          "unit",
+          "facetSelfExclude",
+          "total",
+          "elements"
+        ],
+        "title": "DistributionResponse"
+      },
+      "DslFieldDescription": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Field name to use in a condition"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/FieldKind",
+            "description": "Kind of the field. A field of kind `term`, `assay`, `organism`, or `date` can be a dimension"
+          },
+          "operators": {
+            "items": {
+              "$ref": "#/components/schemas/Operator"
+            },
+            "type": "array",
+            "title": "Operators",
+            "description": "`eq` for `field:value`, `between` for `field:[a TO b]`"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "kind",
+          "operators"
+        ],
+        "title": "DslFieldDescription"
+      },
+      "Element": {
+        "properties": {
+          "value": {
+            "type": "string",
+            "title": "Value",
+            "description": "The element: a term ID, a target assay, an NCBI Taxonomy ID, or a year"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "description": "Name to show for the element"
+          },
+          "clauses": {
+            "items": {
+              "$ref": "#/components/schemas/Clause-Output"
+            },
+            "type": "array",
+            "title": "Clauses",
+            "description": "The clauses that select what the element counts"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "description": "Count of the units that have the element, in the unit of the request"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "value",
+          "label",
+          "clauses",
+          "count"
+        ],
+        "title": "Element"
+      },
+      "EntriesResponse": {
+        "properties": {
+          "datasetVersion": {
+            "$ref": "#/components/schemas/DatasetVersionRef"
+          },
+          "q": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Q"
+          },
+          "type": {
+            "$ref": "#/components/schemas/EntryType"
+          },
+          "pagination": {
+            "$ref": "#/components/schemas/Pagination"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/EntryItem"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "datasetVersion",
+          "q",
+          "type",
+          "pagination",
+          "items"
+        ],
+        "title": "EntriesResponse"
+      },
+      "EntryAnnotation": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "title": "Field",
+            "description": "Annotation field name"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value",
+            "description": "The extracted value; null when none was extracted"
+          },
+          "status": {
+            "$ref": "#/components/schemas/Status",
+            "description": "Annotation status. The UI shows `mapped_exact` as \"Exact match\", `mapped_selected` as \"LLM selected\" (LLM: large language model), `unmapped_no_candidate` as \"No candidate\", `unmapped_rejected` as \"Rejected\", `not_stated` as \"Not stated\", and `extraction_failed` as \"Extraction failed\". See \"Annotation status\" in /llms-full.txt for the meanings"
+          },
+          "termId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Termid",
+            "description": "ID of the mapped term; null when the value has no term"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label",
+            "description": "Label of the mapped term; null when the value has no term"
+          },
+          "clauses": {
+            "items": {
+              "$ref": "#/components/schemas/Clause-Output"
+            },
+            "type": "array",
+            "title": "Clauses",
+            "description": "The clause on the field and the term; empty without a term"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/Evidence"
+            },
+            "type": "array",
+            "title": "Evidence"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "field",
+          "value",
+          "status",
+          "termId",
+          "label",
+          "clauses",
+          "evidence"
+        ],
+        "title": "EntryAnnotation"
+      },
+      "EntryBioProject": {
+        "properties": {
+          "accession": {
+            "type": "string",
+            "title": "Accession"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "accession",
+          "title"
+        ],
+        "title": "EntryBioProject"
+      },
+      "EntryExperiment": {
+        "properties": {
+          "accession": {
+            "type": "string",
+            "title": "Accession",
+            "description": "SRA Experiment accession"
+          },
+          "libraryStrategy": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Librarystrategy"
+          },
+          "inPopulation": {
+            "type": "boolean",
+            "title": "Inpopulation",
+            "description": "Whether the SRA Experiment is in the population"
+          },
+          "runs": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Runs",
+            "description": "Accessions of the SRA Runs of the SRA Experiment"
+          },
+          "chipAtlas": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Chipatlas",
+            "description": "Genome assemblies under which ChIP-Atlas processed the SRA Experiment"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "accession",
+          "libraryStrategy",
+          "inPopulation",
+          "runs",
+          "chipAtlas"
+        ],
+        "title": "EntryExperiment"
+      },
+      "EntryItem": {
+        "properties": {
+          "identifier": {
+            "type": "string",
+            "title": "Identifier",
+            "description": "BioSample accession"
+          },
+          "type": {
+            "$ref": "#/components/schemas/EntryType"
+          },
+          "experiments": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Experiments",
+            "description": "SRA Experiments of the BioSample that match the condition"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "organism": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Organism"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "libraryStrategy": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Librarystrategy",
+            "description": "Assays of the matching SRA Experiments"
+          },
+          "bioprojects": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Bioprojects",
+            "description": "Accessions of the BioProjects of the BioSample"
+          },
+          "datePublished": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Datepublished",
+            "description": "Publication date, `YYYY-MM-DD`"
+          },
+          "chipAtlas": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Chipatlas",
+            "description": "Genome assemblies under which ChIP-Atlas processed the SRA Experiments"
+          },
+          "annotations": {
+            "additionalProperties": {
+              "items": {
+                "$ref": "#/components/schemas/AnnotationValue"
+              },
+              "type": "array"
+            },
+            "type": "object",
+            "title": "Annotations",
+            "description": "Annotations per annotation field name"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "identifier",
+          "type",
+          "experiments",
+          "title",
+          "organism",
+          "libraryStrategy",
+          "bioprojects",
+          "datePublished",
+          "chipAtlas",
+          "annotations"
+        ],
+        "title": "EntryItem"
+      },
+      "EntryResponse": {
+        "properties": {
+          "datasetVersion": {
+            "$ref": "#/components/schemas/DatasetVersionRef"
+          },
+          "identifier": {
+            "type": "string",
+            "title": "Identifier",
+            "description": "BioSample accession"
+          },
+          "type": {
+            "type": "string",
+            "const": "biosample",
+            "title": "Type"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "organism": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Organism"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "datePublished": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Datepublished"
+          },
+          "run": {
+            "type": "string",
+            "title": "Run",
+            "description": "Name of the bsllmner-mk2 run that analyzed the BioSample. It is not an SRA Run"
+          },
+          "metadata": {
+            "items": {
+              "$ref": "#/components/schemas/MetadataItem"
+            },
+            "type": "array",
+            "title": "Metadata",
+            "description": "Original metadata in the order of the description, the record, and the attributes. `metadataIndex` of an evidence is a position in this list"
+          },
+          "annotations": {
+            "items": {
+              "$ref": "#/components/schemas/EntryAnnotation"
+            },
+            "type": "array",
+            "title": "Annotations"
+          },
+          "experiments": {
+            "items": {
+              "$ref": "#/components/schemas/EntryExperiment"
+            },
+            "type": "array",
+            "title": "Experiments"
+          },
+          "bioprojects": {
+            "items": {
+              "$ref": "#/components/schemas/EntryBioProject"
+            },
+            "type": "array",
+            "title": "Bioprojects"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "datasetVersion",
+          "identifier",
+          "type",
+          "title",
+          "organism",
+          "datePublished",
+          "run",
+          "metadata",
+          "annotations",
+          "experiments",
+          "bioprojects"
+        ],
+        "title": "EntryResponse"
+      },
+      "EntryType": {
+        "type": "string",
+        "const": "biosample"
+      },
+      "Evidence": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Name of the item of the original metadata that the evidence is in"
+          },
+          "metadataIndex": {
+            "type": "integer",
+            "title": "Metadataindex",
+            "description": "Position of that item in `metadata`"
+          },
+          "inName": {
+            "type": "boolean",
+            "title": "Inname",
+            "description": "True if the evidence is in the name of an attribute, false if in the value"
+          },
+          "start": {
+            "type": "integer",
+            "title": "Start",
+            "description": "Unicode code point offset of the first code point of the match in that name or value as stored"
+          },
+          "end": {
+            "type": "integer",
+            "title": "End",
+            "description": "Unicode code point offset after the last code point of the match in that name or value as stored"
+          },
+          "strategy": {
+            "$ref": "#/components/schemas/EvidenceStrategy",
+            "description": "The matching strategy that found the evidence. Each strategy accepts more variation than the strategy before it: `exact` (none), `case_insensitive` (letter case and Unicode compatibility forms), `normalized` (separators, brackets, and genotype affixes such as `KO`), `bag_of_words` (word order), `fuzzy` (small spelling errors), and `ontology_synonym` (another name of the assigned term)"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "metadataIndex",
+          "inName",
+          "start",
+          "end",
+          "strategy"
+        ],
+        "title": "Evidence"
+      },
+      "EvidenceStrategy": {
+        "type": "string",
+        "enum": [
+          "exact",
+          "case_insensitive",
+          "normalized",
+          "bag_of_words",
+          "fuzzy",
+          "ontology_synonym"
+        ]
+      },
+      "FieldDescription": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Annotation field name, the `<field>` of `<field>_status`"
+          },
+          "multiValued": {
+            "type": "boolean",
+            "title": "Multivalued",
+            "description": "Whether a BioSample can hold several values in the field"
+          },
+          "ontologies": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Ontologies",
+            "description": "Prefixes of the term IDs that the field uses"
+          },
+          "mappedBiosampleCount": {
+            "type": "integer",
+            "title": "Mappedbiosamplecount",
+            "description": "BioSamples of the whole population with a term of the field"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "multiValued",
+          "ontologies",
+          "mappedBiosampleCount"
+        ],
+        "title": "FieldDescription"
+      },
+      "FieldKind": {
+        "type": "string",
+        "enum": [
+          "term",
+          "status",
+          "assay",
+          "organism",
+          "date",
+          "bioproject"
+        ]
+      },
+      "GroupName": {
+        "type": "string",
+        "enum": [
+          "mapped",
+          "unmapped",
+          "no_value"
+        ]
+      },
+      "KeywordRequest": {
+        "properties": {
+          "q": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 4096
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Q"
+          },
+          "keyword": {
+            "type": "string",
+            "maxLength": 4096,
+            "title": "Keyword",
+            "description": "Text as typed into a keyword box: words, and phrases in double quotes. An empty keyword removes the keywords of the condition."
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "keyword"
+        ],
+        "title": "KeywordRequest"
+      },
+      "MetadataItem": {
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/MetadataKind"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Name to show: a description name, an attribute name, or a short name of a path"
+          },
+          "value": {
+            "type": "string",
+            "title": "Value"
+          },
+          "harmonizedName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Harmonizedname",
+            "description": "Harmonized name of an attribute; null for the other kinds"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "kind",
+          "name",
+          "value",
+          "harmonizedName"
+        ],
+        "title": "MetadataItem"
+      },
+      "MetadataKind": {
+        "type": "string",
+        "enum": [
+          "description",
+          "attribute",
+          "record"
+        ]
+      },
+      "Operator": {
+        "type": "string",
+        "enum": [
+          "eq",
+          "between"
+        ]
+      },
+      "Organism": {
+        "properties": {
+          "identifier": {
+            "type": "string",
+            "title": "Identifier",
+            "description": "NCBI Taxonomy ID"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name",
+            "description": "Name of the organism; null when no name is known"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "identifier",
+          "name"
+        ],
+        "title": "Organism",
+        "description": "An organism as the NCBI Taxonomy ID and the name."
+      },
+      "Pagination": {
+        "properties": {
+          "page": {
+            "type": "integer",
+            "title": "Page"
+          },
+          "perPage": {
+            "type": "integer",
+            "title": "Perpage"
+          },
+          "total": {
+            "type": "integer",
+            "title": "Total",
+            "description": "Count of all items of the list in its counting unit, not only of this page"
+          },
+          "hasNext": {
+            "type": "boolean",
+            "title": "Hasnext",
+            "description": "Whether a page after this one has items"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "page",
+          "perPage",
+          "total",
+          "hasNext"
+        ],
+        "title": "Pagination"
+      },
+      "ParseResponse": {
+        "properties": {
+          "datasetVersion": {
+            "$ref": "#/components/schemas/DatasetVersionRef"
+          },
+          "q": {
+            "type": "string",
+            "title": "Q"
+          },
+          "ast": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AstBool"
+              },
+              {
+                "$ref": "#/components/schemas/AstEq"
+              },
+              {
+                "$ref": "#/components/schemas/AstBetween"
+              },
+              {
+                "$ref": "#/components/schemas/AstFreeText"
+              }
+            ],
+            "title": "Ast",
+            "discriminator": {
+              "propertyName": "op",
+              "mapping": {
+                "AND": "#/components/schemas/AstBool",
+                "NOT": "#/components/schemas/AstBool",
+                "OR": "#/components/schemas/AstBool",
+                "between": "#/components/schemas/AstBetween",
+                "eq": "#/components/schemas/AstEq",
+                "free_text": "#/components/schemas/AstFreeText"
+              }
+            }
+          },
+          "labels": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object",
+            "title": "Labels",
+            "description": "Display labels of the term IDs and organism IDs used in the condition"
+          },
+          "selected": {
+            "items": {
+              "$ref": "#/components/schemas/Clause-Output"
+            },
+            "type": "array",
+            "title": "Selected",
+            "description": "The clauses that `POST /api/dsl/select` treats as already present in `toggle` mode: the top-level clauses and the clauses of a top-level OR on one field, outside any NOT. When every clause of an element is in this list, selecting the element removes the clauses"
+          },
+          "keyword": {
+            "type": "string",
+            "title": "Keyword",
+            "description": "The text of a keyword box for the top-level keywords of the condition: the words, then the phrases in double quotes. `POST /api/dsl/keyword` reads it back as the same keywords"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "datasetVersion",
+          "q",
+          "ast",
+          "labels",
+          "selected",
+          "keyword"
+        ],
+        "title": "ParseResponse"
+      },
+      "ProblemDetails": {
+        "properties": {
+          "type": {
+            "type": "string",
+            "title": "Type",
+            "description": "`about:blank` for an error that the HTTP status describes. Otherwise a URI that ends with the slug of the rule that the request broke. The description of the 400 response of each operation lists its slugs."
+          },
+          "title": {
+            "type": "string",
+            "title": "Title",
+            "description": "The HTTP status phrase"
+          },
+          "status": {
+            "type": "integer",
+            "title": "Status"
+          },
+          "detail": {
+            "type": "string",
+            "title": "Detail"
+          },
+          "instance": {
+            "type": "string",
+            "title": "Instance",
+            "description": "The path of the request"
+          },
+          "timestamp": {
+            "type": "string",
+            "title": "Timestamp",
+            "description": "ISO 8601 time in UTC"
+          },
+          "requestId": {
+            "type": "string",
+            "title": "Requestid",
+            "description": "The value of the `X-Request-ID` header of the response"
+          }
+        },
+        "type": "object",
+        "required": [
+          "type",
+          "title",
+          "status",
+          "detail",
+          "instance",
+          "timestamp",
+          "requestId"
+        ],
+        "title": "ProblemDetails",
+        "description": "RFC 7807 problem details of an error response."
+      },
+      "Project": {
+        "properties": {
+          "identifier": {
+            "type": "string",
+            "title": "Identifier",
+            "description": "BioProject accession"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "biosampleCount": {
+            "type": "integer",
+            "title": "Biosamplecount",
+            "description": "BioSamples of the BioProject in the population"
+          },
+          "experimentCount": {
+            "type": "integer",
+            "title": "Experimentcount",
+            "description": "SRA Experiments of the BioProject in the population"
+          },
+          "assays": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Assays",
+            "description": "Assays of those SRA Experiments, in ascending order"
+          },
+          "clauses": {
+            "items": {
+              "$ref": "#/components/schemas/Clause-Output"
+            },
+            "type": "array",
+            "title": "Clauses"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "identifier",
+          "title",
+          "biosampleCount",
+          "experimentCount",
+          "assays",
+          "clauses"
+        ],
+        "title": "Project"
+      },
+      "ProjectSort": {
+        "type": "string",
+        "enum": [
+          "biosampleCount:desc",
+          "biosampleCount:asc",
+          "experimentCount:desc",
+          "experimentCount:asc"
+        ]
+      },
+      "ProjectsResponse": {
+        "properties": {
+          "datasetVersion": {
+            "$ref": "#/components/schemas/DatasetVersionRef"
+          },
+          "q": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Q"
+          },
+          "populationQ": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Populationq"
+          },
+          "facetSelfExclude": {
+            "type": "boolean",
+            "title": "Facetselfexclude"
+          },
+          "sort": {
+            "$ref": "#/components/schemas/ProjectSort",
+            "description": "The order of the items"
+          },
+          "pagination": {
+            "$ref": "#/components/schemas/Pagination"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/Project"
+            },
+            "type": "array",
+            "title": "Items"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "datasetVersion",
+          "q",
+          "populationQ",
+          "facetSelfExclude",
+          "sort",
+          "pagination",
+          "items"
+        ],
+        "title": "ProjectsResponse"
+      },
+      "SelectRequest": {
+        "properties": {
+          "q": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 4096
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Q"
+          },
+          "clauses": {
+            "items": {
+              "$ref": "#/components/schemas/Clause-Input"
+            },
+            "type": "array",
+            "maxItems": 512,
+            "minItems": 1,
+            "title": "Clauses"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "toggle",
+              "narrow"
+            ],
+            "title": "Mode",
+            "description": "`toggle` adds each clause, or removes the clauses when all of them are present. `narrow` adds each clause as a new AND conjunct.",
+            "default": "toggle"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "clauses"
+        ],
+        "title": "SelectRequest"
+      },
+      "ServiceInfoResponse": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name"
+          },
+          "version": {
+            "type": "string",
+            "title": "Version",
+            "description": "Package version, followed by `+<commit>` when the build records a commit"
+          },
+          "description": {
+            "type": "string",
+            "title": "Description"
+          },
+          "store": {
+            "type": "string",
+            "enum": [
+              "ok",
+              "unavailable"
+            ],
+            "title": "Store",
+            "description": "`unavailable` when the api cannot query the store, or the store file changed since it was opened"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "name",
+          "version",
+          "description",
+          "store"
+        ],
+        "title": "ServiceInfoResponse"
+      },
+      "Status": {
+        "type": "string",
+        "enum": [
+          "mapped_exact",
+          "mapped_selected",
+          "unmapped_no_candidate",
+          "unmapped_rejected",
+          "not_stated",
+          "extraction_failed"
+        ]
+      },
+      "TermChildrenResponse": {
+        "properties": {
+          "datasetVersion": {
+            "$ref": "#/components/schemas/DatasetVersionRef"
+          },
+          "field": {
+            "type": "string",
+            "title": "Field"
+          },
+          "termId": {
+            "type": "string",
+            "title": "Termid"
+          },
+          "populationQ": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Populationq"
+          },
+          "unit": {
+            "$ref": "#/components/schemas/Unit"
+          },
+          "children": {
+            "items": {
+              "$ref": "#/components/schemas/TermElement"
+            },
+            "type": "array",
+            "title": "Children"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "datasetVersion",
+          "field",
+          "termId",
+          "populationQ",
+          "unit",
+          "children"
+        ],
+        "title": "TermChildrenResponse"
+      },
+      "TermElement": {
+        "properties": {
+          "value": {
+            "type": "string",
+            "title": "Value",
+            "description": "The element: a term ID, a target assay, an NCBI Taxonomy ID, or a year"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "description": "Name to show for the element"
+          },
+          "clauses": {
+            "items": {
+              "$ref": "#/components/schemas/Clause-Output"
+            },
+            "type": "array",
+            "title": "Clauses",
+            "description": "The clauses that select what the element counts"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "description": "Count of the units that have the element, in the unit of the request"
+          },
+          "countExact": {
+            "type": "integer",
+            "title": "Countexact",
+            "description": "Count of the units that have the term or a descendant with a `mapped_exact` annotation"
+          },
+          "countSelected": {
+            "type": "integer",
+            "title": "Countselected",
+            "description": "Count of the units that have the term or a descendant with a `mapped_selected` annotation"
+          },
+          "hasChildren": {
+            "type": "boolean",
+            "title": "Haschildren",
+            "description": "Whether a direct child term has a count above 0 in the population of the list, in the unit"
+          },
+          "parents": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Parents",
+            "description": "The elements of the same list that are direct parents of the term, in the order of the list"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "value",
+          "label",
+          "clauses",
+          "count",
+          "countExact",
+          "countSelected",
+          "hasChildren",
+          "parents"
+        ],
+        "title": "TermElement"
+      },
+      "TermHit": {
+        "properties": {
+          "field": {
+            "type": "string",
+            "title": "Field",
+            "description": "Annotation field of the hit"
+          },
+          "termId": {
+            "type": "string",
+            "title": "Termid",
+            "description": "ID of the term, to use in a condition on the field"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "ontology": {
+            "type": "string",
+            "title": "Ontology",
+            "description": "Name of the ontology of the term"
+          },
+          "path": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Path",
+            "description": "Labels of the ancestors along one path from a root, nearest last"
+          },
+          "descendantCount": {
+            "type": "integer",
+            "title": "Descendantcount",
+            "description": "Descendant terms annotated in the field in the whole dataset, whatever `q` is"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "description": "Count of the units in the population of the field that have the term or a descendant"
+          },
+          "matchedSynonym": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Matchedsynonym",
+            "description": "The synonym that decides the match: a synonym equal to the query, or the synonym that contains the query when neither the label nor the ID contains it"
+          },
+          "clauses": {
+            "items": {
+              "$ref": "#/components/schemas/Clause-Output"
+            },
+            "type": "array",
+            "title": "Clauses"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "field",
+          "termId",
+          "label",
+          "ontology",
+          "path",
+          "descendantCount",
+          "count",
+          "matchedSynonym",
+          "clauses"
+        ],
+        "title": "TermHit"
+      },
+      "TermOntology": {
+        "properties": {
+          "prefix": {
+            "type": "string",
+            "title": "Prefix",
+            "description": "Prefix of the term ID"
+          },
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Name of the ontology that the prefix names"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "prefix",
+          "name"
+        ],
+        "title": "TermOntology"
+      },
+      "TermParent": {
+        "properties": {
+          "termId": {
+            "type": "string",
+            "title": "Termid",
+            "description": "ID of the parent term"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "termId",
+          "label"
+        ],
+        "title": "TermParent"
+      },
+      "TermResponse": {
+        "properties": {
+          "datasetVersion": {
+            "$ref": "#/components/schemas/DatasetVersionRef"
+          },
+          "termId": {
+            "type": "string",
+            "title": "Termid",
+            "description": "ID of the term"
+          },
+          "label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Label"
+          },
+          "ontology": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TermOntology"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null for a term ID without a prefix"
+          },
+          "synonyms": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array",
+            "title": "Synonyms",
+            "description": "Synonyms that differ from the label and from each other beyond letter case"
+          },
+          "parents": {
+            "items": {
+              "$ref": "#/components/schemas/TermParent"
+            },
+            "type": "array",
+            "title": "Parents",
+            "description": "Direct parent terms in the dataset, in the order of their labels"
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url",
+            "description": "Page of the term on the site of its ontology; null for an unlisted prefix"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "datasetVersion",
+          "termId",
+          "label",
+          "ontology",
+          "synonyms",
+          "parents",
+          "url"
+        ],
+        "title": "TermResponse"
+      },
+      "TermsResponse": {
+        "properties": {
+          "datasetVersion": {
+            "$ref": "#/components/schemas/DatasetVersionRef"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field",
+            "description": "The searched field, or null when every annotation field was searched"
+          },
+          "query": {
+            "type": "string",
+            "title": "Query"
+          },
+          "populationQ": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Populationq",
+            "description": "The condition the counts were computed from, or null when every annotation field was searched"
+          },
+          "unit": {
+            "$ref": "#/components/schemas/Unit"
+          },
+          "terms": {
+            "items": {
+              "$ref": "#/components/schemas/TermHit"
+            },
+            "type": "array",
+            "title": "Terms"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "datasetVersion",
+          "field",
+          "query",
+          "populationQ",
+          "unit",
+          "terms"
+        ],
+        "title": "TermsResponse"
+      },
+      "Totals": {
+        "properties": {
+          "biosample": {
+            "type": "integer",
+            "title": "Biosample",
+            "description": "BioSamples of the whole population"
+          },
+          "experiment": {
+            "type": "integer",
+            "title": "Experiment",
+            "description": "SRA Experiments of the whole population"
+          },
+          "bioproject": {
+            "type": "integer",
+            "title": "Bioproject",
+            "description": "BioProjects linked to the BioSamples of the whole population"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "biosample",
+          "experiment",
+          "bioproject"
+        ],
+        "title": "Totals"
+      },
+      "TrendPoint": {
+        "properties": {
+          "year": {
+            "type": "integer",
+            "title": "Year"
+          },
+          "count": {
+            "type": "integer",
+            "title": "Count",
+            "description": "Count, in the unit of the request, of the matches whose BioSample was published in the year"
+          },
+          "clauses": {
+            "items": {
+              "$ref": "#/components/schemas/Clause-Output"
+            },
+            "type": "array",
+            "title": "Clauses"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "year",
+          "count",
+          "clauses"
+        ],
+        "title": "TrendPoint"
+      },
+      "TrendResponse": {
+        "properties": {
+          "datasetVersion": {
+            "$ref": "#/components/schemas/DatasetVersionRef"
+          },
+          "q": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Q"
+          },
+          "unit": {
+            "$ref": "#/components/schemas/Unit"
+          },
+          "facetSelfExclude": {
+            "type": "boolean",
+            "title": "Facetselfexclude"
+          },
+          "years": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array",
+            "title": "Years",
+            "description": "The years of every list of this response, in ascending order"
+          },
+          "firstYear": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Firstyear",
+            "description": "The first year with a match, whatever `yearFrom` is"
+          },
+          "lastYear": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lastyear",
+            "description": "The last year with a match, whatever `yearTo` is"
+          },
+          "total": {
+            "items": {
+              "$ref": "#/components/schemas/TrendPoint"
+            },
+            "type": "array",
+            "title": "Total",
+            "description": "Counts of the condition per year"
+          },
+          "totalPopulationQ": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Totalpopulationq",
+            "description": "The condition the counts of `total` were computed from"
+          },
+          "allEntries": {
+            "items": {
+              "$ref": "#/components/schemas/TrendPoint"
+            },
+            "type": "array",
+            "title": "Allentries",
+            "description": "Counts of the whole population per year, without the condition"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field",
+            "description": "The dimension of `series`, when the request names one"
+          },
+          "populationQ": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Populationq",
+            "description": "The condition the counts of `series` were computed from"
+          },
+          "series": {
+            "items": {
+              "$ref": "#/components/schemas/TrendSeries"
+            },
+            "type": "array",
+            "title": "Series"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "datasetVersion",
+          "q",
+          "unit",
+          "facetSelfExclude",
+          "years",
+          "firstYear",
+          "lastYear",
+          "total",
+          "totalPopulationQ",
+          "allEntries",
+          "field",
+          "populationQ",
+          "series"
+        ],
+        "title": "TrendResponse"
+      },
+      "TrendSeries": {
+        "properties": {
+          "value": {
+            "type": "string",
+            "title": "Value",
+            "description": "The element of the series dimension"
+          },
+          "label": {
+            "type": "string",
+            "title": "Label",
+            "description": "Name to show for the element"
+          },
+          "clauses": {
+            "items": {
+              "$ref": "#/components/schemas/Clause-Output"
+            },
+            "type": "array",
+            "title": "Clauses"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/TrendPoint"
+            },
+            "type": "array",
+            "title": "Points"
+          }
+        },
+        "additionalProperties": false,
+        "type": "object",
+        "required": [
+          "value",
+          "label",
+          "clauses",
+          "points"
+        ],
+        "title": "TrendSeries"
+      },
+      "Unit": {
+        "type": "string",
+        "enum": [
+          "biosample",
+          "sra-experiment",
+          "bioproject"
+        ]
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Entries",
+      "description": "The list of matching BioSamples, and the detail of one BioSample."
+    },
+    {
+      "name": "Aggregations",
+      "description": "Counts of the matching BioSamples, SRA Experiments, or BioProjects per element of one or two dimensions, and per year."
+    },
+    {
+      "name": "Condition",
+      "description": "Conversion between condition strings and ASTs, and element selection."
+    },
+    {
+      "name": "Projects",
+      "description": "BioProjects of the matching BioSamples."
+    },
+    {
+      "name": "Terms",
+      "description": "Search and navigation of the ontology terms that annotate the BioSamples."
+    },
+    {
+      "name": "Export",
+      "description": "Matching BioSamples as TSV or NDJSON, and accession lists as plain text."
+    },
+    {
+      "name": "Dataset",
+      "description": "Version information, fields, and population totals of the dataset."
+    },
+    {
+      "name": "Service Info",
+      "description": "Service metadata and the state of the store."
+    }
+  ]
+}

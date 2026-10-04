@@ -77,7 +77,10 @@ const DatasetSchema = ({ dataset }: { dataset: DatasetResponse }) => (
   <script type="application/ld+json">{JSON.stringify(datasetSchema(dataset, globalThis.location.origin))}</script>
 )
 
-/** How an example is told apart from the others under its title: the values of its condition, or one sentence about what it shows. */
+/**
+ * What distinguishes an example from the others under its title: the values of its condition, or one sentence about
+ * what it shows.
+ */
 type PresetDetail = "values" | "description"
 
 const PresetLinks = ({ presets, detail }: { presets: Preset[]; detail: PresetDetail }) => (

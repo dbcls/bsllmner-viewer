@@ -1,3 +1,6 @@
+import { readFileSync } from "node:fs"
+import { resolve } from "node:path"
+
 import { fc, test } from "@fast-check/vitest"
 import { describe, expect, it, vi } from "vitest"
 
@@ -10,11 +13,15 @@ const termId = fc.tuple(fc.stringMatching(/^[A-Za-z]{2,10}$/), fc.stringMatching
 /** The value of an element of another dimension: an assay, an NCBI Taxonomy ID, or a year. */
 const otherValue = fc.oneof(fc.stringMatching(/^[A-Za-z][A-Za-z0-9-]{0,11}$/), fc.integer({ min: 1, max: 3_000_000 }).map(String))
 
+/** A list that repeats entries drawn from a small pool of them. */
+const repeating = <T>(item: fc.Arbitrary<T>, maxLength: number) =>
+  fc.uniqueArray(item, { minLength: 1, maxLength: 6 }).chain((pool) => fc.array(fc.constantFrom(...pool), { maxLength }))
+
 const never = () => Promise.reject(new Error("a value of the axis was looked up as a label"))
 
 describe("axisTermsText", () => {
   test.prop([fc.uniqueArray(termId, { maxLength: 40 })])(
-    "gives back the same terms in the same order, without a lookup, when it is replaced as it is on an annotation field",
+    "returns the same terms in the same order, without a lookup, when it is replaced as it is on an annotation field",
     async (values) => {
       const findTerm = vi.fn(never)
       expect((await resolvePasted(pastedLines(axisTermsText(values)), true, findTerm)).terms).toEqual(values)
@@ -23,7 +30,7 @@ describe("axisTermsText", () => {
   )
 
   test.prop([fc.uniqueArray(otherValue, { maxLength: 40 })])(
-    "gives back the same elements in the same order when it is replaced as it is on another dimension",
+    "returns the same elements in the same order when it is replaced as it is on another dimension",
     async (values) => {
       const findTerm = vi.fn(never)
       expect((await resolvePasted(pastedLines(axisTermsText(values)), false, findTerm)).terms).toEqual(values)
@@ -33,7 +40,7 @@ describe("axisTermsText", () => {
 })
 
 describe("resolvePasted", () => {
-  test.prop([fc.array(fc.oneof(termId, fc.stringMatching(/^[a-z]{1,6}$/)), { maxLength: 20 })])(
+  test.prop([repeating(fc.oneof(termId, fc.stringMatching(/^[a-z]{1,6}$/)), 20)])(
     "keeps the order of the entries, drops the repeats and the labels that name nothing, and looks up only the labels",
     async (entries) => {
       const labels = new Map<string, string | null>()
@@ -64,9 +71,20 @@ describe("resolvePasted", () => {
     expect((await resolvePasted([long], false, never)).rejected).toBe(1)
   })
 
+  it.each([[MAX_ENTRY_LENGTH, 0], [MAX_ENTRY_LENGTH + 1, 1]])("rejects an entry of %i characters %i times, without sending it", async (length, rejected) => {
+    expect((await resolvePasted([`T:${"x".repeat(length - 2)}`], true, never)).rejected).toBe(rejected)
+    expect((await resolvePasted(["y".repeat(length)], false, never)).rejected).toBe(rejected)
+  })
+
   it("does not swallow a failure of the server or the network", async () => {
     await expect(resolvePasted(["a"], true, () => Promise.reject(new ApiError({ type: "about:blank", title: "x", status: 500 })))).rejects.toThrow()
     await expect(resolvePasted(["a"], true, () => Promise.reject(new TypeError("Failed to fetch")))).rejects.toThrow("Failed to fetch")
+  })
+
+  it("fails the whole lookup when the api is busy (429), and does not count the label as rejected", async () => {
+    const busy = new ApiError({ type: "about:blank", title: "Too Many Requests", status: 429 })
+    const findTerm = (label: string) => (label === "b" ? Promise.reject(busy) : Promise.resolve(`TERM:${label}`))
+    await expect(resolvePasted(["a", "b", "c"], true, findTerm)).rejects.toBe(busy)
   })
 
   it("keeps a comma and a semicolon inside an entry", () => {
@@ -85,7 +103,7 @@ describe("resolvePasted", () => {
   })
 
   test.prop([fc.array(fc.oneof(termId, fc.stringMatching(/^[a-z]{1,6}$/)), { maxLength: 20 })])(
-    "counts the entries that are repeats as recognized and the labels that name nothing as missed",
+    "counts each entry that names nothing as missed, and no other entry",
     async (entries) => {
       const result = await resolvePasted(entries, true, (label) => Promise.resolve(label.length % 2 === 0 ? `TERM:${label}` : null))
       const named = entries.filter((entry) => entry.includes(":") || entry.length % 2 === 0)
@@ -101,7 +119,7 @@ describe("switchDimension", () => {
   test.prop([fc.array(fc.tuple(dimension, choice), { minLength: 1, maxLength: 12 })])(
     "shows on each dimension what the axis showed when it last left it, and the top terms on a dimension it has not shown",
     (steps) => {
-      // Each step is the dimension that the axis moves to, with what the user then leaves on it.
+      // Each step is a dimension that the axis moves to, with the terms that the user selects on that dimension afterwards.
       let memory = {}
       let at = "cell_line"
       let current: { terms: string[] | null } = { terms: null }
@@ -124,13 +142,22 @@ describe("switchDimension", () => {
 })
 
 describe("toggleTerm", () => {
+  const limit = fc.option(fc.integer({ min: 1, max: 25 }).map((max) => ({ max, subject: "An axis" })), { nil: undefined })
+
+  test.prop([fc.uniqueArray(termId, { minLength: 1, maxLength: 30 }), fc.nat(), limit])(
+    "removes a term that the axis has and keeps the order of the other terms, also at or over the limit",
+    (values, n, max) => {
+      const value = values[n % values.length] ?? ""
+      expect(toggleTerm(values, value, max)).toEqual({ terms: values.filter((v) => v !== value), alert: null })
+    },
+  )
+
   test.prop([fc.uniqueArray(termId, { maxLength: 20 }), termId, fc.integer({ min: 1, max: 25 })])(
-    "takes a term that the axis has off, and adds a term that it lacks to the end only while the axis is under its limit",
-    (values, value, max) => {
+    "adds a term that the axis does not have to the end only while the axis is under its limit",
+    (values, term, max) => {
+      const value = values.includes(term) ? `${term}-new` : term
       const result = toggleTerm(values, value, { max, subject: "An axis" })
-      if (values.includes(value)) {
-        expect(result).toEqual({ terms: values.filter((v) => v !== value), alert: null })
-      } else if (values.length >= max) {
+      if (values.length >= max) {
         expect(result.terms).toEqual(values)
         expect(result.alert).toBe(`An axis shows up to ${max} ${max === 1 ? "term" : "terms"}.`)
       } else {
@@ -139,21 +166,24 @@ describe("toggleTerm", () => {
     },
   )
 
-  test.prop([fc.uniqueArray(termId, { maxLength: 20 }), termId])("adds without a limit", (values, value) => {
-    expect(toggleTerm(values, value).terms.includes(value)).toBe(!values.includes(value))
+  test.prop([fc.uniqueArray(termId, { maxLength: 20 }), termId])("adds a term that the axis does not have when there is no limit", (values, term) => {
+    const value = values.includes(term) ? `${term}-new` : term
+    expect(toggleTerm(values, value)).toEqual({ terms: [...values, value], alert: null })
   })
+})
 
-  it("does not add a term to an axis of the most terms that the api takes", () => {
-    const full = Array.from({ length: MAX_AXIS_TERMS }, (_, i) => `T:${i}`)
-    const result = toggleTerm(full, "T:new", { max: MAX_AXIS_TERMS, subject: "A heatmap axis" })
-    expect(result.terms).toEqual(full)
-    expect(result.alert).toBe(`A heatmap axis shows up to ${MAX_AXIS_TERMS} terms.`)
+describe("MAX_AXIS_TERMS", () => {
+  it("is the most elements of one dimension that the api takes", () => {
+    const types = readFileSync(resolve(process.cwd(), "app/lib/api/openapi-types.ts"), "utf8")
+    const limits = [...types.matchAll(/Comma-separated elements, at most (\d+)/g)].map((match) => Number(match[1]))
+    expect(limits.length).toBeGreaterThan(0)
+    expect(new Set(limits)).toEqual(new Set([MAX_AXIS_TERMS]))
   })
 })
 
 describe("replaceTerms", () => {
-  test.prop([fc.array(termId, { maxLength: 40 }), fc.integer({ min: 1, max: 15 })])(
-    "gives the resolved terms in the pasted order, without repeats, and no more than the limit",
+  test.prop([repeating(termId, 40), fc.integer({ min: 1, max: 15 })])(
+    "gives the resolved terms in the pasted order, without repeats, and no more than the limit, and counts a repeated term as recognized",
     async (entries, max) => {
       const result = await replaceTerms(entries, (list) => resolvePasted(list, true, never), { max, subject: "An axis" })
       const unique = [...new Set(entries)]
@@ -167,15 +197,6 @@ describe("replaceTerms", () => {
       expect(result.alert).toBe(unique.length > max ? `The first ${max} of ${unique.length} terms are shown.` : `${entries.length} of ${entries.length} terms recognized.`)
     },
   )
-
-  it("limits an axis to 100 terms", () => {
-    expect(MAX_AXIS_TERMS).toBe(100)
-  })
-
-  it("counts a repeated term as recognized", async () => {
-    const result = await replaceTerms(["A:1", "A:1", "B:2"], (list) => resolvePasted(list, true, never))
-    expect(result).toEqual({ terms: ["A:1", "B:2"], alert: "3 of 3 terms recognized." })
-  })
 
   it("does not count the labels that name nothing as recognized", async () => {
     const result = await replaceTerms(["A:1", "nothing", "also nothing"], (list) => resolvePasted(list, true, () => Promise.resolve(null)))
@@ -193,28 +214,68 @@ describe("replaceTerms", () => {
     const entries = Array.from({ length: 600 }, (_, i) => `T:${i}`)
     expect((await replaceTerms(entries, (list) => resolvePasted(list, true, never))).terms).toEqual(entries)
   })
-
-  it("uses the first 100 of a longer list and says so", async () => {
-    const entries = Array.from({ length: 101 }, (_, i) => `T:${i}`)
-    const result = await replaceTerms(entries, (list) => resolvePasted(list, true, never), { max: MAX_AXIS_TERMS, subject: "A heatmap axis" })
-    expect(result.terms).toEqual(entries.slice(0, MAX_AXIS_TERMS))
-    expect(result.alert).toBe("The first 100 of 101 terms are shown.")
-  })
 })
 
 describe("elementValidator", () => {
-  it("takes only canonical numbers for organisms and four-digit years, and anything for the other dimensions", () => {
-    const organism = elementValidator("organism_id")
-    expect(["1", "9606", "1427524", "2147483647"].every((v) => organism?.(v))).toBe(true)
-    expect(["Homo sapiens", "09606", "0", "-1", "9606a", "12345678901", "2147483648", "9999999999"].some((v) => organism?.(v))).toBe(false)
-    const year = elementValidator("date_published")
-    expect(year?.("2020")).toBe(true)
-    expect(["2020a", "20", "02020", "20200", "0999", "999"].some((v) => year?.(v))).toBe(false)
-    expect(["1000", "9999"].every((v) => year?.(v))).toBe(true)
+  it.each([
+    ["1", "organism_id", true],
+    ["2147483647", "organism_id", true],
+    ["2147483648", "organism_id", false],
+    ["0", "organism_id", false],
+    ["9999999999", "organism_id", false],
+    ["12345678901", "organism_id", false],
+    ["Homo sapiens", "organism_id", false],
+    ["1000", "date_published", true],
+    ["9999", "date_published", true],
+    ["999", "date_published", false],
+    ["0999", "date_published", false],
+    ["10000", "date_published", false],
+  ])("takes %s as an element of %s: %s", (value, field, accepted) => {
+    expect(elementValidator(field)?.(value)).toBe(accepted)
+  })
+
+  it("takes anything for a dimension that has no format", () => {
     expect(elementValidator("library_strategy")).toBeNull()
   })
 
-  it("makes resolvePasted count an entry that is not a valid element as not recognised and not send it", async () => {
+  const decorate = fc.constantFrom(
+    (s: string) => `0${s}`,
+    (s: string) => `+${s}`,
+    (s: string) => ` ${s}`,
+    (s: string) => `${s} `,
+    (s: string) => `${s}.0`,
+    (s: string) => `${s}e0`,
+    (s: string) => `${s}a`,
+    (s: string) => s.replace(/\d/g, (d) => String.fromCharCode(0xff10 + Number(d))),
+  )
+
+  describe("organism_id", () => {
+    const organism = elementValidator("organism_id") ?? (() => false)
+    test.prop([fc.integer({ min: 1, max: 2 ** 31 - 1 })])("takes the decimal form of an organism ID from 1 to 2**31 - 1", (n) => {
+      expect(organism(String(n))).toBe(true)
+    })
+    test.prop([fc.oneof(fc.integer({ min: -(2 ** 31), max: 0 }), fc.integer({ min: 2 ** 31, max: 99_999_999_999 }))])("does not take a number outside 1 to 2**31 - 1", (n) => {
+      expect(organism(String(n))).toBe(false)
+    })
+    test.prop([fc.integer({ min: 1, max: 2 ** 31 - 1 }), decorate])("does not take another form of an organism ID", (n, decorated) => {
+      expect(organism(decorated(String(n)))).toBe(false)
+    })
+  })
+
+  describe("date_published", () => {
+    const year = elementValidator("date_published") ?? (() => false)
+    test.prop([fc.integer({ min: 1000, max: 9999 })])("takes a year from 1000 to 9999", (n) => {
+      expect(year(String(n))).toBe(true)
+    })
+    test.prop([fc.oneof(fc.integer({ min: -99_999, max: 999 }), fc.integer({ min: 10_000, max: 99_999 }))])("does not take a number outside 1000 to 9999", (n) => {
+      expect(year(String(n))).toBe(false)
+    })
+    test.prop([fc.integer({ min: 1000, max: 9999 }), decorate])("does not take another form of a year", (n, decorated) => {
+      expect(year(decorated(String(n)))).toBe(false)
+    })
+  })
+
+  it("counts an entry that is not a valid element as missed and does not look it up", async () => {
     const result = await resolvePasted(["9606", "Homo sapiens", "10090"], false, never, elementValidator("organism_id") ?? undefined)
     expect(result).toEqual({ terms: ["9606", "10090"], missed: 1, rejected: 0 })
   })

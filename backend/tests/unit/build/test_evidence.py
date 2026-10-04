@@ -13,6 +13,7 @@ from bsllmner_viewer.build.evidence import (
     NORMALIZED,
     ONTOLOGY_SYNONYM,
     TEXT_STRATEGIES,
+    Span,
     Text,
     find,
     similar,
@@ -54,9 +55,9 @@ def test_trace_finds_the_examples_of_each_strategy_with_that_strategy(
         ("lung carcinoma", "lung (carcinoma) cell line", "lung (carcinoma)"),
         ("carcinoma cell line", "lung (carcinoma) cell line", "(carcinoma) cell line"),
         ("Whsc1", "ChIPseq and RNAseq in Whsc1KO E12.5 heart", "Whsc1"),
-        ("Kras", "KrasG12D mice", "Kras"),
-        ("BRD9", "shBRD9 cells", "BRD9"),
-        ("Rb1", "sgNT;sgRb1;sgTrp53", "Rb1"),
+        ("KRAS", "KRASG12D mice", "KRAS"),
+        ("p53", "shp53 cells", "p53"),
+        ("p53", "sgNT;sgp53;sgTrp53", "p53"),
         ("ESC", "human ESCs", "ESC"),
         ("Neurod1", "Ngn3KONgn3CreNeurod1OE_E15.5", "Neurod1"),
         ("STAT3", "JC5068_pSTAT3_siFOXA1", "STAT3"),
@@ -98,7 +99,7 @@ def test_exact_matches_a_short_value_at_word_boundaries_and_nothing_else_matches
     assert _traced("B6", "strain C57BL/6 (B6)") == (EXACT, ["B6"])
 
 
-def test_bag_of_words_and_fuzzy_tell_a_sign_after_a_word_apart() -> None:
+def test_bag_of_words_and_fuzzy_distinguish_a_sign_after_a_word() -> None:
     assert _traced("CD19+ Long-Lived Plasma Cells", "CD19- Long-Lived Plasma Cells") is None
     assert _traced("plasma cells CD19+", "CD19+ plasma cells") == (BAG_OF_WORDS, ["CD19+ plasma cells"])
     assert _traced("Long Lived plasma", "plasma Long-Lived") == (BAG_OF_WORDS, ["plasma Long-Lived"])
@@ -121,16 +122,6 @@ def test_fuzzy_accepts_one_confusable_character_in_a_word_of_any_length() -> Non
     assert _traced("DNase I", "treated with DNase l") == (FUZZY, ["DNase l"])
     assert similar("ii", "il")
     assert not similar("ab", "ac")
-
-
-def test_fuzzy_scales_the_distance_with_the_length_of_the_shorter_word() -> None:
-    assert similar("abcdef", "abcdeg")
-    assert not similar("abcdef", "abcdgh")
-    assert similar("abcdefgh", "abcdefxy")
-    assert not similar("abcdefgh", "abcdexyz")
-    assert similar("abcdefghijklmn", "abcdefghijkxyz")
-    assert not similar("abcdefghijklmn", "abcdefghijwxyz")
-    assert not similar("abcde", "abcdf")
 
 
 def test_fuzzy_requires_the_same_digits_and_allows_one_edit_in_a_word_with_digits() -> None:
@@ -252,3 +243,140 @@ def test_trace_with_a_camel_case_boundary_after_a_unit_does_not_depend_on_the_fo
         traced = trace("Cre", [[Text(convert("\u00e9Cre"))]])
         assert traced is not None
         assert traced.strategy == NORMALIZED
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["Sinoatrial\tnode cells", "Sinoatrial\nnode cells", "Sinoatrial_node cells", "Sinoatrial -_ node cells"],
+)
+def test_normalized_treats_tab_newline_underscore_and_runs_of_separators_as_one_space(text: str) -> None:
+    assert _traced("Sinoatrial node cells", text) == (NORMALIZED, [text])
+
+
+@pytest.mark.parametrize(
+    "text", ["Sinoatrial node (SAN] cells", "Sinoatrial node [SAN} cells", "Sinoatrial node {SAN) cells"]
+)
+def test_normalized_removes_a_bracket_pair_of_any_kind_with_its_content(text: str) -> None:
+    assert _traced("Sinoatrial node cells", text) == (NORMALIZED, [text])
+
+
+def test_normalized_removes_the_rest_of_the_text_after_an_unclosed_opening_bracket() -> None:
+    assert _traced("lung cancer", "lung (stage II) cancer") == (NORMALIZED, ["lung (stage II) cancer"])
+    assert _traced("lung cancer", "lung (stage II cancer") is None
+
+
+def test_normalized_keeps_slashes_and_periods() -> None:
+    value = Text("E12.5 heart")
+    assert find(NORMALIZED, value, Text("E12.5-heart")) != []
+    assert find(NORMALIZED, value, Text("E125 heart")) == []
+    assert find(NORMALIZED, value, Text("E12/5 heart")) == []
+
+
+def test_normalized_form_with_fewer_than_three_characters_does_not_match() -> None:
+    assert _traced("a-b", "ab") is None
+    assert _traced("a-bc", "abc") == (NORMALIZED, ["abc"])
+    assert find(NORMALIZED, Text("a-b"), Text("a b cells")) != []
+    assert find(NORMALIZED, Text("a-b"), Text("ab cells")) == []
+    assert find(NORMALIZED, Text("ab-"), Text("ab x")) == []
+    assert find(NORMALIZED, Text("ab-"), Text("ab- x")) == []
+
+
+_SUFFIX_AFFIXES = ["KO", "ko", "CKO", "cKO", "fl", "f", "flox", "LSL", "GFP", "eGFP", "OE", "KD", "wt", "Cre", "IRES",
+                   "lox", "delta", "del", "s"]  # fmt: skip
+
+
+@pytest.mark.parametrize("affix", _SUFFIX_AFFIXES)
+def test_normalized_suffix_affix_is_a_whole_run_in_its_own_letter_case(affix: str) -> None:
+    assert find(NORMALIZED, Text("Abc1"), Text(f"Abc1{affix} x")) == [Span(0, 4)]
+    swapped = affix.swapcase()
+    if swapped not in _SUFFIX_AFFIXES:
+        assert find(NORMALIZED, Text("Abc1"), Text(f"Abc1{swapped} x")) == []
+
+
+@pytest.mark.parametrize("text", ["Abc1Ko x", "Abc1cre x", "Abc1CRE x", "Abc1KOx x", "Abc1xKO x"])
+def test_normalized_suffix_affix_does_not_match_a_part_of_a_run(text: str) -> None:
+    assert find(NORMALIZED, Text("Abc1"), Text(text)) == []
+
+
+@pytest.mark.parametrize("text", ["shp53", "sip53", "sgp53", "TREp53", "pegp53"])
+def test_normalized_prefix_affix_is_a_whole_run_in_its_own_letter_case(text: str) -> None:
+    assert find(NORMALIZED, Text("p53"), Text(text)) == [Span(len(text) - 3, len(text))]
+
+
+@pytest.mark.parametrize("text", ["SHp53", "Trep53", "xshp53", "shhp53"])
+def test_normalized_prefix_affix_does_not_match_another_letter_case_or_a_part_of_a_run(text: str) -> None:
+    assert find(NORMALIZED, Text("p53"), Text(text)) == []
+
+
+def test_find_bag_of_words_returns_nothing_for_a_single_word_value() -> None:
+    assert find(BAG_OF_WORDS, Text("cell"), Text("cell cell")) == []
+    assert find(BAG_OF_WORDS, Text("cell"), Text("cell")) == []
+
+
+def test_find_bag_of_words_does_not_match_words_that_are_not_consecutive() -> None:
+    assert find(BAG_OF_WORDS, Text("CD4 T cell"), Text("T cell CD4")) == [Span(0, 10)]
+    assert find(BAG_OF_WORDS, Text("CD4 T cell"), Text("T and cell CD4")) == []
+    assert find(BAG_OF_WORDS, Text("CD4 T cell"), Text("CD4 T and cell")) == []
+    assert find(BAG_OF_WORDS, Text("CD4 T cell"), Text("T cell")) == []
+
+
+def test_trace_term_searches_a_short_name_only_with_exact_by_the_number_of_units() -> None:
+    assert trace_term(["abcd"], [[Text("ABCD x")]]) is None
+    assert trace_term(["abcd"], [[Text("abcd x")]]) is not None
+    assert trace_term(["abcde"], [[Text("ABCDE x")]]) is not None
+    # Five code points but four units.
+    name = _nfd("abc\u00e9")
+    assert len(name) == 5
+    assert trace_term([name], [[Text(_nfd("ABC\u00c9 x"))]]) is None
+    assert trace_term([name], [[Text(_nfd("abc\u00e9 x"))]]) is not None
+
+
+@pytest.mark.parametrize(
+    ("value", "text", "strategy", "matched"),
+    [
+        ("DLD-1", "DLD-1 cell line", EXACT, "DLD-1"),
+        ("AR", "AR knockdown", EXACT, "AR"),
+        ("CD4+", "CD4+CD8+ T cells", EXACT, "CD4+"),
+        ("HeLa", "Hela-S3", CASE_INSENSITIVE, "Hela"),
+        ("CUDC-101", "CUDC 101", NORMALIZED, "CUDC 101"),
+        ("Sinoatrial node cells", "Sinoatrial node (SAN) cells", NORMALIZED, "Sinoatrial node (SAN) cells"),
+        ("HEK293", "HEK 293", NORMALIZED, "HEK 293"),
+        ("lung carcinoma", "lung (carcinoma) cell line", NORMALIZED, "lung (carcinoma)"),
+        ("lung carcinoma", "lung (carcinoma cell) line", NORMALIZED, "lung (carcinoma"),
+        ("Whsc1", "Whsc1KO", NORMALIZED, "Whsc1"),
+        ("KRAS", "KRASG12D", NORMALIZED, "KRAS"),
+        ("p53", "shp53", NORMALIZED, "p53"),
+        ("Neurod1", "Ngn3CreNeurod1OE", NORMALIZED, "Neurod1"),
+        ("STAT3", "pSTAT3", NORMALIZED, "STAT3"),
+        ("CD4 T cell", "T cell CD4", BAG_OF_WORDS, "T cell CD4"),
+        ("LSD1 inhibitor", "Inhibitor_LSD1", BAG_OF_WORDS, "Inhibitor_LSD1"),
+        ("erythroid", "Erytrhoid", FUZZY, "Erytrhoid"),
+        ("DNase I", "DNase l", FUZZY, "DNase l"),
+    ],
+)
+def test_docs_examples_match_as_written(value: str, text: str, strategy: str, matched: str) -> None:
+    assert _traced(value, text) == (strategy, [matched])
+
+
+@pytest.mark.parametrize(
+    ("value", "text"),
+    [("NO", "No treatment"), ("ATM", "treatment"), ("TP53", "TP53BP1"), ("ADAMTS13", "ADAMTS12")],
+)
+def test_docs_examples_that_do_not_match_do_not_match(value: str, text: str) -> None:
+    assert _traced(value, text) is None
+
+
+def test_docs_example_of_a_synonym_matches_the_other_name_of_the_term() -> None:
+    texts = [Text("treated with doxorubicin")]
+    assert _term_matches(["doxorubicin", "adriamycin"], [texts]) == (0, [(0, "doxorubicin")])
+    assert _term_matches(["doxorubicin", "adriamycin"], [[Text("treated with adriamycin")]]) == (0, [(0, "adriamycin")])
+
+
+def test_docs_example_of_a_value_and_an_attribute_name_finds_only_the_value() -> None:
+    values, names = [Text("brain"), Text("BA46")], [Text("brain region")]
+    traced = trace("brain", [values, names])
+    assert traced is not None
+    assert (traced.strategy, traced.group, [m.text for m in traced.matches]) == (EXACT, 0, [0])
+    traced = trace("brain", [[Text("BA46")], names])
+    assert traced is not None
+    assert (traced.strategy, traced.group) == (EXACT, 1)

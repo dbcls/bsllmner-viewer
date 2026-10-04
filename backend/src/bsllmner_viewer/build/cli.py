@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 import duckdb
@@ -64,24 +64,29 @@ def main(argv: Sequence[str] | None = None) -> int:
         elif args.command == "refresh":
             result = build_refresh(_manifest(args.manifest), args.store, args.out, threads=args.threads)
         elif args.command == "verify":
-            con = duckdb.connect(str(args.store), read_only=True)
-            try:
-                result = verify(con)
-            finally:
-                con.close()
+            result = _read_store(args.store, verify)
         else:
-            con = duckdb.connect(str(args.store), read_only=True)
-            try:
-                sys.stdout.write(
-                    orjson.dumps(read_version(con).model_dump(), option=orjson.OPT_INDENT_2).decode() + "\n"
-                )
-            finally:
-                con.close()
+            version = _read_store(args.store, read_version)
+            sys.stdout.write(orjson.dumps(version.model_dump(), option=orjson.OPT_INDENT_2).decode() + "\n")
             return 0
     except BuildError as e:
         sys.stderr.write(f"error: {e}\n")
         return 1
     return _report(result)
+
+
+def _read_store[T](path: Path, read: Callable[[duckdb.DuckDBPyConnection], T]) -> T:
+    """Read a store with `read`. A store that DuckDB cannot open, or that lacks the tables of a store, is an error."""
+    try:
+        con = duckdb.connect(str(path), read_only=True)
+    except duckdb.Error as e:
+        raise BuildError(f"store {path}: {e}") from e
+    try:
+        return read(con)
+    except duckdb.CatalogException as e:
+        raise BuildError(f"store {path} is not a store of this tool: {e}") from e
+    finally:
+        con.close()
 
 
 def _manifest(path: Path) -> Manifest:

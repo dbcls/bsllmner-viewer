@@ -114,7 +114,7 @@ def _response(
             "headers": _VERSION_HEADER_DOC,
         },
     },
-    summary="Accession list of the matching entries, with a header line and then one accession per line",
+    summary="Export the accessions of the entries that match a condition",
     description=(
         "Returns every distinct accession of `type` among the entries that match `q`, as plain text: a header line "
         "that starts with `#` and names `q` and the dataset version, then one accession per line in ascending order. "
@@ -169,10 +169,11 @@ def export_accessions(
             "headers": _VERSION_HEADER_DOC,
         },
     },
-    summary="Matching entries as TSV or newline-delimited JSON",
+    summary="Export the BioSamples that match a condition as TSV or NDJSON",
     description=(
-        "Returns every BioSample that matches `q`, in the order of the entry list, as TSV or as newline-delimited "
-        'JSON. See "Entries" in /llms-full.txt for the columns and the cells.'
+        "Returns every BioSample that matches `q`, in the order of the entry list, as TSV or as NDJSON. NDJSON is "
+        "newline-delimited JSON: one JSON object per line. "
+        'See "Entries" in /llms-full.txt for the columns and the cells.'
     ),
     response_class=StreamingResponse,
 )

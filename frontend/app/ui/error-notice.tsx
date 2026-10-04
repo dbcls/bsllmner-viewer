@@ -9,16 +9,19 @@ type ErrorNoticeProps = {
   message: ReactNode
   /** Asks again. Without it there is nothing to try again, as when the condition itself is not valid. */
   onRetry?: () => void
-  /** What the button loads again, after "Try again:" in its name, so that buttons of several notices on a screen are told apart. */
+  /**
+   * What the button loads again, after "Try again:" in its name, so that the buttons of several notices on a screen
+   * have different names.
+   */
   retryName?: string
   className?: string
 }
 
 /**
  * The notice that stands where content failed to load, in the colors of `Alert`: the critical color on its edge, its
- * text, and the icon at its start. `Alert` goes away by itself and answers an action; this one stays until the content
- * loads. It is a status, not an alert, as a screen can have many of them at once. The icon and the sentence stay
- * together, and only the button moves to the next line when the space is narrow.
+ * text, and the icon at its start. `Alert` is removed by its caller after a short time and answers an action. The notice
+ * stays until the content loads. The notice is a status, not an alert, as a screen can have many of them at once. The
+ * icon and the sentence stay together, and only the button moves to the next line when the space is narrow.
  */
 export const ErrorNotice = ({ message, onRetry, retryName, className }: ErrorNoticeProps) => (
   <div

@@ -1,6 +1,6 @@
 # Operations
 
-This document describes how a dataset is built, updated, published, and deployed. The inputs and their validation are specified in [build.md](build.md); the development environment in [development.md](development.md).
+This document describes how you build, update, and publish a dataset, and how you deploy the application. [build.md](build.md) specifies the inputs and their validation, and [development.md](development.md) describes the development environment.
 
 ## Building a store
 
@@ -13,7 +13,7 @@ docker compose run --rm --no-deps api uv run bsllmner-viewer-build full \
 
 - `full` reads every run and reference source of the manifest and writes a new store file. The output path must not exist.
 - `--workers` is the number of processes that read run results and find their evidence in parallel. Each worker holds one result file in memory (up to a few GB for the largest files).
-- The command prints the verification result as JSON and exits with status 1 when verification fails.
+- `full`, `append`, `refresh`, and `verify` print the verification result as JSON and exit with status 1 when verification fails. A build whose verification fails still writes its store file, so publish a store only after its verification passes. If an input is invalid, then the command prints the error and exits with status 1.
 
 A manifest looks like this. Paths are relative to the manifest's directory.
 
@@ -45,7 +45,7 @@ reference:
     snapshot_date: "2026-09-17"
 ```
 
-The SRA experiment and BioProject sources may be a directory, in which case every `*.jsonl` file under it is read (for SRA, only files whose name contains `experiment`). The ChIP-Atlas experiment list is the `experimentList.tab` file published by ChIP-Atlas.
+The SRA Experiment and BioProject sources may be a directory, in which case every `*.jsonl` file under it is read (for SRA, only files whose name contains `experiment`). The ChIP-Atlas experiment list is the `experimentList.tab` file published by ChIP-Atlas.
 
 ## Appending runs
 
@@ -67,6 +67,8 @@ docker compose run --rm --no-deps api uv run bsllmner-viewer-build refresh \
   --manifest /data/manifests/dataset.yaml --store /data/store/current.duckdb --out /data/store/dataset-2026-11-05.duckdb
 ```
 
+The manifest must list exactly the runs of the store, in the same order. To add runs, use `append`.
+
 ## Verifying and inspecting a store
 
 ```
@@ -74,17 +76,17 @@ docker compose run --rm --no-deps api uv run bsllmner-viewer-build verify --stor
 docker compose run --rm --no-deps api uv run bsllmner-viewer-build info --store /data/store/dataset-2026-09-30.duckdb
 ```
 
-`info` prints the dataset version information that the api returns.
+`info` prints the dataset version information of the store as JSON. `GET /api/dataset` returns the same information as `version`, with camelCase keys instead of snake_case keys.
 
 ## Publishing
 
 The api opens the store named by `BSLLMNER_VIEWER_STORE` when it starts and keeps it open read-only. Publication is a file switch:
 
 1. Build and verify the new store file next to the current one.
-2. Point the api at the new file: replace the `current.duckdb` symlink and restart the api container (`podman-compose -p bsllmner-viewer restart api`). If you change `BSLLMNER_VIEWER_STORE_FILE` instead, then run `down` and `up -d`, because a restart keeps the environment that the container was created with. nginx in the web container looks up the address of the api again every 10 seconds, so the web container does not need a restart.
+2. Make the api open the new file: replace the `current.duckdb` symlink and restart the api container (`podman-compose -p bsllmner-viewer restart api`). If you change `BSLLMNER_VIEWER_STORE_FILE` instead, then run `down` and `up -d`, because a restart keeps the environment that the container was created with. nginx in the web container resolves the address of the api again every 10 seconds, so the web container does not need a restart.
 3. Keep the previous file until the new one has been checked in the UI; reverting is the same switch in the other direction.
 
-The api keeps the file that it opened until it stops, so `/api/service-info` reports the state of the previous file until the restart. If the api cannot open the new file, for example because the file has another schema version or the api cannot read it, then the api does not start, and `/api` answers 502 until you switch back.
+The api keeps the file that it opened until it stops, so `/api/service-info` reports the state of the previous file until the restart. If the api cannot open the new file, for example because the file has another schema version or the api cannot read it, then the api does not start, and `/api` answers 502 until you switch the api to the previous file.
 
 A store file that is being served is never modified. Old files can be deleted once no api process refers to them. The `ETag` of an api response depends on the store, on the files of the api package, and on the installed Python packages ([api.md](api.md#caching)). After a switch of the store, an update of the code, or an update of a dependency, clients therefore get the new responses and not the responses that they kept.
 
@@ -109,7 +111,7 @@ podman-compose -p bsllmner-viewer up -d
 - Give the project name with `-p` to every command (`ps`, `logs`, `restart`, and `down` too). Without it, podman-compose names the project after the directory, `deploy`. The commands are the same with `docker compose`.
 - `up -d` does not rebuild an image that exists, so run `build` after you update the code. podman-compose `up -d` creates the containers again only when the compose configuration has changed, not when an image has changed, so run `down` before `up -d`.
 - Every store file must be readable by all users (for example mode 644), and the store directory must be readable and searchable by all users, because the user of the api does not own them. With rootless podman, a user in the container other than root is another user on the host.
-- Both containers have the restart policy `always`. With rootless podman, containers start again after the host reboots only if the deploying user has lingering enabled (`loginctl enable-linger`) and the user service `podman-restart.service` enabled (`systemctl --user enable podman-restart.service`). That service starts only the containers whose policy is `always`.
+- Both containers have the restart policy `always`. With rootless podman, containers restart after the host reboots only if the deploying user has lingering enabled (`loginctl enable-linger`) and the user service `podman-restart.service` enabled (`systemctl --user enable podman-restart.service`). That service starts only the containers whose policy is `always`.
 
 | Variable | Meaning |
 |---|---|
@@ -142,7 +144,7 @@ Each api worker limits its use of memory, disk, and time, so that one heavy requ
 
 `GET /api/service-info` reports the state of the store, as [api.md](api.md#service-information) describes. The health check of the api container calls it, and `podman ps` shows the container as unhealthy when the check fails. podman does not restart a container when the check fails. podman restarts a container only when the process of the container ends. An external monitor should check the same URL on the public host.
 
-podman-compose also reads `deploy/podman-compose.yml`. With the settings in this file, podman writes the output of each container to a file in the directory `log` at the root of the checkout: `log/api.log` and `log/web.log`. Create the directory `log` before the containers start. If the directory `log` does not exist, then the containers do not start, and podman reports only that conmon failed. Each line of a log file starts with the time and `stdout` or `stderr`. When compose creates a container again, podman appends to the same file. Before a log file grows past 500 MB, podman starts the file again empty, so only the latest lines remain. docker compose does not read `deploy/podman-compose.yml`, so with docker compose, docker writes the output with its default log driver.
+podman-compose also reads `deploy/podman-compose.yml`. With the settings in this file, podman writes the output of each container to a file in the directory `log` at the root of the checkout: `log/api.log` and `log/web.log`. Create the directory `log` before the containers start. If the directory `log` does not exist, then the containers do not start, and podman reports only that conmon failed. Each line of a log file starts with the time and `stdout` or `stderr`. When compose creates a container again, podman appends to the same file. Before a log file grows past 500 MB, podman empties the file, so only the latest lines remain. docker compose does not read `deploy/podman-compose.yml`, so with docker compose, docker writes the output with its default log driver.
 
 nginx in the web container writes one line to the access log for every request, including the requests for the api. Each line ends with the seconds of the request (`request_time`), the seconds of the api (`upstream_time`), and the request ID of the response (`request_id`). The api writes the lines of uvicorn when it starts and stops, and its own warnings and errors:
 
@@ -161,14 +163,14 @@ nginx in the web container adds limits and headers that the api does not set.
 - nginx takes the client address from the `X-Real-IP` request header only when the peer address is a private IPv4 address, an IPv6 unique local address, or a loopback address. The reverse proxy in front of the web container must set `X-Real-IP` to the address of the client. For any other peer, nginx uses the address of the peer. A value of `X-Real-IP` that is not an IP address is ignored.
 - The 413 and 429 responses of nginx use the `X-Request-ID` request header as the request ID if the header has at most 128 characters and contains only letters, digits, `.`, `_`, and `-`. Otherwise nginx makes the ID. These responses allow every origin and expose `Retry-After` and `X-Request-ID`, as the api does.
 - The web container sends the `Content-Security-Policy`, `Permissions-Policy`, and `X-Frame-Options` headers. The build computes the SHA-256 hash of every inline script in `index.html` and writes it into the nginx configuration, so the policy does not allow `unsafe-inline` for scripts. The Swagger UI (`/api`) and ReDoc (`/api/redoc`) pages have a policy of their own that allows the CDNs that FastAPI uses by default. The other `/api` responses have `default-src 'none'`.
-- The web container sends `Strict-Transport-Security: max-age=31536000` only when the `X-Forwarded-Proto` request header is `https`. It sets neither `includeSubDomains` nor `preload`.
+- The web container sends `Strict-Transport-Security: max-age=31536000` only when the `X-Forwarded-Proto` request header is `https`. The header sets neither `includeSubDomains` nor `preload`.
 - A path that is neither a file nor a page of the application gets status 404 with the 404 page of the application. A 404 under `/assets/` has no long-term cache.
 
 ### Crawlers
 
-The web container serves `/robots.txt`, `/llms.txt`, and `/llms-full.txt`. Programs look for the OpenAPI document of a FastAPI application at `/openapi.json`, so nginx redirects `/openapi.json` with status 301 to `/api/openapi.json`.
+The web container serves `/robots.txt`, `/llms.txt`, and `/llms-full.txt`. Programs expect the OpenAPI document of a FastAPI application at `/openapi.json`, so nginx redirects `/openapi.json` with status 301 to `/api/openapi.json`.
 
-- `/llms.txt` is a short entry in Markdown, for programs such as LLM agents. It is written by hand (`frontend/public/llms.txt`).
-- `/llms-full.txt` joins `docs/api.md` and `docs/data-model.md`, with the links between the two documents turned into anchors of the file and the links to other documents rewritten to their GitHub addresses. The build of the web image generates it with `frontend/scripts/llms-full.ts`, so it is not edited by hand, and it always matches the api of the same commit. If `BSLLMNER_VIEWER_COMMIT` is set, the GitHub addresses name that commit. Otherwise, they name `main`.
+- `/llms.txt` is a short entry in Markdown, for programs such as LLM agents. The file is written by hand (`frontend/public/llms.txt`).
+- `/llms-full.txt` joins `docs/api.md` and `docs/data-model.md`, with the links between the two documents rewritten to anchors of the file and the links to other documents rewritten to their GitHub addresses. The build of the web image generates the file with `frontend/scripts/llms-full.ts`, so the file is not edited by hand, and the file always matches the api of the same commit. If `BSLLMNER_VIEWER_COMMIT` is set, the GitHub addresses name that commit. Otherwise, they name `main`.
 - If `BSLLMNER_VIEWER_NOINDEX` is `true`, then `/robots.txt` allows only the API, `/llms.txt`, and `/llms-full.txt`, and every response has the header `X-Robots-Tag: noindex`. The API stays open to programs that follow robots.txt.
 - Otherwise, `/robots.txt` disallows only `/entries` with parameters. The combinations of the parameters are endless, and each combination is a query. Programs that follow robots.txt can use the exports. Every export response has the header `X-Robots-Tag: noindex`, so that search engines do not show an export file in their results when another site links to the export.

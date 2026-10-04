@@ -89,4 +89,19 @@ describe("useDataset", () => {
     expect(result.current.data?.datasetVersion).toEqual({ name: "current" })
     expect(storedDataset()?.datasetVersion).toEqual({ name: "current" })
   })
+
+  it("shows the current description when the browser refuses to keep it", async () => {
+    const setItem = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new DOMException("full", "QuotaExceededError")
+    })
+    try {
+      const { result } = renderHook(() => useDataset(), { wrapper })
+      pending.resolve?.(description("current"))
+      await waitFor(() => expect(result.current.data?.datasetVersion).toEqual({ name: "current" }))
+      expect(result.current.isError).toBe(false)
+      expect(setItem).toHaveBeenCalled()
+    } finally {
+      setItem.mockRestore()
+    }
+  })
 })

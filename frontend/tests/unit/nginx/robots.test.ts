@@ -23,7 +23,7 @@ const rules = (name: string): [string, string][] =>
 describe("robots.txt of a deployment that search engines may index", () => {
   const disallowed = rules("robots.txt").filter(([directive]) => directive === "Disallow").map(([, value]) => value)
 
-  it("disallows only the workspace with parameters, so programs that follow it can use the API and the exports", () => {
+  it("disallows only the workspace with parameters, so crawlers can still use the API and the exports", () => {
     expect(rules("robots.txt")).toEqual([
       ["User-agent", "*"],
       ["Disallow", "/entries?"],
@@ -33,7 +33,7 @@ describe("robots.txt of a deployment that search engines may index", () => {
   it("marks a link nofollow exactly when robots.txt disallows its address", () => {
     const starts = ["/", "/entries", "/entries?", "/entries/", "/api", "/api/export/", "/llms.txt", ...disallowed]
     fc.assert(
-      fc.property(fc.constantFrom(...starts), fc.string(), (start, rest) => {
+      fc.property(fc.constantFrom(...starts), fc.oneof(fc.string(), fc.string({ unit: fc.constantFrom("?", "/", "=", "&", "#", "x") })), (start, rest) => {
         const to = start + rest
         expect(crawlRel(to)).toBe(disallowed.some((prefix) => to.startsWith(prefix)) ? "nofollow" : undefined)
       }),

@@ -127,8 +127,8 @@ def _description(description: dict[str, Any]) -> list[tuple[str, str]]:
     ]
 
 
-# Members that the record leaves out: the description and the attributes, which have their own place, and the contacts
-# of the owner, which name people.
+# Members that the record does not keep. The description and the attributes are stored in their own columns. The
+# contacts of the owner name people.
 _NOT_IN_RECORD = {
     "Attributes",
     "Description.Title",
@@ -184,15 +184,18 @@ def _attributes(body: dict[str, Any]) -> list[Attribute]:
 
 
 def parse_datetime(value: Any) -> datetime.datetime | None:
-    """ISO 8601 with or without offset; aware values are converted to UTC and returned naive."""
+    """ISO 8601 with or without offset; aware values are converted to UTC and returned naive.
+
+    A value that is not a time, or whose time in UTC is outside the years 1 to 9999, is None.
+    """
     if not isinstance(value, str) or not value:
         return None
     try:
         parsed = datetime.datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError:
+        if parsed.tzinfo is not None:
+            parsed = parsed.astimezone(datetime.UTC).replace(tzinfo=None)
+    except (ValueError, OverflowError):
         return None
-    if parsed.tzinfo is not None:
-        parsed = parsed.astimezone(datetime.UTC).replace(tzinfo=None)
     return parsed
 
 

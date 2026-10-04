@@ -25,7 +25,7 @@ type TableCell = {
 }
 
 /**
- * The rows of the TSV of a cross-tabulation, one per cell, with the values as the api gives them. Each row also carries
+ * The rows of the TSV of a cross-tabulation, one per cell, with the values as the api gives them. Each row also contains
  * the total of its row, the total of its column, and the total of the table, which are not sums of the cells because one
  * item can be in several rows and columns.
  */

@@ -59,9 +59,10 @@ export const failureSentence = (error: unknown, action: string): string =>
   detailHelps(error) && error.problem.detail ? `Could not ${action}: ${error.problem.detail}` : `Could not ${action}.`
 
 /**
- * The props of the notice for a request that failed, where its content was to be (`ErrorNotice`): the sentence, and a
- * retry for a failure that asking again can pass. A request that the api refused says what to change and has no retry.
- * `name` tells the retry button from the buttons of other notices on the screen.
+ * The props of the notice that replaces the content of a view whose request failed (`ErrorNotice`): the sentence, and a
+ * retry button if sending the request again can succeed. A request that the api refused says what to change and has no
+ * retry button. `name` is added to the accessible name of the retry button, so that it differs from the retry buttons
+ * of other notices on the screen.
  */
 export const loadFailureProps = (error: unknown, action: string, onRetry: () => void, name?: string) => ({
   message: failureSentence(error, action),

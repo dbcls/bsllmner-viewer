@@ -1,6 +1,6 @@
 /**
- * What the BioSample page keeps of the list that it was opened from: the search string of the workspace URL. The page
- * carries it in the history entry, not in its own URL, so that the URL of a BioSample names the BioSample only.
+ * The search string of the workspace URL of the list that a BioSample page was opened from. The link to the page stores
+ * it in the history state, not in the URL of the page, so that the URL of a BioSample names the BioSample only.
  */
 export type BackLinkState = { from: string }
 

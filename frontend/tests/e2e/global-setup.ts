@@ -14,6 +14,8 @@ const globalSetup = async (config: FullConfig): Promise<void> => {
   const response = await fetch(new URL("/api/dataset", baseURL))
   if (!response.ok) throw new Error(`GET /api/dataset returned ${response.status}`)
   const { datasetVersion } = (await response.json()) as Dataset
+  const top = await fetch(new URL("/", baseURL))
+  if (top.status !== 200) throw new Error(`GET / returned ${top.status}`)
   console.log(`e2e dataset: ${datasetVersion.name} (created ${datasetVersion.createdAt}, digest ${datasetVersion.digest})`)
 }
 

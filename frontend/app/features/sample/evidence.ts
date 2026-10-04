@@ -7,8 +7,8 @@ export type Span = { start: number; end: number }
 export type TextSegment = { text: string; matched: boolean; active: boolean }
 
 /**
- * The api reports offsets in code points. The UTF-16 index of each code point of the text, and of its end, so that a
- * slice never splits a surrogate pair.
+ * The api reports offsets in code points. Returns the UTF-16 index of the start of each code point in the text, and then
+ * the length of the text. A slice at these indexes never splits a surrogate pair.
  */
 const codePointStarts = (text: string): number[] => {
   const starts: number[] = []
@@ -20,9 +20,10 @@ const codePointStarts = (text: string): number[] => {
 const covers = (spans: Span[], at: number): boolean => spans.some((span) => span.start <= at && at < span.end)
 
 /**
- * Splits text into the longest runs that are alike in being matched and in being active. The spans are in code points
- * and need not be sorted. They may overlap or touch, and spans of different sets may overlap: where an active span
- * overlaps another span, the run is active. Spans that touch read as one run, since two adjacent extracted matches read as one continuous highlight.
+ * Splits text into the longest runs that have the same matched flag and the same active flag. The spans are in code
+ * points and need not be sorted. The spans can overlap or touch, and spans of different sets can overlap. A run that an
+ * active span overlaps is active. Spans that touch form one run, because two adjacent extracted matches look like one
+ * continuous highlight.
  */
 export const segmentText = (text: string, codePointSpans: Span[], codePointActive: Span[] = []): TextSegment[] => {
   const starts = codePointStarts(text)

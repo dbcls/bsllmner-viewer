@@ -10,13 +10,14 @@ type ClampedProps = {
   shown: number
 }
 
-/** A press inside the list stays in it: a table row that opens a page on a press does not see it. */
+/** Stops a press on the button from reaching a table row that opens a page on a press. */
 const keep = (event: MouseEvent | KeyboardEvent) => event.stopPropagation()
 
 /**
  * A list with one item per line that shows its first items and a button for the rest, such as the BioProjects of a
- * BioSample in a table row. An item wider than the list ends with an ellipsis. The button opens the rest in place and closes them again; it is not a link, and the turn of
- * its chevron shows which way it goes. One item left over is shown instead of a button, which would take its line.
+ * BioSample in a table row. An item wider than the list ends with an ellipsis. The button opens the rest in place and
+ * closes them again. The button is not a link. The chevron of the button is rotated while the rest is open. If only one
+ * item is left, the list shows it and has no button, because the button would take a line of its own.
  */
 export const Clamped = ({ items, shown }: ClampedProps) => {
   const [open, setOpen] = useState(false)

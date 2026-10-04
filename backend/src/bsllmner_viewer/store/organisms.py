@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-# One name per NCBI Taxonomy ID: the name that most BioSamples of the store give, and of equally common names the
-# first in order. Input entries do not always agree, for example `9606` or `Human` for `Homo sapiens`.
+# Each NCBI Taxonomy ID has one name: the name that most BioSamples in the store give. If several names are equally
+# common, the name that sorts first is used. The input entries do not always agree, for example `9606` or `Human` for
+# `Homo sapiens`.
 ORGANISM_NAMES = """
 SELECT organism_id, organism_name FROM (
     SELECT organism_id, organism_name,

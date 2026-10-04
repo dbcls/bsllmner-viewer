@@ -48,8 +48,6 @@ const renderTab = () =>
   )
 
 describe("the lists in the cells of the Samples table", () => {
-  vi.stubGlobal("ResizeObserver", class { observe = vi.fn(); unobserve = vi.fn(); disconnect = vi.fn() })
-
   it("puts the values of an annotation one per line, the first two and a button for the rest", async () => {
     renderTab()
     const button = await screen.findByRole("button", { name: "3 more" })

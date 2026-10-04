@@ -12,7 +12,7 @@ const MAX_WAIT_SECONDS = 3
  * Whether a failed request is sent again. A refused request (4xx) is the answer to that request and does not change when
  * it is repeated, except a 429, which says that the client has too many requests in progress. A 503 for a busy api is
  * sent again after its `Retry-After`; a 503 for a query that timed out or was too large is not, since it would run the
- * same heavy query again. Other failures of the server and of the network can pass.
+ * same heavy query again. Other failures of the server and of the network can succeed on a second try.
  */
 export const shouldRetry = (failureCount: number, error: unknown): boolean => {
   if (failureCount >= RETRIES) return false

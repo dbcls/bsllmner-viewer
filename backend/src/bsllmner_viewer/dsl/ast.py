@@ -32,7 +32,7 @@ class Range:
 
 @dataclass(frozen=True, slots=True)
 class FreeText:
-    """A term without a field. Accepted by the grammar and rejected by validation."""
+    """A keyword: a term without a field."""
 
     value: str
     is_phrase: bool = False

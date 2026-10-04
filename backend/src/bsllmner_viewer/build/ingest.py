@@ -19,6 +19,7 @@ from typing import Any
 
 import duckdb
 import pyarrow as pa
+from lxml import etree
 
 from bsllmner_viewer.build.convert import ConvertResult, ConvertTask, convert_run, utc_now
 from bsllmner_viewer.build.derive import derive
@@ -45,6 +46,7 @@ _RUN_TABLES = ("run", "field", "entry", "entry_annotation", "entry_evidence")
 
 
 def build_full(manifest: Manifest, out: Path, *, workers: int = 4, threads: int | None = None) -> Verification:
+    _check_reference_paths(manifest)
     with _new_store(out, threads) as con:
         _load_fields(con, manifest, manifest.runs)
         _ingest_runs(con, manifest, manifest.runs, first_index=0, workers=workers, existing_model=None)
@@ -55,6 +57,7 @@ def build_full(manifest: Manifest, out: Path, *, workers: int = 4, threads: int 
 def build_append(
     manifest: Manifest, store: Path, out: Path, *, workers: int = 4, threads: int | None = None
 ) -> Verification:
+    _check_reference_paths(manifest)
     with _new_store(out, threads) as con:
         existing = _copy_run_tables(con, store)
         new_runs = _new_runs(manifest, existing)
@@ -68,6 +71,7 @@ def build_append(
 
 
 def build_refresh(manifest: Manifest, store: Path, out: Path, *, threads: int | None = None) -> Verification:
+    _check_reference_paths(manifest)
     with _new_store(out, threads) as con:
         existing = _copy_run_tables(con, store)
         if [r.name for r in manifest.runs] != existing:
@@ -78,9 +82,10 @@ def build_refresh(manifest: Manifest, store: Path, out: Path, *, threads: int | 
 
 @contextmanager
 def _new_store(out: Path, threads: int | None) -> Iterator[duckdb.DuckDBPyConnection]:
-    """A connection to a new store that is written next to `out` and renamed to `out` when the block completes.
+    """A connection to a new store that is written next to `out` and moved to `out` when the block completes.
 
-    If the block raises, nothing is left at `out` or next to it.
+    A file that already exists at `out` is never replaced: the build raises BuildError instead. If the block raises,
+    the files that this build wrote are removed.
     """
     if out.exists():
         raise BuildError(f"{out} already exists; every build writes a new store file")
@@ -254,7 +259,35 @@ def _validate_runs(runs: list[tuple[str, RunMetadata]], existing_model: str | No
             raise BuildError(f"run {name} has status {metadata.status!r}, expected 'completed'")
 
 
+def _check_reference_paths(manifest: Manifest) -> None:
+    """Stop before any run is read if a path of the reference data does not exist.
+
+    A missing directory would otherwise read as no rows, and a missing file would stop the build only after every run
+    was converted.
+    """
+    ref = manifest.reference
+    paths = [
+        *(manifest.resolve(f) for ontology in ref.ontologies for f in ontology.files),
+        *(manifest.resolve(s.path) for s in (ref.sra_experiments, ref.dblink, ref.bioprojects, ref.chip_atlas)),
+    ]
+    missing = [str(path) for path in paths if not path.exists()]
+    if missing:
+        raise BuildError(f"reference data does not exist: {', '.join(missing)}")
+
+
+@contextmanager
+def _reading(path: Path) -> Iterator[None]:
+    """Turn an error of reading a reference file into a BuildError that names the file."""
+    try:
+        yield
+    except BuildError:
+        raise
+    except (OSError, UnicodeDecodeError, duckdb.Error, etree.LxmlError) as e:
+        raise BuildError(f"reference data {path} cannot be read: {e}") from e
+
+
 def _load_reference(con: duckdb.DuckDBPyConnection, manifest: Manifest) -> None:
+    """Replace the reference data of the store with the files of the manifest."""
     for table in RAW_TABLES:
         if table.startswith("ref_"):
             con.execute(f"DELETE FROM {table}")
@@ -262,35 +295,48 @@ def _load_reference(con: duckdb.DuckDBPyConnection, manifest: Manifest) -> None:
     position = 0
     for ontology in ref.ontologies:
         files = [manifest.resolve(f) for f in ontology.files]
+        checksums = []
+        for file in files:
+            with _reading(file):
+                checksums.append(sha256_of(file))
         con.execute(
             "INSERT INTO ref_ontology VALUES (?, ?, ?, ?)",
-            [ontology.name, [str(f) for f in ontology.files], [sha256_of(f) for f in files], ontology.snapshot_date],
+            [ontology.name, [str(f) for f in ontology.files], checksums, ontology.snapshot_date],
         )
         for file in files:
-            _load_ontology_file(con, ontology.name, position, file)
+            with _reading(file):
+                _load_ontology_file(con, ontology.name, position, file)
             position += 1
         log.info("loaded ontology %s", ontology.name)
-    _insert_rows(
-        con,
-        "ref_experiment",
-        pa.schema([("accession", pa.string()), ("library_strategy", pa.string())]),
-        read_experiments(manifest.resolve(ref.sra_experiments.path)),
-    )
+    path = manifest.resolve(ref.sra_experiments.path)
+    with _reading(path):
+        _insert_rows(
+            con,
+            "ref_experiment",
+            pa.schema([("accession", pa.string()), ("library_strategy", pa.string())]),
+            read_experiments(path),
+        )
     log.info("loaded SRA experiments")
-    counts = load_dblink(con, manifest.resolve(ref.dblink.path))
+    path = manifest.resolve(ref.dblink.path)
+    with _reading(path):
+        counts = load_dblink(con, path)
     log.info("loaded DBLink edges: %s", counts)
-    _insert_rows(
-        con,
-        "ref_bioproject",
-        pa.schema([("accession", pa.string()), ("title", pa.string())]),
-        read_bioprojects(manifest.resolve(ref.bioprojects.path)),
-    )
-    _insert_rows(
-        con,
-        "ref_chip_atlas",
-        pa.schema([("experiment", pa.string()), ("assembly", pa.string())]),
-        read_chip_atlas(manifest.resolve(ref.chip_atlas.path)),
-    )
+    path = manifest.resolve(ref.bioprojects.path)
+    with _reading(path):
+        _insert_rows(
+            con,
+            "ref_bioproject",
+            pa.schema([("accession", pa.string()), ("title", pa.string())]),
+            read_bioprojects(path),
+        )
+    path = manifest.resolve(ref.chip_atlas.path)
+    with _reading(path):
+        _insert_rows(
+            con,
+            "ref_chip_atlas",
+            pa.schema([("experiment", pa.string()), ("assembly", pa.string())]),
+            read_chip_atlas(path),
+        )
     write_meta(
         con,
         "reference_snapshots",

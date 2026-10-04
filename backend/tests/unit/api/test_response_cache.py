@@ -1,10 +1,13 @@
-"""Validators and the cache of GET responses: a response stays the same while a worker serves a store with its code."""
+"""Validators and the cache of GET responses.
+
+A response stays the same while a worker serves one store with one code.
+"""
 
 from __future__ import annotations
 
 import shutil
 from collections import OrderedDict
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from types import SimpleNamespace
@@ -16,12 +19,13 @@ from hypothesis import given
 from hypothesis import strategies as st
 from starlette.applications import Starlette
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import Response, StreamingResponse
 from starlette.routing import Route
 
 from bsllmner_viewer.api import cache
 from bsllmner_viewer.api.app import create_app
 from bsllmner_viewer.api.cache import ResponseCache, code_digest
+from bsllmner_viewer.api.limits import Limits
 from bsllmner_viewer.api.store import Store
 from bsllmner_viewer.store.version import write_meta
 
@@ -190,6 +194,20 @@ class TestNotModified:
             assert response.headers["etag"] != tag
 
 
+class TestBusyStore:
+    def test_a_304_is_answered_while_every_slot_is_busy(self, store_path: Path) -> None:
+        limits = Limits(max_queries=1, queue_timeout=0)
+        with TestClient(create_app(store_path, limits), raise_server_exceptions=False) as client:
+            tag = client.get("/api/projects").headers["etag"]
+            store: Store = client.app.state.store  # type: ignore[attr-defined]
+            with store.cursor(heavy=True):
+                kept = client.get("/api/projects", headers={"If-None-Match": tag})
+                other = client.get("/api/distribution", params={"field": "disease"}, headers={"If-None-Match": tag})
+            assert kept.status_code == 304
+            assert other.status_code == 503
+            assert other.json()["type"].endswith("server-busy")
+
+
 def _tiny_app(
     code: str, calls: list[str], sizes: dict[str, int] | None = None, max_bytes: int = cache.CACHE_BYTES
 ) -> Starlette:
@@ -200,7 +218,16 @@ def _tiny_app(
         calls.append(name)
         return Response(b"x" * (sizes or {}).get(name, 10), media_type="text/plain")
 
-    app = Starlette(routes=[Route("/api/{name}", endpoint)])
+    async def chunked(request: Request) -> Response:
+        calls.append("chunked")
+
+        async def body() -> AsyncIterator[bytes]:
+            yield b"first-"
+            yield b"second"
+
+        return StreamingResponse(body(), media_type="text/plain")
+
+    app = Starlette(routes=[Route("/api/chunked", chunked), Route("/api/{name}", endpoint)])
     app.state.store = SimpleNamespace(version_digest="v")
     app.add_middleware(ResponseCache, code=code, max_bytes=max_bytes)
     return app
@@ -257,9 +284,11 @@ class TestCode:
         (tmp_path / "__pycache__" / "a.cpython-312.pyc").write_bytes(b"\0")
         assert code_digest(tmp_path, []) == first
 
-    def test_the_digest_of_the_api_names_the_installed_packages(self) -> None:
+    def test_the_digest_of_the_api_names_the_installed_packages(self, tmp_path: Path) -> None:
         names = {name.lower() for name, _ in cache.installed_packages()}
         assert {"duckdb", "fastapi", "pydantic"} <= names
+        assert cache.code_digest(tmp_path) == cache.code_digest(tmp_path, cache.installed_packages())
+        assert cache.code_digest(tmp_path) != cache.code_digest(tmp_path, [])
 
 
 class TestKeptResponses:
@@ -296,16 +325,23 @@ class TestKeptResponses:
 
 
 class TestCacheSize:
-    def test_the_least_recently_used_response_is_dropped_first(self) -> None:
-        calls: list[str] = []
-        room = 2 * (len("/api/a?") + 40 + cache.KEPT_OVERHEAD) + 10
-        sizes = {"a": 40, "b": 40, "c": 40}
-        with TestClient(_tiny_app("code", calls, sizes, max_bytes=room)) as client:
-            for name in ["a", "b", "a", "c", "a", "b"]:
-                assert client.get(f"/api/{name}").status_code == 200
-        assert calls == ["a", "b", "c", "b"]
+    def test_the_default_size_of_the_response_cache_is_64_mib(self) -> None:
+        app = _tiny_app("code", [])
+        with TestClient(app):
+            middleware = app.middleware_stack.app  # type: ignore[union-attr]
+            assert isinstance(middleware, ResponseCache)
+            assert middleware.max_bytes == 64 * 1024 * 1024
 
-    def test_a_response_larger_than_a_kept_response_can_be_is_sent_but_not_kept(self) -> None:
+    def test_a_response_of_several_chunks_is_kept_whole(self) -> None:
+        calls: list[str] = []
+        with TestClient(_tiny_app("code", calls)) as client:
+            first = client.get("/api/chunked")
+            again = client.get("/api/chunked")
+        assert first.content == b"first-second"
+        assert again.content == first.content
+        assert calls == ["chunked"]
+
+    def test_a_response_over_the_maximum_kept_size_is_sent_but_not_kept(self) -> None:
         calls: list[str] = []
         sizes = {"big": cache.MAX_KEPT_BYTES + 1, "small": 10}
         with TestClient(_tiny_app("code", calls, sizes)) as client:
@@ -324,7 +360,7 @@ class TestCacheSize:
         assert len(calls) == 3
 
     @given(st.lists(st.sampled_from("abcdef"), max_size=40), st.integers(min_value=0, max_value=8000))
-    def test_the_app_is_called_exactly_when_a_least_recently_used_cache_of_the_size_misses(
+    def test_the_app_is_called_exactly_when_a_least_recently_used_cache_of_max_bytes_misses(
         self, names: list[str], max_bytes: int
     ) -> None:
         sizes = {name: 10 * (i + 1) for i, name in enumerate("abcdef")}

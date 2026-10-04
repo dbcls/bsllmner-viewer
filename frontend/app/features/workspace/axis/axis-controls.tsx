@@ -17,7 +17,10 @@ type AxisControlsProps = {
   elements: readonly AxisElement[]
   /** What the elements of the dimension are called after their number. */
   noun: ElementNoun
-  /** The number of elements on their way, while the view loads for the first time; null once they are known. */
+  /**
+   * The number of elements that the view expects, while the view loads for the first time; null once the elements are
+   * known.
+   */
   pending: number | null
   /** The elements are not known, as the request that lists them failed and the URL names none. */
   unknown?: boolean

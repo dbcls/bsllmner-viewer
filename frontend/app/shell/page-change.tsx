@@ -5,16 +5,17 @@ import { UNSAFE_NavigationContext, useLocation } from "react-router"
 export const SHELL_FRAME_ID = "shell"
 
 /**
- * How long the live region waits before it reads the title. The region is drawn again with the root layout when the
- * error page comes or goes, and a screen reader may miss a change of a region that it has not seen yet.
+ * How long the live region waits before it reads the title. The root layout renders the region again when the error page
+ * appears or disappears. A screen reader can miss a change in a region that is new to it, so the title is announced
+ * after a short delay.
  */
 const ANNOUNCE_DELAY_MS = 100
 
 /**
- * The path of the page shown last, for each router. It is kept outside the component, because the router draws the root
- * layout again, and this component with it, when the error page takes the place of a page or gives it back. The key is
- * the navigator of the router, which must stay the same object for as long as the router lives: with a new object at
- * every render, no page would seem to change, and the focus and the live region would stop without an error.
+ * The path of the page shown last, for each router. The map is outside the component because the root layout, and this
+ * component with it, is rendered again when the error page replaces a page or the page returns. The key is the navigator
+ * of the router. The navigator must stay the same object while the router exists. If the navigator changes on every
+ * render, no page change is detected, and the focus and the live region stop working without an error.
  */
 const shownPaths = new WeakMap<object, string>()
 
@@ -33,7 +34,8 @@ export const PageChange = () => {
     shownPaths.set(navigator, pathname)
     if (shown === undefined || shown === pathname) return
     document.getElementById(SHELL_FRAME_ID)?.focus({ preventScroll: true })
-    // Not cancelled when the effect runs again: the page has changed once, whatever runs the effect twice.
+    // Do not cancel the timer in a cleanup. If React runs the effect twice (as in StrictMode), the second run returns
+    // early, so the first run must announce the title.
     setTimeout(() => setAnnouncement(document.title), ANNOUNCE_DELAY_MS)
   }, [navigator, pathname])
 

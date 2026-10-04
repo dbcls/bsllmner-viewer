@@ -8,6 +8,8 @@ import { wrapper } from "../query"
 type Call = { path: string; query: Record<string, unknown>; pathParams: Record<string, unknown> }
 
 const calls = vi.hoisted(() => [] as Call[])
+/** The cancellation signals of the POST requests. */
+const signals = vi.hoisted(() => [] as (AbortSignal | undefined)[])
 
 vi.mock("~/lib/api/client", async (importOriginal) => {
   const original = await importOriginal<typeof Client>()
@@ -16,13 +18,20 @@ vi.mock("~/lib/api/client", async (importOriginal) => {
     calls.push({ path, query: init.params?.query ?? {}, pathParams: init.params?.path ?? {} })
     return ok({})
   }
-  return { ...original, api: { GET } }
+  // A POST never answers, so that a test can leave the screen before the answer arrives.
+  const POST = (_path: string, init: { signal?: AbortSignal }) => {
+    signals.push(init.signal)
+    return new Promise<never>(() => undefined)
+  }
+  return { ...original, api: { GET, POST } }
 })
 
 import { exportAccessionsUrl, exportEntriesUrl } from "~/lib/api/client"
 import {
   fetchTermChildren,
   fetchTerms,
+  queryFailed,
+  useClausesCondition,
   useCrosstab,
   useDistribution,
   useEntries,
@@ -38,6 +47,7 @@ const lastCall = async (): Promise<Call> => {
 
 beforeEach(() => {
   calls.length = 0
+  signals.length = 0
 })
 
 describe.each([true, false])("queries with selfExclusion=%s", (selfExclusion) => {
@@ -119,5 +129,44 @@ describe("export URLs", () => {
     expect(exportEntriesUrl("biosample", "a:b", "ndjson")).toBe("/api/export/entries/biosample?q=a%3Ab&format=ndjson")
     expect(exportEntriesUrl("biosample", null, "tsv")).toBe("/api/export/entries/biosample?format=tsv")
     expect(exportAccessionsUrl("sra-run", null)).toBe("/api/export/accessions/sra-run")
+  })
+})
+
+describe("the condition of a query", () => {
+  const hooks: [string, (q: string | null) => unknown][] = [
+    ["useDistribution", (q) => useDistribution({ field: "disease", q, unit: "biosample", selfExclusion: false })],
+    ["useCrosstab", (q) => useCrosstab({ row: "a", col: "b", q, unit: "biosample", selfExclusion: false })],
+    ["useTrend", (q) => useTrend({ q, unit: "biosample", selfExclusion: false })],
+    ["useProjects", (q) => useProjects({ q, selfExclusion: false, sort: "biosampleCount:desc", page: 1, perPage: 20 })],
+    ["useEntries", (q) => useEntries({ q, page: 1, perPage: 20 })],
+    ["useTerms", (q) => useTerms({ query: "liver", q, unit: "biosample", selfExclusion: false })],
+  ]
+
+  it.each(hooks)("%s sends the condition as q", async (_name, hook) => {
+    renderHook(() => hook("a:b"), { wrapper })
+    expect((await lastCall()).query["q"]).toBe("a:b")
+  })
+
+  it.each(hooks.flatMap(([name, hook]) => [null, ""].map((q) => [name, hook, q] as const)))("%s sends no q for the condition %j", async (_name, hook, q) => {
+    renderHook(() => hook(q), { wrapper })
+    expect("q" in (await lastCall()).query).toBe(false)
+  })
+})
+
+describe("queryFailed", () => {
+  it("is true only for a failed query with nothing to show", () => {
+    expect(queryFailed({ isError: true, data: undefined })).toBe(true)
+    expect(queryFailed({ isError: true, data: {} })).toBe(false)
+    expect(queryFailed({ isError: false, data: undefined })).toBe(false)
+  })
+})
+
+describe("useClausesCondition", () => {
+  it("cancels the request of an element that leaves the screen before the answer arrives", async () => {
+    const { unmount } = renderHook(() => useClausesCondition([]), { wrapper })
+    await waitFor(() => expect(signals).toHaveLength(1))
+    expect(signals[0]?.aborted).toBe(false)
+    unmount()
+    await vi.waitFor(() => expect(signals[0]?.aborted).toBe(true))
   })
 })

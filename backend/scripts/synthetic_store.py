@@ -1,4 +1,4 @@
-"""Build a small synthetic store for local development and end-to-end tests.
+"""Build a small synthetic store from generated data, for the api of the development environment.
 
 Usage (inside the api container): uv run python scripts/synthetic_store.py /data/store/synthetic.duckdb [seed]
 """

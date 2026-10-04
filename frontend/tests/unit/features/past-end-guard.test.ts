@@ -16,4 +16,17 @@ describe("replaceIfCurrent", () => {
     replaceIfCurrent(() => ({ ...DEFAULTS, q: "a:b", page: 2 }), update)(3, { q: "a:b", page: 9 })
     expect(update).not.toHaveBeenCalled()
   })
+
+  it("does not write the URL when only the condition changed since the count", () => {
+    const update = vi.fn()
+    replaceIfCurrent(() => ({ ...DEFAULTS, q: "c:d", page: 9 }), update)(3, { q: "a:b", page: 9 })
+    replaceIfCurrent(() => ({ ...DEFAULTS, q: null, page: 9 }), update)(3, { q: "a:b", page: 9 })
+    expect(update).not.toHaveBeenCalled()
+  })
+
+  it("writes the page when the URL and the count both have no condition", () => {
+    const update = vi.fn()
+    replaceIfCurrent(() => ({ ...DEFAULTS, q: null, page: 9 }), update)(3, { q: null, page: 9 })
+    expect(update).toHaveBeenCalledWith({ page: 3 }, { replace: true })
+  })
 })

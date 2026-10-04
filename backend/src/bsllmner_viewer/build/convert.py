@@ -105,8 +105,11 @@ class _Evidence:
 def metadata_groups(
     described: list[tuple[str, str]], attributes: list[Attribute]
 ) -> tuple[list[list[tuple[MetadataKind, int, bool]]], list[list[Text]]]:
-    """The groups of texts that are searched before the record, with the item of each text as (kind, position, in name):
-    the description and the values of the attributes, then the names of the attributes."""
+    """The items and the texts to search before the record, in two groups.
+
+    The first group has the values of the description and the values of the attributes. The second group has the names
+    of the attributes. Each item is (kind, position, in_name), and in_name is true only for the name of an attribute.
+    """
     values = [(DESCRIPTION, at, False) for at in range(len(described))]
     values += [(ATTRIBUTE, at, False) for at in range(len(attributes))]
     names = [(ATTRIBUTE, at, True) for at in range(len(attributes))]
@@ -152,7 +155,7 @@ def _result_entries(task: ConvertTask, raw_entries: list[dict[str, Any]]) -> Ite
 
 
 def convert_run(task: ConvertTask) -> ConvertResult:
-    """Read one run and write its entries and annotations as Parquet files.
+    """Read one run and write its entries, annotations, and evidence as Parquet files.
 
     Raises BuildError when a result entry's accession is not in the input file or occurs twice in the result.
     """

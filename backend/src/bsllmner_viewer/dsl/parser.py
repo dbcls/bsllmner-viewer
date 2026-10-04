@@ -102,7 +102,11 @@ def check_length(dsl: str, max_length: int = MAX_LENGTH) -> None:
 
 
 def parse(dsl: str, *, max_length: int = MAX_LENGTH) -> Node:
-    """Parse a condition string. Raises DslError(unexpected_token) on syntax errors and empty input."""
+    """Parse a condition string.
+
+    Raises DslError with unexpected_token for a syntax error, for a blank string, and for a string longer than
+    `max_length`. Raises DslError with nest_depth_exceeded if groups nest deeper than `MAX_DEPTH`.
+    """
     check_length(dsl, max_length)
     if not dsl.strip():
         raise DslError(type=ErrorType.unexpected_token, detail="empty query string", column=1, length=1)

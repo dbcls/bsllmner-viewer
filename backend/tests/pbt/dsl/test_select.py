@@ -19,7 +19,7 @@ from tests.strategies import asts, clauses, flat_asts
 
 @settings(max_examples=300)
 @given(flat_asts, clauses)
-def test_selecting_twice_restores_the_condition(ast: Node | None, clause: FieldClause) -> None:
+def test_selecting_twice_restores_the_clauses_of_the_condition(ast: Node | None, clause: FieldClause) -> None:
     once = select_element(ast, [clause])
     twice = select_element(once, [clause])
     assert _clause_set(twice) == _clause_set(ast)
@@ -42,7 +42,7 @@ def test_selecting_adds_or_removes_exactly_that_clause(ast: Node | None, clause:
 def test_same_field_clauses_share_one_top_level_group(ast: Node | None, clause: FieldClause) -> None:
     out = select_element(ast, [clause])
     groups = [c for c in conjuncts(out) if any(leaf.field == clause.field for leaf in leaves(c))]
-    assert len(groups) <= 1 or not contains_clause(out, clause) or len(groups) == 1
+    assert len(groups) <= 1
 
 
 @settings(max_examples=200)
@@ -69,7 +69,10 @@ def test_narrowing_keeps_every_conjunct_and_adds_each_clause_as_one(ast: Node | 
 def test_narrowing_twice_equals_narrowing_once(ast: Node | None, added: list[FieldClause]) -> None:
     once = narrow(ast, added)
     twice = narrow(once, added)
-    assert len(conjuncts(twice)) == len(conjuncts(once))
+    assert (once is None) == (twice is None)
+    if once is not None:
+        assert twice is not None
+        assert structurally_equal(twice, once)
 
 
 @settings(max_examples=300)
@@ -79,7 +82,6 @@ def test_a_selected_word_or_phrase_clause_is_a_named_value(ast: Node | None, cla
     named = named_values(out, clause.field)
     if contains_clause(out, clause) and clause.value_kind in ("word", "phrase"):
         assert clause.value in named
-    assert all(isinstance(v, str) for v in named)
 
 
 @settings(max_examples=200)

@@ -27,7 +27,7 @@ router = APIRouter(tags=["Dataset"])
     operation_id="getDataset",
     responses=error_responses(),
     response_model=DatasetResponse,
-    summary="Version information, fields, and population totals",
+    summary="Get the dataset version, the fields, and the population totals",
     description=(
         "Returns what a client needs before it writes conditions: the version of the dataset, the target assays, the "
         "fields of the condition language with their kinds, the status groups, and the BioSample counts of the "

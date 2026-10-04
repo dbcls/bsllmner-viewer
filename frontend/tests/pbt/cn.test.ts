@@ -9,24 +9,20 @@ const token = fc.string({
   maxLength: 12,
 })
 
-describe("cn", () => {
-  test.prop({ tokens: fc.array(token, { maxLength: 20 }) })(
-    "never produces leading, trailing, or doubled spaces",
-    ({ tokens }) => {
-      const result = cn(...tokens)
-      expect(result.startsWith(" ")).toBe(false)
-      expect(result.endsWith(" ")).toBe(false)
-      expect(result.includes("  ")).toBe(false)
-    },
-  )
+const space = fc.constantFrom("", " ", "  ", "\t", "\n")
+const padded = fc.tuple(space, token, space).map(([before, word, after]) => before + word + after)
+const blank = fc.constantFrom(" ", "  ")
 
-  test.prop({ tokens: fc.array(token, { minLength: 1, maxLength: 20 }) })(
-    "keeps every non-empty input as a token",
-    ({ tokens }) => {
-      const resultTokens = cn(...tokens).split(" ")
-      for (const item of tokens) {
-        expect(resultTokens).toContain(item)
-      }
+describe("cn", () => {
+  test.prop({ inputs: fc.array(fc.oneof(padded, blank), { maxLength: 20 }) })(
+    "joins the trimmed string inputs in order with one space and drops inputs of white space only",
+    ({ inputs }) => {
+      expect(cn(...inputs)).toBe(
+        inputs
+          .map((input) => input.trim())
+          .filter((input) => input !== "")
+          .join(" "),
+      )
     },
   )
 })

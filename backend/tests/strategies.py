@@ -112,8 +112,8 @@ _keyword_words = st.one_of(words, apostrophe_words, _date_words, _operator_prefi
 
 
 def _writable_bare(ws: list[str]) -> bool:
-    """Words of a keyword that can be written bare, so the keyword is not a phrase: not first with a `'`."""
-    return not ws[0].startswith("'") and not any(re.match(r"(?:AND|OR|NOT)'", w) for w in ws)
+    """Words of a keyword that can be written bare, so the keyword is not a phrase: none starts with a `'`."""
+    return not any(w.startswith("'") or re.match(r"(?:AND|OR|NOT)'", w) for w in ws)
 
 
 keywords: st.SearchStrategy[FreeText] = st.one_of(

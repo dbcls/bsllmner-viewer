@@ -2,6 +2,7 @@ import { fc, test } from "@fast-check/vitest"
 import { describe, expect, it } from "vitest"
 
 import { barsSvg, barsSvgSize } from "~/features/workspace/distribution/bars-svg"
+import { FIGURE_MONO, FIGURE_SANS } from "~/lib/figure-style"
 
 const labelsOf = (rows: Parameters<typeof barsSvg>[2]) =>
   [...new DOMParser().parseFromString(barsSvg("Disease", "BioSamples", rows), "image/svg+xml").querySelectorAll("text")].map((t) => t.textContent)
@@ -29,6 +30,19 @@ describe("barsSvgSize", () => {
   )
 })
 
+describe("barsSvg label text", () => {
+  const label = fc.string({ unit: fc.constantFrom("a", "Z", " ", "<", ">", "&", '"', "'", "é", "\u{1F600}"), minLength: 1, maxLength: 12 })
+
+  test.prop([fc.array(fc.record({ label, count: fc.nat(1_000_000) }), { minLength: 1, maxLength: 10 })])(
+    "writes each label that fits as the text of its bar, with its characters as they are",
+    (rows) => {
+      const doc = new DOMParser().parseFromString(barsSvg("Disease", "BioSamples", rows), "image/svg+xml")
+      const texts = [...doc.querySelectorAll("text")].map((t) => t.textContent)
+      for (const row of rows) expect(texts).toContain(row.label)
+    },
+  )
+})
+
 describe("barsSvg labels", () => {
   const textsOf = (rows: Parameters<typeof barsSvg>[2]) =>
     [...new DOMParser().parseFromString(barsSvg("Disease", "BioSamples", rows), "image/svg+xml").querySelectorAll("text")].map((t) => t.textContent ?? "")
@@ -47,7 +61,12 @@ describe("barsSvg labels", () => {
   })
 
   it("writes the heading, the unit, and fonts as attributes without a class", () => {
-    const markup = barsSvg("Disease", "BioSamples", [{ label: "a", count: 1 }])
+    const markup = barsSvg("Disease", "BioSamples", [{ label: "a", id: "MONDO:1", count: 1 }], { count: 1, total: 2 })
+    const doc = new DOMParser().parseFromString(markup, "image/svg+xml")
+    const family = (e: Element | null): string | null => (e === null ? null : (e.getAttribute("font-family") ?? family(e.parentElement)))
+    const texts = [...doc.querySelectorAll("text, tspan")]
+    expect(texts.length).toBeGreaterThan(0)
+    for (const e of texts) expect([FIGURE_SANS, FIGURE_MONO]).toContain(family(e))
     expect(markup).toContain(">Disease<")
     expect(markup).toContain(">BioSamples<")
     expect(markup).not.toContain("class=")

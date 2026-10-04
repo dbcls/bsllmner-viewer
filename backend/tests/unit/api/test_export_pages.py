@@ -1,11 +1,15 @@
-"""An export reads the store page by page. The pages do not change what the export has or how fast a page reads."""
+"""An export reads the store page by page, and it names the dataset version.
+
+The size of a page does not change the lines of an export. Each page starts after the last key of the previous page.
+A query with many parameters does not search for modules, so that a page with many keys reads fast.
+"""
 
 from __future__ import annotations
 
 import importlib.abc
 import json
 import sys
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -19,6 +23,9 @@ from bsllmner_viewer.api.limits import Limits
 from bsllmner_viewer.api.queries.core import population
 from bsllmner_viewer.api.queries.entries import keys_after, page_keys
 from bsllmner_viewer.api.store import Store, record_missing_pandas
+from bsllmner_viewer.build.ingest import build_full
+from bsllmner_viewer.build.manifest import load_manifest
+from tests.synthetic import generate
 
 CONDITIONS = [None, "organism_id:9606", "NOT library_strategy:RNA-Seq", "hypoxia OR liver"]
 
@@ -138,3 +145,51 @@ def test_a_refused_export_has_no_dataset_version(client: TestClient) -> None:
     response = client.get("/api/export/entries/biosample", params={"q": "nope:x"})
     assert response.status_code == 400
     assert "x-dataset-version" not in response.headers
+
+
+def test_an_export_of_no_entries_has_only_the_header_in_tsv_and_no_line_in_ndjson(client: TestClient) -> None:
+    full = client.get("/api/export/entries/biosample", params={"q": "organism_id:9606"})
+    empty = client.get("/api/export/entries/biosample", params={"q": "SAMN99999999"})
+    assert full.status_code == 200
+    assert empty.status_code == 200
+    assert len(full.text.splitlines()) > 1
+    assert empty.text.splitlines() == [full.text.splitlines()[0]]
+    ndjson = client.get("/api/export/entries/biosample", params={"q": "SAMN99999999", "format": "ndjson"})
+    assert ndjson.status_code == 200
+    assert ndjson.text == ""
+
+
+TITLES = ["a\tb", "line1\r\nline2", "=SUM(A1)"]
+
+
+@pytest.fixture(scope="module")
+def titled_client(tmp_path_factory: pytest.TempPathFactory) -> Iterator[TestClient]:
+    syn = generate(tmp_path_factory.mktemp("titled"), seed=5, n_biosamples=30, n_runs=1)
+    path = syn.root / "inputs" / "run1.jsonl"
+    lines = path.read_text().splitlines()
+    for index, line in enumerate(lines):
+        doc = json.loads(line)
+        doc.get("BioSample", doc)["Description"]["Title"] = TITLES[index % len(TITLES)]
+        lines[index] = json.dumps(doc)
+    path.write_text("\n".join(lines) + "\n")
+    store = syn.root / "store" / "full.duckdb"
+    assert build_full(load_manifest(syn.manifest), store, workers=1).ok
+    with TestClient(create_app(store)) as client:
+        yield client
+
+
+def test_tsv_row_with_a_tab_a_line_break_or_a_formula_character_in_a_title_keeps_the_cell_count_and_the_value(
+    titled_client: TestClient,
+) -> None:
+    response = titled_client.get("/api/export/entries/biosample")
+    assert response.status_code == 200
+    # splitlines would also split at other separators, so the TSV is split at "\n" only.
+    rows = [line.split("\t") for line in response.text.split("\n") if line]
+    header = rows[0]
+    ndjson = titled_client.get("/api/export/entries/biosample", params={"format": "ndjson"})
+    items = [json.loads(line) for line in ndjson.text.splitlines()]
+    assert {item["title"] for item in items} == set(TITLES)
+    assert len(rows) == len(items) + 1
+    assert all(len(row) == len(header) for row in rows)
+    titles = {row[header.index("title")] for row in rows[1:]}
+    assert titles == {"a b", "line1  line2", "=SUM(A1)"}

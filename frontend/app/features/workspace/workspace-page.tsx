@@ -47,7 +47,8 @@ export const WorkspacePage = () => {
   const fields = dataset.data?.fields.map((f) => f.name) ?? []
   const [pickerOpen, setPickerOpen] = useState(false)
   const [apiOpen, setApiOpen] = useState(false)
-  // Pasted entries of an axis are being resolved. This page outlives the views, so a view that is left and opened again still knows.
+  // True while the entries pasted into an axis are being resolved. The page holds this flag, not the view, so the flag
+  // stays when the user leaves the view and opens it again.
   const [replacing, setReplacing] = useState(false)
   const entries = useEntries({ q: state.q, page: 1, perPage: 1 }, !broken)
 
@@ -77,7 +78,8 @@ export const WorkspacePage = () => {
         condition={condition}
         onShare={share}
         onApi={() => setApiOpen(true)}
-        // The count of the condition before stays while the count of a new condition is on its way, and is not the size of its export.
+        // While the count of a new condition loads, the query keeps the count of the previous condition. That count
+        // does not give the size of the new export, so the export menu gets no count and shows no size.
         exportMenu={<ExportMenu q={state.q} totalEntries={entries.isPlaceholderData ? undefined : entries.data?.pagination.total} />}
       />
       <div className="flex min-h-0 flex-1 items-stretch">

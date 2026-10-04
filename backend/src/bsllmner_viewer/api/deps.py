@@ -54,9 +54,11 @@ FacetSelfExcludeParam = Annotated[
     Query(
         alias="facetSelfExclude",
         description=(
-            "If true, compute without the top-level conjuncts of `q` that are only on the dimensions of this "
-            "operation, as the screens of the UI do. The description of the operation names its dimensions. "
-            'If false, compute from `q` itself. See "Self-exclusion" in /llms-full.txt'
+            "If true, the operation removes from `q` each top-level conjunct whose clauses are all on the dimensions "
+            "of the operation, as the UI does. The top-level conjuncts are the operands of the `AND` at the root of "
+            "`q`, or `q` itself if the root is not `AND`. A conjunct that has a keyword stays. The description of the "
+            "operation names its dimensions. If false, the operation uses `q` as it is. "
+            'See "Self-exclusion" in /llms-full.txt'
         ),
     ),
 ]
@@ -80,12 +82,13 @@ QParam = Annotated[
     str | None,
     Query(
         description=(
-            'Condition in the condition language: `field:value`, `field:"phrase"`, `field:[a TO b]`, keywords '
-            "without a field, `AND`, `OR`, `NOT`, and parentheses. Omitted or empty means the whole population. "
-            "The value of an annotation term field is a term ID, which `GET /api/terms` finds, and it matches the "
-            "term and its descendants. The value of `<field>_status` is the group `mapped`, `unmapped`, or "
-            "`no_value`. The value of `library_strategy` is a target assay of `GET /api/dataset`. A keyword matches "
-            "the searchable text of a BioSample, or the entry that has the accession that it spells. "
+            'The condition, in the condition language: `field:value`, `field:"phrase"`, `field:[a TO b]`, keywords '
+            "without a field, `AND`, `OR`, `NOT`, and parentheses. If `q` is omitted or empty, the condition is the "
+            "whole population. The value of an annotation term field is a term ID. `GET /api/terms` finds term IDs. "
+            "A term ID matches the term and its descendants. The value of `<field>_status` is a status group: "
+            "`mapped`, `unmapped`, or `no_value`. The value of `library_strategy` is a target assay of "
+            "`GET /api/dataset`. A keyword matches the searchable text of a BioSample. A keyword in the form of an "
+            "accession matches the entries that have the accession instead. "
             'See "Condition DSL" in /llms-full.txt'
         ),
         examples=[

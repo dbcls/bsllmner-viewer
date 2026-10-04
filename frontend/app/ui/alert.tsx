@@ -5,8 +5,9 @@ type AlertProps = {
 }
 
 /**
- * A warning at the top center of the viewport that goes away by itself. It is drawn over the dialogs, as the action that
- * it answers can be in one: white with the critical color on its edge, its text, and the icon at its start.
+ * A warning at the top center of the viewport. The caller removes the warning by passing null as the message. The
+ * warning is drawn over the dialogs, as the action that it answers can be in one: white with the critical color on its
+ * edge, its text, and the icon at its start.
  */
 export const Alert = ({ message }: AlertProps) =>
   message ? (

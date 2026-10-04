@@ -24,7 +24,8 @@ services:
       BSLLMNER_VIEWER_MAX_QUERIES: ${BSLLMNER_VIEWER_MAX_QUERIES:-}
       BSLLMNER_VIEWER_MAX_EXPORTS: ${BSLLMNER_VIEWER_MAX_EXPORTS:-}
       BSLLMNER_VIEWER_QUEUE_TIMEOUT: ${BSLLMNER_VIEWER_QUEUE_TIMEOUT:-}
-    # The access log of the web container has every request of the api, with its time and its request ID.
+    # The api writes no access log. The access log of the web container has every request of the api, with its time
+    # and its request ID.
     command: >
       uvicorn bsllmner_viewer.api.app:create_app --factory
       --host 0.0.0.0 --port 8000 --workers ${BSLLMNER_VIEWER_API_WORKERS:-2} --no-access-log
@@ -42,7 +43,7 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
-    # always, because the user's podman-restart.service starts only containers with this policy after a reboot.
+    # After a reboot, podman-restart.service starts only the containers whose restart policy is always.
     restart: always
 
   web:

@@ -26,6 +26,11 @@ def test_term_url_of_an_unlisted_prefix_or_a_malformed_id_is_none(term_id: str) 
     assert term_url(term_id) is None
 
 
+@pytest.mark.parametrize("term_id", ["", "CVCL:", ":0241", "26837"])
+def test_ontology_of_a_malformed_id_is_none(term_id: str) -> None:
+    assert ontology_of(term_id) is None
+
+
 def test_ontology_of_names_a_listed_prefix_and_keeps_an_unlisted_prefix_as_its_name() -> None:
     assert ontology_of("CVCL:0241") == ("CVCL", "Cellosaurus")
     assert ontology_of("NCBIGene:7157") == ("NCBIGene", "NCBI Gene")

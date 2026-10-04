@@ -44,7 +44,10 @@ type TrendTabProps = {
   update: Update
   /** Reads the latest state of the URL, which can be newer than `state` after an await. */
   latest: () => WorkspaceState
-  /** Pasted entries are being resolved. The state outlives the view, as the user can leave the view and come back meanwhile. */
+  /**
+   * Pasted entries are being resolved. The resolution can finish after the user leaves the view, so the parent holds
+   * this flag instead of the view.
+   */
   replacing: boolean
   setReplacing: (replacing: boolean) => void
   onAlert: (message: string) => void
@@ -83,7 +86,7 @@ export const TrendTab = ({ state, condition, update, latest, replacing, setRepla
   const all = state.trendAll ? (data?.allEntries ?? []) : []
   const max = yMax([...all, ...total, ...series.flatMap((s) => s.points)].map((p) => p.count))
   const unit = unitLabel(state.unit)
-  /** The trend is the one of the previous condition, while the trend of the new condition is on its way. */
+  /** The trend is the one of the previous request, while the trend of the new request loads. */
   const stale = trend.isPlaceholderData
   const totalLabel = "Condition"
   const allLabel = "All entries"
@@ -102,7 +105,7 @@ export const TrendTab = ({ state, condition, update, latest, replacing, setRepla
     if (data && !stale) void condition.toggleNarrow(data.populationQ, clauses, state.q)
   }
   // The terms that the URL names, when the user chose them: the lines on screen can still be those of the previous
-  // terms while the trend of the new ones is on its way.
+  // terms while the trend of the new ones loads.
   const values = trendTerms ?? series.map((s) => s.value)
   // No terms left is the top terms.
   const setTerms = (next: string[] | null) => update({ trendTerms: next?.length ? next : null })
@@ -401,7 +404,7 @@ type PointMarksProps = {
   /** Whether pressing the point does anything; a point that is not pressable is a plain mark. */
   pressable: (point: TrendPoint) => boolean
   onPress: (point: TrendPoint) => void
-  /** Pressing does nothing for now; the points are drawn as not pressable. */
+  /** Pressing does nothing. The points are still buttons, but they are marked aria-disabled and are not in the Tab order. */
   disabled?: boolean
   /** What pressing a point does, after its name. */
   hint: string
@@ -421,8 +424,9 @@ const PointMarks = ({ placed, color, width, name, selected, pressable, onPress, 
       return <circle key={point.year} cx={x} cy={y} r={r} fill={token("--color-surface")} stroke={color} strokeWidth={width} role="img" aria-label={name(point)} />
     }
     const on = selected(point)
-    // The focus ring of the page, drawn around the edge of the point: the brand-deep ring in the middle of the yellow one.
-    // The rings are hidden by an attribute and shown by a class while the point has the focus.
+    // The focus ring of the page, drawn around the edge of the point: a 2px --color-brand-deep ring in the middle of a
+    // 4px --color-focus ring. Both rings have the opacity attribute 0. A class sets the opacity to 1 while the point
+    // has visible focus.
     const ring = r + width / 2 + 2
     return (
       <g
@@ -444,7 +448,7 @@ const PointMarks = ({ placed, color, width, name, selected, pressable, onPress, 
   })
 
 type YearControlsProps = {
-  /** The first and the last year with a match: undefined while they are on their way, null when nothing matches. */
+  /** The first and the last year with a match: undefined while they load, null when nothing matches. */
   first: number | null | undefined
   last: number | null | undefined
   from: number | null

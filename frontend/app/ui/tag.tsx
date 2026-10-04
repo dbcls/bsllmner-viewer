@@ -4,7 +4,7 @@ import { cn } from "./cn"
 
 type TagProps = {
   children: ReactNode
-  /** The color class of a dot before the text, which tells apart values of one kind, such as assays. */
+  /** The color class of a dot before the text, which distinguishes the values of one kind, such as assays. */
   dot?: string
 }
 

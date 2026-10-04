@@ -6,21 +6,50 @@ import duckdb
 import pyarrow as pa
 
 from bsllmner_viewer.build.convert import EVIDENCE_SCHEMA, metadata_groups
+from bsllmner_viewer.build.errors import BuildError
 from bsllmner_viewer.build.evidence import Text, trace_term
 from bsllmner_viewer.build.inputs import Attribute
 from bsllmner_viewer.build.mk2_filter_keys import MK2_FILTER_KEYS
 from bsllmner_viewer.build.rows import insert_rows
 from bsllmner_viewer.dsl.fields import STATUS_GROUPS
+from bsllmner_viewer.dsl.keyword import searchable_text
 from bsllmner_viewer.store.metadata import ATTRIBUTE, MetadataKind, stored_attributes, stored_description
 from bsllmner_viewer.store.organisms import ORGANISM_NAMES
 from bsllmner_viewer.store.schema import drop_derived_tables
 
 _ATTRIBUTES = '[{"name": "VARCHAR", "value": "VARCHAR", "harmonized_name": "VARCHAR"}]'
 _FETCH_ROWS = 10_000
+_SEARCHABLE_TEXT_SCHEMA = pa.schema([("biosample", pa.string()), ("text", pa.string())])
 _EVIDENCE_SCHEMA = pa.schema([("biosample", pa.string()), *list(EVIDENCE_SCHEMA)[2:]])
 
 
+def _check_library_strategies(con: duckdb.DuckDBPyConnection) -> None:
+    """Stop before any table is derived if an experiment of the dataset has two library strategies.
+
+    The reference data can list an experiment twice. The same row twice counts once. Two strategies for an experiment
+    of a BioSample of the runs stop the build, because the population depends on the strategy.
+    """
+    conflicts = con.execute(
+        """
+        SELECT r.accession, list(DISTINCT r.library_strategy ORDER BY r.library_strategy)
+        FROM ref_experiment r
+        WHERE r.library_strategy IS NOT NULL
+          AND r.accession IN (
+              SELECT experiment FROM ref_biosample_experiment WHERE biosample IN (SELECT accession FROM entry)
+          )
+        GROUP BY r.accession
+        HAVING count(DISTINCT r.library_strategy) > 1
+        ORDER BY r.accession
+        LIMIT 5
+        """
+    ).fetchall()
+    if conflicts:
+        listed = "; ".join(f"{accession}: {', '.join(strategies)}" for accession, strategies in conflicts)
+        raise BuildError(f"the SRA experiment data gives an experiment more than one library strategy: {listed}")
+
+
 def derive(con: duckdb.DuckDBPyConnection, target_assays: list[str]) -> None:
+    _check_library_strategies(con)
     drop_derived_tables(con)
     con.execute(
         """
@@ -316,9 +345,9 @@ def _searched_before_the_record(
 
 
 def _omit_attributes(con: duckdb.DuckDBPyConnection) -> None:
-    """Leave out of every BioSample the attributes under the mk2 filter keys that no evidence points to.
+    """Omit from every BioSample the attributes under the mk2 filter keys that no evidence points to.
 
-    A key stays as soon as evidence of one BioSample points to an attribute under it, so leaving the other keys out
+    A key stays as soon as evidence of one BioSample points to an attribute under it, so omitting the other keys
     removes no evidence. Evidence in the attributes then points to the attributes that remain.
     """
     candidates = sorted(MK2_FILTER_KEYS)
@@ -362,60 +391,51 @@ def _omit_attributes(con: duckdb.DuckDBPyConnection) -> None:
 def _derive_searchable_text(con: duckdb.DuckDBPyConnection) -> None:
     """The searchable text of each BioSample of the population, in the form `dsl.keyword` matches against.
 
-    The values (title, organism name, attribute values, extracted values, and term labels) are joined by " | " before
-    normalization, so a phrase never spans two values. A word that joins its parts with symbols ("MCF-7") is added
-    once more with its parts written together ("mcf7"), after the values and separated like a value of its own, so a
-    phrase never spans two of them either. A "|" inside a value is a symbol like any other, so it is replaced before the
-    values are joined.
+    The values (the title, the organism name, the description paragraphs, the sample names, the synonyms, the attribute
+    values, the extracted values, and the term labels) are joined by "|", and `dsl.keyword.searchable_text` splits them
+    into words, so that the searchable text and the keywords split a text alike. A "|" inside a value is a symbol like
+    any other, so it is replaced before the values are joined. The rows are read through a cursor and written in
+    batches, so that the texts of the whole population are never in memory at once.
     """
-    con.execute(
-        r"""
-        CREATE TABLE searchable_text AS
-        WITH annotation_values AS (
-            SELECT biosample,
-                   string_agg(
-                       concat_ws(' | ', replace(extracted_value, '|', '/'), replace(term_label, '|', '/')), ' | '
-                       ORDER BY field, value_index
-                   ) AS value
-            FROM annotation GROUP BY biosample
-        ),
-        raw AS (
-            SELECT b.accession AS biosample,
-                   lower(concat_ws(
-                       ' | ',
+    con.execute("CREATE TABLE searchable_text (biosample VARCHAR, text VARCHAR)")
+    reader = con.cursor()
+    try:
+        reader.execute(
+            """
+            WITH annotation_values AS (
+                SELECT biosample,
+                       string_agg(
+                           concat_ws('|', replace(extracted_value, '|', '/'), replace(term_label, '|', '/')), '|'
+                           ORDER BY field, value_index
+                       ) AS value
+                FROM annotation GROUP BY biosample
+            )
+            SELECT b.accession,
+                   concat_ws(
+                       '|',
                        replace(b.title, '|', '/'),
                        replace(b.organism_name, '|', '/'),
                        nullif(array_to_string(
                            list_transform(
                                from_json(b.description, '[{"value": "VARCHAR"}]'), x -> replace(x.value, '|', '/')
                            ),
-                           ' | '
+                           '|'
                        ), ''),
                        array_to_string(
                            list_transform(
                                from_json(b.attributes, '[{"value": "VARCHAR"}]'), x -> replace(x.value, '|', '/')
                            ),
-                           ' | '
+                           '|'
                        ),
                        a.value
-                   )) AS value
+                   )
             FROM biosample b LEFT JOIN annotation_values a ON a.biosample = b.accession
             WHERE b.accession IN (SELECT biosample FROM population)
-        ),
-        normalized AS (
-            SELECT biosample,
-                   regexp_replace(value, '[^a-z0-9|]+', ' ', 'g') AS words,
-                   list_transform(
-                       regexp_extract_all(value, '[a-z0-9]+(?:[^a-z0-9\s|]+[a-z0-9]+)+'),
-                       w -> regexp_replace(w, '[^a-z0-9]+', '', 'g')
-                   ) AS joined
-            FROM raw
+            ORDER BY b.accession
+            """
         )
-        SELECT biosample,
-               regexp_replace(
-                   ' ' || replace(words, '|', ' | ') || ' | ' || array_to_string(joined, ' | ') || ' ', ' +', ' ', 'g'
-               ) AS text
-        FROM normalized
-        ORDER BY biosample
-        """
-    )
+        while batch := reader.fetchmany(_FETCH_ROWS):
+            rows = [(biosample, searchable_text(values or "")) for biosample, values in batch]
+            insert_rows(con, "searchable_text", _SEARCHABLE_TEXT_SCHEMA, rows)
+    finally:
+        reader.close()

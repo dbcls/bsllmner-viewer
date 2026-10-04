@@ -22,7 +22,10 @@ type AxisTermsDialogProps = {
   fields: string[]
   /** The elements on the axis, such as the rows of a cross-tabulation or the series of a trend. */
   elements: readonly AxisElement[]
-  /** The number of elements on their way, while the view loads for the first time; null once they are known. */
+  /**
+   * The number of elements that the view expects, while the view loads for the first time; null once the elements are
+   * known.
+   */
   pending: number | null
   /** The axis shows terms that the user chose, instead of the top terms. */
   explicit: boolean
@@ -32,7 +35,7 @@ type AxisTermsDialogProps = {
   /** The note on a found term that the axis has, such as "✓ in axis". */
   selectedNote: string
   onDimension: (dimension: string) => void
-  /** Adds a found term to the axis, or takes it off when the axis has it. */
+  /** Adds a found term to the axis, or removes it when the axis has it. */
   onPick: (hit: TermHit) => void
   onRemove: (value: string) => void
   onReset: () => void
@@ -44,8 +47,8 @@ type AxisTermsDialogProps = {
 
 /**
  * The terms of one axis of a chart view and the ways to change them. The terms are chips at the top, and under them the user
- * either searches terms to add one at a time or pastes a list that replaces them. Both ways take the same place, so the
- * dialog keeps its height when the way changes.
+ * either searches terms to add one at a time or pastes a list that replaces them. Search and Paste list occupy the same
+ * area, so the height of the dialog does not change when the user switches between them.
  */
 export const AxisTermsDialog = ({ open, onClose, title, ...rest }: AxisTermsDialogProps) => (
   <Modal open={open} onClose={onClose} title={title}>

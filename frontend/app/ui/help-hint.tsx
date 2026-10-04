@@ -17,9 +17,9 @@ type HelpHintProps = {
  * A "?" button that shows a short explanation in a bubble under it. The bubble opens while the pointer is over the
  * button or the button has focus; a click keeps it open until another click, a click outside, or Escape. Escape also
  * closes a bubble opened by hovering or focus, and the bubble stays closed until the next hover or focus. The pointer
- * can move onto the bubble without closing it. A modal dialog that opens over the bubble closes it. The button looks 15px wide and takes the pointer in 24px. The button
- * keeps the same space (8px) from the element before it on every screen, so a container puts it after that element
- * without a gap of its own.
+ * can move onto the bubble without closing it. A modal dialog that opens over the bubble closes it. The button is 15px
+ * wide, and its hit area is 27px wide. The button keeps the same space (8px) from the element before it on every
+ * screen, so a container puts it after that element without a gap of its own.
  */
 export const HelpHint = ({ label, side = "bottom", children }: HelpHintProps) => {
   const [hovered, setHovered] = useState(false)

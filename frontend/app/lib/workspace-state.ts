@@ -30,7 +30,7 @@ const PROJECT_SORT_SET: Record<ProjectSort, true> = {
 
 export const PROJECT_SORTS = Object.keys(PROJECT_SORT_SET) as ProjectSort[]
 
-/** The whole UI state of the workspace. Every member is carried by the URL. */
+/** The whole UI state of the workspace. The URL stores every member. */
 export type WorkspaceState = {
   q: string | null
   tab: Tab
@@ -105,8 +105,8 @@ const page = (value: string | null): number => {
   return Number.isSafeInteger(n) && n >= 1 ? n : 1
 }
 
-/** A four-digit year, the range that the api accepts. */
-const year = (value: string | null): number | null => (value !== null && /^\d{4}$/.test(value) ? Number(value) : null)
+/** A year from 1000 to 9999, written without a leading zero, or null. Any other text in the URL is ignored. */
+const year = (value: string | null): number | null => (value !== null && /^[1-9]\d{3}$/.test(value) ? Number(value) : null)
 
 export const readState = (params: URLSearchParams): WorkspaceState => {
   const tab = params.get("tab")
@@ -115,8 +115,9 @@ export const readState = (params: URLSearchParams): WorkspaceState => {
   const perPage = Number(params.get("perPage"))
   const row = params.get("row") ?? DEFAULTS.row
   const named = params.get("col") ?? DEFAULTS.col
-  // A dimension against itself shows nothing and the api rejects it, so the columns of such a URL take the default
-  // column dimension, or the default row dimension when the rows have that, without the terms named for them.
+  // The api rejects a row and a column of the same dimension. If a URL names the same dimension for both, the column
+  // falls back to the default column dimension, or to the default row dimension if the row uses the default column
+  // dimension. The column terms of that URL are dropped.
   const col = named !== row ? named : DEFAULTS.col !== row ? DEFAULTS.col : DEFAULTS.row
   return {
     q: params.get("q")?.trim() || null,

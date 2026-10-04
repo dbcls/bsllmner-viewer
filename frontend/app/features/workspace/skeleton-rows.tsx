@@ -7,7 +7,7 @@ type SkeletonTableRowsProps = {
   rows: number
   /** The width class of the skeleton in each column, near the width of the column's values. */
   columns: readonly string[]
-  /** The first column stays put when the table scrolls sideways, as the first column of the table's rows does. */
+  /** The first column does not move when the table scrolls sideways, as the first column of the table's rows does. */
   frozen?: boolean
 }
 

@@ -43,7 +43,8 @@ export const SamplePage = ({ accession }: SamplePageProps) => {
   }
 
   if (!entry.data) {
-    // A request that the api refused (404, or 400 and 422 for an accession that cannot exist) names no BioSample of the dataset.
+    // A client error other than 429 means that the dataset has no BioSample with this accession. For example, the api
+    // answers 404 for an unknown accession and 422 for an accession that is too long.
     const notFound = isClientError(entry.error) && entry.error.problem.status !== 429
     return (
       <PageFrame>
@@ -161,9 +162,8 @@ const CARD_PER_PAGE = 20
 
 /**
  * The rows of a table of a card on the current page, and the pager for the heading, or nothing when every row fits on
- * one page. The page is the card's own state, not part of the URL. The negative margin keeps the pager, taller than the
- * heading, from making the heading taller than the heading of the card beside it, so that the tables of both cards
- * start at the same height.
+ * one page. The page is the card's own state, not part of the URL. The pager is taller than the heading. The negative
+ * margin removes the extra height, so that the tables of both cards start at the same height.
  */
 const usePagedRows = <T,>(rows: readonly T[]): { shown: readonly T[]; pager: ReactNode } => {
   const [page, setPage] = useState(1)
@@ -292,9 +292,9 @@ const BackLink = ({ href }: { href: string }) => (
 )
 
 /**
- * The heading over the attributes, which sets them apart from the items that describe the BioSample as a whole. It is
- * bold text in line with the names of the rows, without a rule, so that it reads as a group inside the card and not as
- * another card heading.
+ * The heading over the attributes. The heading separates the attributes from the items that describe the whole
+ * BioSample. The heading is bold text aligned with the row names and has no rule, so that the heading looks like a group
+ * inside the card and not like another card heading.
  */
 const AttributesHeading = () => <h3 className="mt-3 mb-1 px-1.5 text-fs-body-sm font-semibold text-ink">Attributes</h3>
 

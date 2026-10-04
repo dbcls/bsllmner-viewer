@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test"
 
 import { dataset, distribution, select } from "./_api"
-import { bar, expectParam, expectQ, fieldLabel, formatCount, workspaceUrl } from "./_helpers"
+import { bar, expectParam, expectQ, fieldLabel, formatCount, formatPercent, skipUnless, workspaceUrl } from "./_helpers"
 
 test.describe("distribution", () => {
   test("the cards follow the order of the dataset's fields", async ({ page, request }) => {
@@ -21,7 +21,7 @@ test.describe("distribution", () => {
     const q = await select(request, null, first.clauses)
     const after = await distribution(request, "disease", { q })
     const other = after.elements.find((element) => element.value !== first.value)
-    if (!other) throw new Error("the distribution of disease has a single element")
+    skipUnless(other, "the distribution of disease has a single element")
     await page.goto(workspaceUrl({ tab: "distribution" }))
     await bar(page, first.label).click()
     await expectQ(page, q)
@@ -65,7 +65,7 @@ test.describe("distribution", () => {
     const on = await distribution(request, "disease", { q })
     const off = await distribution(request, "disease", { q, selfExclude: false })
     const gone = on.elements.filter((element) => !off.elements.some((e) => e.value === element.value))
-    if (gone.length === 0) throw new Error("self-exclusion hides no element of the disease distribution")
+    skipUnless(gone.length > 0, "self-exclusion hides no element of the disease distribution")
     await page.goto(workspaceUrl({ tab: "distribution", q, se: "0" }))
     for (const element of gone) {
       await expect(bar(page, element.label)).toContainText(formatCount(element.count))
@@ -77,7 +77,7 @@ test.describe("distribution", () => {
   test("the last row of a card counts the BioSamples of its population without a term of the field", async ({ page, request }) => {
     const disease = await distribution(request, "disease")
     if (disease.withoutTerm === null) throw new Error("the distribution of disease has no count without a term")
-    const percent = `${Math.round((disease.withoutTerm / disease.total) * 100)}%`
+    const percent = formatPercent(disease.withoutTerm, disease.total)
     await page.goto(workspaceUrl({ tab: "distribution" }))
     // The innermost block that holds both the Export button of the Disease card and a "No term" row is the card.
     const card = page

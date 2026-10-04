@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from bsllmner_viewer.build.ontology import normalize_term_id, read_obo, read_owl
+from bsllmner_viewer.build.ontology import normalize_term_id, read_obo, read_ontology, read_owl
 
 
 @pytest.mark.parametrize(
@@ -17,9 +17,10 @@ from bsllmner_viewer.build.ontology import normalize_term_id, read_obo, read_owl
         ("http://purl.obolibrary.org/obo/NCBIGene_6427", "NCBIGene:6427"),
         ("  MONDO:0000001 ", "MONDO:0000001"),
         ("plain", "plain"),
+        ("\uff2d\uff2f\uff2e\uff24\uff2f\uff3f\uff10\uff10\uff10\uff11", "MONDO:0001"),
     ],
 )
-def test_normalize_term_id(value: str, expected: str) -> None:
+def test_normalize_term_id_turns_underscore_and_purl_forms_into_the_colon_form(value: str, expected: str) -> None:
     assert normalize_term_id(value) == expected
 
 
@@ -197,7 +198,7 @@ def test_read_obo_general_class_inclusion_axioms_are_not_parents(tmp_path: Path)
     assert parents == ["X:7", "X:8"]
 
 
-def test_read_obo_part_of_to_another_prefix_is_not_a_parent_but_is_a_is(tmp_path: Path) -> None:
+def test_read_obo_part_of_to_another_prefix_is_not_a_parent_but_is_a_to_another_prefix_is(tmp_path: Path) -> None:
     parents = _obo_parents(
         tmp_path,
         "is_a: Y:2\n"
@@ -210,7 +211,9 @@ def test_read_obo_part_of_to_another_prefix_is_not_a_parent_but_is_a_is(tmp_path
     assert parents == ["Y:2", "X:5"]
 
 
-def test_read_owl_part_of_to_another_prefix_is_not_a_parent_but_subclass_is(tmp_path: Path) -> None:
+def test_read_owl_part_of_to_another_prefix_is_not_a_parent_but_a_superclass_of_another_prefix_is(
+    tmp_path: Path,
+) -> None:
     path = tmp_path / "x.owl"
     path.write_text(
         _owl(
@@ -228,3 +231,72 @@ def test_read_owl_anonymous_top_level_class_is_skipped(tmp_path: Path) -> None:
     gci = '<Class><intersectionOf/><rdfs:subClassOf rdf:resource="http://purl.obolibrary.org/obo/UBERON_9"/></Class>\n'
     path.write_text(_owl("").replace("</rdf:RDF>", gci + "</rdf:RDF>"))
     assert [t.term_id for t in read_owl(path)] == ["UBERON:1"]
+
+
+_SYNONYM_TAGS = [
+    "oboInOwl:hasExactSynonym",
+    "oboInOwl:hasRelatedSynonym",
+    "oboInOwl:hasBroadSynonym",
+    "oboInOwl:hasNarrowSynonym",
+    "skos:altLabel",
+    "skos:hiddenLabel",
+]
+_NAMESPACES = (
+    ' xmlns:oboInOwl="http://www.geneontology.org/formats/oboInOwl#" xmlns:skos="http://www.w3.org/2004/02/skos/core#"'
+)
+
+
+def _owl_with_namespaces(body: str) -> str:
+    return _owl(body).replace("<rdf:RDF ", f"<rdf:RDF{_NAMESPACES} ", 1)
+
+
+@pytest.mark.parametrize("tag", _SYNONYM_TAGS)
+def test_read_owl_reads_every_synonym_tag(tmp_path: Path, tag: str) -> None:
+    path = tmp_path / "x.owl"
+    path.write_text(_owl_with_namespaces(f"<rdfs:label>name</rdfs:label><{tag}>other name</{tag}>"))
+    (term,) = read_owl(path)
+    assert term.synonyms == ["other name"]
+
+
+def test_read_owl_without_rdfs_label_takes_skos_pref_label(tmp_path: Path) -> None:
+    path = tmp_path / "x.owl"
+    path.write_text(_owl_with_namespaces("<skos:prefLabel>preferred</skos:prefLabel>"))
+    (term,) = read_owl(path)
+    assert term.label == "preferred"
+
+
+@pytest.mark.parametrize("deprecated", ["true", "True", "TRUE"])
+def test_read_owl_skips_a_class_whose_owl_deprecated_is_true_in_any_letter_case(
+    tmp_path: Path, deprecated: str
+) -> None:
+    path = tmp_path / "x.owl"
+    path.write_text(_owl_with_namespaces(f"<rdfs:label>old</rdfs:label><owl:deprecated>{deprecated}</owl:deprecated>"))
+    assert list(read_owl(path)) == []
+
+
+def test_read_ontology_of_an_obo_file_skips_a_term_and_a_parent_whose_id_is_not_prefix_colon_local(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "x.obo"
+    path.write_text(
+        "[Term]\nid: http://identifiers.org/hgnc/5032\nname: TYR\nis_a: SO:0000704\n\n"
+        "[Term]\nid: MONDO:1\nname: one\nis_a: http://identifiers.org/ncbigene/7299\nis_a: MONDO:2\n\n"
+        "[Term]\nid: plain\nname: no prefix\n\n"
+        "[Term]\nid: https:123\nname: a URL scheme as the prefix\n"
+    )
+    terms = list(read_ontology(path))
+    assert [t.term_id for t in terms] == ["MONDO:1"]
+    assert terms[0].parents == ["MONDO:2"]
+
+
+def test_read_ontology_of_an_owl_file_skips_a_class_whose_id_is_not_prefix_colon_local(tmp_path: Path) -> None:
+    path = tmp_path / "x.owl"
+    path.write_text(
+        _owl('<rdfs:subClassOf rdf:resource="http://identifiers.org/hgnc/5032"/>').replace(
+            "</rdf:RDF>",
+            '<Class rdf:about="http://identifiers.org/hgnc/5032"><rdfs:label>TYR</rdfs:label></Class>\n</rdf:RDF>',
+        )
+    )
+    terms = list(read_ontology(path))
+    assert [t.term_id for t in terms] == ["UBERON:1"]
+    assert terms[0].parents == []

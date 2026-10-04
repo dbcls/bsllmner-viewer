@@ -33,18 +33,19 @@ export const LinkButton = ({ children, tone = "brand", mono, size = "sm", icon, 
 
 type ExternalLinkProps = Omit<AnchorHTMLAttributes<HTMLAnchorElement>, "className" | "target" | "rel"> & {
   children: ReactNode
-  /** `inline` is a link in a sentence, underlined so that it is told apart from the text around it by more than its color. */
+  /** `inline` is a link in a sentence, underlined so that more than its color distinguishes it from the text around it. */
   kind?: "text" | "inline" | "button"
   /**
-   * A glyph before the text that names where the link goes, such as the GitHub mark. A link with one does not also show
-   * the new-tab icon after its text: the button is told apart by its own glyph.
+   * A glyph before the text that names where the link goes, such as the GitHub mark. If the link has this glyph, it does
+   * not show the new-tab icon after its text.
    */
   icon?: IconName
 }
 
 /**
- * A link to another site, opened in a new tab. Unless it has its own glyph, an icon after its text says so. The link is
- * the containing block of its hidden note (`relative`), so that a link in a scrolling table does not widen the page.
+ * A link to another site that opens in a new tab. If the link has no glyph of its own, it shows the new-tab icon after
+ * its text. The link is the containing block of its hidden note (`relative`), so that a link in a scrolling table does
+ * not widen the page.
  */
 export const ExternalLink = ({ children, kind = "text", icon, ...rest }: ExternalLinkProps) => (
   <a

@@ -10,7 +10,7 @@ Target assays are a list of SRA `library_strategy` values.
 
 ## Population
 
-The population is the set of BioSamples, each together with an SRA experiment linked to it, that satisfy both of the following:
+The population is the set of BioSamples, each together with an SRA Experiment linked to it, that satisfy both of the following:
 
 - The BioSample was analyzed by a run in the dataset.
 - The experiment's `library_strategy` is one of the target assays.
@@ -57,7 +57,7 @@ Annotations are LLM-derived and may be wrong. Every annotation carries a status.
 | | `mapped_selected` | Extracted value | The term was selected by the LLM from the candidate terms. |
 
 - A condition names a group and matches every status under it, in the same way that a term matches its descendants. A condition cannot name a single status. The status of each annotation is in the entries and the exports.
-- `no_value` means that nothing was extracted; it does not mean the sample lacks the property. A sample without an extracted drug is not necessarily untreated.
+- `no_value` means that nothing was extracted; it does not mean the BioSample lacks the property. A BioSample without an extracted drug is not necessarily untreated.
 - `unmapped_no_candidate` indicates that the ontology has no label or synonym resembling the value. `unmapped_rejected` indicates that similar terms exist but none was adopted, typically because the LLM judged them inconsistent with the BioSample metadata.
 - In a multi-valued field, a BioSample can hold several statuses at once.
 
@@ -66,12 +66,13 @@ Annotations are LLM-derived and may be wrong. Every annotation carries a status.
 A condition on a term matches the term itself and all of its descendants.
 
 - Descendants are resolved over two relations of the ontology: is-a (`is_a` in OBO, `rdfs:subClassOf` in OWL) and part-of (`part_of` or `BFO:0000050` in OBO, an `owl:Restriction` on `BFO_0000050` with `owl:someValuesFrom` inside an `rdfs:subClassOf` in OWL). A term with several parents is a descendant of each of them.
-- Build follows part-of only from a term to a parent with the same prefix, such as UBERON to UBERON or CL to CL, so that the hierarchy of a field stays within its ontology. It follows is-a across prefixes.
-- Build follows no other relation, such as `develops_from`. It also ignores a part-of relation that carries the qualifier `all_only="true"`, because that relation does not state that a part exists.
+- Build follows part-of only from a term to a parent with the same prefix, such as UBERON to UBERON or CL to CL, so that the hierarchy of a field stays within its ontology. Build follows is-a across prefixes.
+- Build follows no other relation, such as `develops_from`. Build also ignores a part-of relation that carries the qualifier `all_only="true"`, because that relation does not state that a part exists.
 - Build ignores an `is_a` or `relationship` line of an OBO file that carries the qualifier `gci_relation` or `gci_filler`. Such a line is a general class inclusion axiom, which holds only for the individuals that satisfy its condition, so it is not an unconditional parent. An OWL file states these axioms as anonymous classes, which build does not read as terms.
 - The two relations are combined into one hierarchy. A cycle in the combined hierarchy does not stop the build.
 - A term without descendants matches only itself. No term of an ontology without hierarchy has descendants.
-- An annotated term that is absent from the reference ontology still matches by its ID. It has no descendants, and its label is the one recorded in the run result.
+- Build does not read a term from a file that marks the term as obsolete (`is_obsolete: true` in OBO, `owl:deprecated` in OWL). An annotated term that every file that defines the term marks as obsolete is therefore absent from the reference ontology.
+- An annotated term that is absent from the reference ontology still matches by its ID. Such a term has no descendants, and the label of such a term is the label recorded in the run result.
 
 ## Condition evaluation
 
@@ -84,7 +85,7 @@ A condition is evaluated on a BioSample of the population together with one of i
 
 Because each evaluation sees the assay of a single experiment, a condition that requires two different assays matches nothing, even for a BioSample that has experiments of both. Assays are compared by counting per assay under the same annotation conditions.
 
-The searchable text of a BioSample consists of its title, its organism name, its description paragraphs, sample name, and synonyms, the values of its original attributes, and the extracted values and term labels of its annotations. Attribute names are not part of it, because nearly every BioSample has the same names. The record of the entry is not part of it, because its values are identifiers and dates rather than words about the sample. How keywords match the text is specified in [api.md](api.md).
+The searchable text of a BioSample consists of its title, its organism name, its description paragraphs, sample name, and synonyms, the values of its original attributes, and the extracted values and term labels of its annotations. Attribute names are not part of it, because nearly every BioSample has the same names. The record of the entry is not part of it, because its values are identifiers and dates rather than words about the BioSample. How keywords match the text is specified in [api.md](api.md).
 
 ## Counting
 

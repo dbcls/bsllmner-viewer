@@ -112,7 +112,7 @@ class DatasetOntology(ApiModel):
 
 class DatasetAssay(ApiModel):
     name: str = Field(description="Target assay, as a `library_strategy` value")
-    biosample_count: int = Field(description="BioSamples of the whole population with an experiment of the assay")
+    biosample_count: int = Field(description="BioSamples of the whole population with an SRA Experiment of the assay")
 
 
 class DslFieldDescription(ApiModel):
@@ -166,6 +166,12 @@ _SELECTED_DESCRIPTION = (
     "The clauses that `POST /api/dsl/select` treats as already present in `toggle` mode: the top-level clauses and "
     "the clauses of a top-level OR on one field, outside any NOT. When every clause of an element is in this list, "
     "selecting the element removes the clauses"
+)
+_STATUS_DESCRIPTION = (
+    'Annotation status. The UI shows `mapped_exact` as "Exact match", `mapped_selected` as "LLM selected" (LLM: '
+    'large language model), `unmapped_no_candidate` as "No candidate", `unmapped_rejected` as "Rejected", '
+    '`not_stated` as "Not stated", and `extraction_failed` as "Extraction failed". See "Annotation status" in '
+    "/llms-full.txt for the meanings"
 )
 _KEYWORD_DESCRIPTION = (
     "The text of a keyword box for the top-level keywords of the condition: the words, then the phrases in double "
@@ -349,7 +355,7 @@ class ProjectsResponse(ApiModel):
 
 class AnnotationValue(ApiModel):
     value: str | None = Field(description="The extracted value; null when none was extracted")
-    status: Status
+    status: Status = Field(description=_STATUS_DESCRIPTION)
     term_id: str | None = Field(description="ID of the mapped term; null when the value has no term")
     label: str | None = Field(description="Label of the mapped term; null when the value has no term")
 
@@ -360,10 +366,10 @@ class EntryItem(ApiModel):
     experiments: list[str] = Field(description="SRA Experiments of the BioSample that match the condition")
     title: str | None
     organism: Organism | None
-    library_strategy: list[str] = Field(description="Assays of the matching experiments")
+    library_strategy: list[str] = Field(description="Assays of the matching SRA Experiments")
     bioprojects: list[str] = Field(description="Accessions of the BioProjects of the BioSample")
     date_published: str | None = Field(description="Publication date, `YYYY-MM-DD`")
-    chip_atlas: list[str] = Field(description="Genome assemblies under which ChIP-Atlas processed the experiments")
+    chip_atlas: list[str] = Field(description="Genome assemblies under which ChIP-Atlas processed the SRA Experiments")
     annotations: dict[str, list[AnnotationValue]] = Field(description="Annotations per annotation field name")
 
 
@@ -398,7 +404,7 @@ class Evidence(ApiModel):
 class EntryAnnotation(ApiModel):
     field: str = Field(description="Annotation field name")
     value: str | None = Field(description="The extracted value; null when none was extracted")
-    status: Status
+    status: Status = Field(description=_STATUS_DESCRIPTION)
     term_id: str | None = Field(description="ID of the mapped term; null when the value has no term")
     label: str | None = Field(description="Label of the mapped term; null when the value has no term")
     clauses: list[Clause] = Field(description="The clause on the field and the term; empty without a term")
@@ -408,9 +414,9 @@ class EntryAnnotation(ApiModel):
 class EntryExperiment(ApiModel):
     accession: str = Field(description="SRA Experiment accession")
     library_strategy: str | None
-    in_population: bool = Field(description="Whether the experiment is in the population")
-    runs: list[str] = Field(description="Accessions of the SRA Runs of the experiment")
-    chip_atlas: list[str] = Field(description="Genome assemblies under which ChIP-Atlas processed the experiment")
+    in_population: bool = Field(description="Whether the SRA Experiment is in the population")
+    runs: list[str] = Field(description="Accessions of the SRA Runs of the SRA Experiment")
+    chip_atlas: list[str] = Field(description="Genome assemblies under which ChIP-Atlas processed the SRA Experiment")
 
 
 class EntryBioProject(ApiModel):

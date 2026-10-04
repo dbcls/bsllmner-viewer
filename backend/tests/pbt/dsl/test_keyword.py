@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from collections import Counter
 
 import pytest
@@ -37,11 +38,43 @@ _typed = st.lists(
     max_size=6,
 ).map(" ".join)
 _no_wildcard = _typed.filter(lambda t: "*" not in t and "?" not in t)
-_keywords = st.builds(FreeText, st.text(st.sampled_from("abAB19 -+_./:"), min_size=1, max_size=12), st.booleans())
+_ASCII_ALPHABET = "abAB19 -+_./:"
+# Characters whose upper case and lower case give each other back, so that the case folding of a keyword is the same
+# in both directions. The alphabet has non-ASCII letters, a non-ASCII digit, and a combining mark.
+_CASED = "\u00e9\u00c9\u03b2\u0392\u0436\u0416"
+_NON_ASCII = _CASED + "\u0663\u0301"
+_keywords = st.builds(
+    FreeText, st.text(st.sampled_from(_ASCII_ALPHABET + _NON_ASCII), min_size=1, max_size=12), st.booleans()
+)
+_round_trip_keywords = st.builds(
+    FreeText,
+    st.text(st.sampled_from(_ASCII_ALPHABET + _CASED + "\u0663\u0301"), min_size=1, max_size=12),
+    st.booleans(),
+)
+
+
+def _has_letter_or_digit(text: str) -> bool:
+    return any(unicodedata.category(c)[0] == "L" or unicodedata.category(c) == "Nd" for c in text)
 
 
 @given(_no_wildcard)
-def test_typed_keywords_without_wildcards_never_raise_and_keep_every_word(text: str) -> None:
+@example('"abc')
+@example('say "hello world')
+@example('abc"')
+@example('"')
+@example("'abc")
+@example("say 'hello world")
+@example("abc'")
+@example("'")
+@example("3' end")
+@example("5'-UTR")
+@example("Alzheimer's disease")
+@example("'s")
+@example("x 'y")
+@example("'a b'")
+@example("' '0")
+@example("' 0'")
+def test_typed_keywords_without_wildcards_keep_every_word(text: str) -> None:
     keywords = typed_keywords(text)
     assert Counter(p for k in keywords for p in parts(k.value)) == Counter(parts(text))
 
@@ -49,6 +82,12 @@ def test_typed_keywords_without_wildcards_never_raise_and_keep_every_word(text: 
 @given(_no_wildcard)
 @example("' '0")
 @example("' 0'")
+@example("3' end")
+@example("5'-UTR")
+@example("Alzheimer's disease")
+@example("'s")
+@example("x 'y")
+@example("'a b'")
 def test_typed_keywords_results_are_valid_keywords_that_survive_serialization(text: str) -> None:
     keywords = typed_keywords(text)
     for keyword in keywords:
@@ -89,15 +128,16 @@ def test_typed_keywords_is_stable_under_surrounding_and_repeated_whitespace(text
     assert typed_keywords(padded) == typed_keywords(text)
 
 
-@given(_keywords)
+@given(_round_trip_keywords)
 def test_word_matches_is_case_insensitive(keyword: FreeText) -> None:
+    assert keyword.value.upper().lower() == keyword.value.lower()
     upper = FreeText(keyword.value.upper(), keyword.is_phrase)
     lower = FreeText(keyword.value.lower(), keyword.is_phrase)
     assert word_matches(upper) == word_matches(lower)
 
 
 @given(_keywords)
-def test_word_matches_patterns_hold_only_lower_case_words_and_the_documented_wildcards(keyword: FreeText) -> None:
+def test_word_matches_patterns_hold_only_lower_case_words_and_a_percent_sign_at_each_end(keyword: FreeText) -> None:
     for match in word_matches(keyword):
         if isinstance(match, Accession):
             assert accession_kind(match.accession) == match.kind
@@ -105,7 +145,9 @@ def test_word_matches_patterns_hold_only_lower_case_words_and_the_documented_wil
             continue
         assert isinstance(match, TextMatch)
         for pattern in match.patterns:
-            assert re.fullmatch(r"% [a-z0-9]+( [a-z0-9]+)*( %|%)", pattern), pattern
+            assert re.fullmatch(r"% [^ %]+( [^ %]+)*( %|%)", pattern), pattern
+            body = pattern.strip("% ").split(" ")
+            assert all(parts(word) == [word] for word in body), pattern
 
 
 @given(_keywords)
@@ -118,7 +160,7 @@ def test_word_matches_only_the_last_word_of_a_keyword_ever_matches_a_word_start(
 
 @given(_keywords)
 def test_word_matches_is_empty_exactly_when_the_keyword_has_no_letter_or_digit(keyword: FreeText) -> None:
-    assert (word_matches(keyword) == []) == (re.search(r"[A-Za-z0-9]", keyword.value) is None)
+    assert (word_matches(keyword) == []) == (not _has_letter_or_digit(keyword.value))
 
 
 @given(st.text(_chars, max_size=12))

@@ -27,8 +27,8 @@ CACHE_CONTROL = "no-cache"
 CACHE_BYTES = 64 * 1024 * 1024
 # A larger response is not kept, so that one response cannot push out many.
 MAX_KEPT_BYTES = 4 * 1024 * 1024
-# The memory of a kept response besides its key and its body: its headers, its record, and the entry of the cache,
-# as measured for small responses.
+# An estimate of the memory that a kept response uses besides its key and its body: its headers, its record, and the
+# entry of the cache.
 KEPT_OVERHEAD = 1024
 # `If-None-Match: *` asks for status 304 whenever the resource has a current response.
 ANY_TAG = "*"
@@ -166,6 +166,8 @@ async def _send_not_modified(send: Send, tag: str) -> None:
 
 
 def _named_tags(values: list[str]) -> set[str]:
-    """The tags that the `If-None-Match` header lines name. A compressing proxy marks a tag as weak (`W/`), which
-    compares alike."""
+    """The tags that the `If-None-Match` header lines list, without the weak marker (`W/`).
+
+    A proxy that compresses the body adds the weak marker to a tag.
+    """
     return {tag.strip().removeprefix("W/") for value in values for tag in value.split(",") if tag.strip()}

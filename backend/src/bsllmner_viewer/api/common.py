@@ -10,6 +10,8 @@ from bsllmner_viewer.api.schemas import Clause, DatasetVersionRef
 from bsllmner_viewer.api.store import Store
 from bsllmner_viewer.dsl.ast import FieldClause, Node, Range, clause, leaves, normalize, range_clause
 from bsllmner_viewer.dsl.errors import DslError, ErrorType
+from bsllmner_viewer.dsl.fields import FieldSet
+from bsllmner_viewer.dsl.lex import DATE_RE
 from bsllmner_viewer.dsl.serializer import serialize
 from bsllmner_viewer.dsl.transform import exclude_dimensions
 
@@ -41,13 +43,22 @@ def aggregation_population(ast: Node | None, dimensions: list[str], facet_self_e
     return exclude_dimensions(ast, dimensions) if facet_self_exclude else ast
 
 
-def to_field_clause(item: Clause) -> FieldClause:
+def to_field_clause(item: Clause, field_set: FieldSet) -> FieldClause:
+    """The leaf of a clause.
+
+    A value of a date field in the form `YYYY-MM-DD` is a date, as `q` reads it without quotes. Any other value is a
+    word if `q` reads it without quotes as the same word, and a phrase otherwise. The clause then gets the slug that
+    `q` gets for the clause as `dsl` writes it.
+    """
     if item.from_ is not None or item.to is not None:
         if item.from_ is None or item.to is None or item.value is not None:
             raise DslError(type=ErrorType.invalid_ast, detail="a range clause needs 'from' and 'to' and no 'value'")
         return range_clause(item.field, item.from_, item.to)
     if item.value is None:
         raise DslError(type=ErrorType.invalid_ast, detail="a clause needs 'value' or 'from'/'to'")
+    field = field_set.get(item.field)
+    if field is not None and field.kind == "date" and DATE_RE.fullmatch(item.value):
+        return clause(item.field, item.value, kind="date")
     return clause(item.field, item.value)
 
 

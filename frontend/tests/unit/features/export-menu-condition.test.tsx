@@ -16,7 +16,7 @@ vi.mock("~/lib/api/client", async (importOriginal) => {
     if (path === "/api/dataset") {
       return ok({ datasetVersion: VERSION, version: {}, targetAssays: ["RNA-Seq"], assays: [], fields: [], dslFields: [], statuses: {}, totals: { biosample: 1, experiment: 1, bioproject: 1 }, organisms: [], ontologies: [] })
     }
-    // The condition "a" has 13 entries. The count of any other condition stays on its way.
+    // The condition "a" has 13 entries. The count of any other condition never answers.
     if (path === "/api/entries/{type}" && init?.params.query?.q === "a") {
       return ok({ datasetVersion: VERSION, pagination: { page: 1, perPage: 1, total: 13 }, items: [] })
     }
@@ -28,18 +28,17 @@ vi.mock("~/lib/api/client", async (importOriginal) => {
 
 import { WorkspacePage } from "~/features/workspace/workspace-page"
 
-vi.stubGlobal("ResizeObserver", class { observe = vi.fn(); unobserve = vi.fn(); disconnect = vi.fn() })
-
 /** The texts of the entry exports in the Export menu, opened and closed again. */
 const entryExports = async (user: ReturnType<typeof userEvent.setup>): Promise<string[]> => {
   await user.click(screen.getByRole("button", { name: "Export" }))
   const texts = screen.getAllByRole("menuitem").slice(0, 2).map((item) => item.textContent ?? "")
   await user.keyboard("{Escape}")
+  await waitFor(() => expect(screen.queryByRole("menu")).toBeNull())
   return texts
 }
 
 describe("the Export menu of the workspace", () => {
-  it("shows no size while the number of entries of a new condition is on its way, instead of the size of the condition before", async () => {
+  it("shows no size while the number of entries of a new condition loads, instead of the size of the condition before", async () => {
     const user = userEvent.setup()
     renderWithQuery(
       <MemoryRouter initialEntries={["/entries?q=a"]}>
@@ -47,8 +46,8 @@ describe("the Export menu of the workspace", () => {
         <Link to="/entries?q=b">Change the condition</Link>
       </MemoryRouter>,
     )
-    await waitFor(async () => expect(await entryExports(user)).toEqual(["TSV~3.9 KB", "NDJSON~13 KB"]))
+    await waitFor(async () => expect(await entryExports(user)).toEqual(["TSV~3.9 KB", "NDJSON~13 KB"]), { timeout: 3000 })
     await user.click(screen.getByRole("link", { name: "Change the condition" }))
-    expect(await entryExports(user)).toEqual(["TSV", "NDJSON"])
-  })
+    await waitFor(async () => expect(await entryExports(user)).toEqual(["TSV", "NDJSON"]), { timeout: 3000 })
+  }, 10_000)
 })

@@ -8,11 +8,6 @@ describe("workspace state in the URL", () => {
     expect(params.get("unit")).toBe("sra-experiment")
   })
 
-  it("restores unit=sra-experiment from the URL", () => {
-    const state = readState(new URLSearchParams("unit=sra-experiment"))
-    expect(state.unit).toBe("sra-experiment")
-  })
-
   it("falls back to the default for the value experiment", () => {
     const state = readState(new URLSearchParams("unit=experiment"))
     expect(state.unit).toBe(DEFAULTS.unit)
@@ -31,6 +26,10 @@ describe("workspace state in the URL", () => {
     expect(years("trend_from=99999999")).toBeNull()
     expect(years("trend_from=999")).toBeNull()
     expect(years("trend_from=1000000")).toBeNull()
+    expect(years("trend_from=0999")).toBeNull()
+    expect(years("trend_from=0000")).toBeNull()
+    expect(years("trend_from=1000")).toBe(1000)
+    expect(years("trend_from=9999")).toBe(9999)
   })
 
   it("reads a page that is not a safe positive integer as the first page", () => {
@@ -86,7 +85,7 @@ describe("workspace state in the URL", () => {
     expect(writeState(DEFAULTS).has("term_ids")).toBe(false)
   })
 
-  it("reads an old URL that turned self-exclusion off as any other URL, and does not write the parameter back", () => {
+  it("ignores the se parameter and does not write it back", () => {
     const state = readState(new URLSearchParams("se=0&unit=bioproject"))
     expect(state).toEqual({ ...DEFAULTS, unit: "bioproject" })
     expect(writeState(state).has("se")).toBe(false)
@@ -96,7 +95,7 @@ describe("workspace state in the URL", () => {
 describe("readState terms of an axis", () => {
   const terms = (count: number) => Array.from({ length: count }, (_, i) => `T:${i}`).join(",")
 
-  it("keeps at most 100 terms of a row and of a column, and at most 5 of the lines, so that an old shared URL still works", () => {
+  it("keeps at most 100 terms of a row and of a column, and at most 5 of the lines", () => {
     const state = readState(new URLSearchParams(`row_terms=${terms(150)}&col=tissue&col_terms=${terms(101)}&trend_terms=${terms(9)}`))
     expect(state.rowTerms).toHaveLength(100)
     expect(state.colTerms).toHaveLength(100)

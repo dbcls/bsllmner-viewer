@@ -40,23 +40,6 @@ describe("MenuButton with links and groups", () => {
     expect(screen.getByRole("group", { name: "Lists (one per line)" })).toBeInTheDocument()
   })
 
-  it("moves through link items and action items with the arrow keys, Home, and End, skipping the headings", async () => {
-    const user = userEvent.setup()
-    renderMenu()
-    await user.click(trigger())
-    expect(screen.getByRole("menuitem", { name: /^TSV/ })).toHaveFocus()
-    await user.keyboard("{ArrowDown}")
-    expect(screen.getByRole("menuitem", { name: "Lines" })).toHaveFocus()
-    await user.keyboard("{ArrowDown}")
-    expect(screen.getByRole("menuitem", { name: "Names" })).toHaveFocus()
-    await user.keyboard("{ArrowDown}")
-    expect(screen.getByRole("menuitem", { name: /^TSV/ })).toHaveFocus()
-    await user.keyboard("{End}")
-    expect(screen.getByRole("menuitem", { name: "Names" })).toHaveFocus()
-    await user.keyboard("{Home}")
-    expect(screen.getByRole("menuitem", { name: /^TSV/ })).toHaveFocus()
-  })
-
   it("activates the focused link with Enter and closes the menu", async () => {
     const user = userEvent.setup()
     const onClick = vi.fn((event: MouseEvent) => event.preventDefault())

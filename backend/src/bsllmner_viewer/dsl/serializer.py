@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import re
+
 from bsllmner_viewer.dsl.ast import BoolOp, FieldClause, FreeText, Node, Range, ValueKind
-from bsllmner_viewer.dsl.lex import is_bare_word, is_keyword_word
+from bsllmner_viewer.dsl.lex import SINGLE_QUOTED_PHRASE_RE, is_bare_word, is_keyword_word
 
 _AND = 3
 _OR = 2
@@ -46,13 +48,23 @@ def _free_text(node: FreeText) -> str:
     if node.is_phrase:
         return quote(node.value)
     tokens = node.value.split(" ")
-    if " ".join(node.value.split()) == node.value and all(
-        is_keyword_word(t, first=i == 0) for i, t in enumerate(tokens)
+    if (
+        " ".join(node.value.split()) == node.value
+        and all(is_keyword_word(t) for t in tokens)
+        and SINGLE_QUOTED_PHRASE_RE.search(node.value) is None
     ):
         return node.value
     return quote(node.value)
 
 
 def quote(value: str) -> str:
+    """The value in double quotes, with `\\` and `"` escaped.
+
+    A `'` that a space or `)` follows is escaped too, because outside the quotes it would close a single-quoted
+    phrase, and a word that starts with `'` before the phrase reads as the start of that phrase.
+    """
     escaped = value.replace("\\", "\\\\").replace('"', '\\"')
-    return f'"{escaped}"'
+    return '"' + _CLOSING_QUOTE.sub("\\\\'", escaped) + '"'
+
+
+_CLOSING_QUOTE = re.compile(r"'(?=[\s)])")

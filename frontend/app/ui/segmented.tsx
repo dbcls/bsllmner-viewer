@@ -13,10 +13,10 @@ type SegmentedProps<T extends string> = {
 }
 
 /**
- * A joined group of exclusive choices; the active one is filled with the brand color. Both sizes are 28px high, border
- * included, as `Button` `sm` and `Select` `sm`, and differ in the size of the text. Each label is trimmed to the height of
- * its capitals so the capitals sit in the middle. The group does not clip, so the focus ring of an option shows; the
- * two end options round their own outer corners. As a radio group, only the chosen option is a stop of Tab, and the
+ * A joined group of exclusive choices. The active one is filled with the brand color. Both sizes are 28px high, border
+ * included, the same as `Button` `sm` and `Select` `sm`, and differ in the size of the text. Each label is trimmed to the
+ * height of its capitals so the capitals sit in the middle. The group does not clip, so the focus ring of an option
+ * shows. The two end options round their own outer corners. As a radio group, only the chosen option is a tab stop. The
  * arrow keys, Home, and End choose and focus another option.
  */
 export const Segmented = <T extends string>({ ariaLabel, options, value, onChange, size = "sm" }: SegmentedProps<T>) => {

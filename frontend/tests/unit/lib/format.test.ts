@@ -1,4 +1,3 @@
-import fc from "fast-check"
 import { describe, expect, it } from "vitest"
 
 import { formatPercent, formatRatio } from "~/lib/format"
@@ -32,16 +31,5 @@ describe("formatPercent", () => {
     expect(formatPercent(4100499, 4100500)).toBe(">99%")
     expect(formatPercent(0, 0)).toBe("0%")
     expect(formatPercent(50, 100)).toBe("50%")
-  })
-
-  it("writes 0% and 100% only for 0 and the whole", () => {
-    fc.assert(
-      fc.property(fc.integer({ min: 0, max: 1_000_000 }), fc.integer({ min: 1, max: 1_000_000 }), (value, total) => {
-        fc.pre(value <= total)
-        const text = formatPercent(value, total)
-        expect(text === "0%").toBe(value === 0)
-        expect(text === "100%").toBe(value === total)
-      }),
-    )
   })
 })

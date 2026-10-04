@@ -24,9 +24,9 @@ const ACCESSION_TYPES: Record<AccessionType, { label: string; hint: string }> = 
 }
 
 /**
- * The bytes of one entry in an export, for the size that the menu shows before a download, so that a download of
- * gigabytes is not started by chance. They are measured on the dataset that the site serves. Measure them again when
- * the dataset changes.
+ * The bytes of one entry in an export, for the size that the menu shows before a download, so that the user does not
+ * start a download of gigabytes without noticing. The values are measured on the dataset that the site serves. Measure
+ * them again when the dataset changes.
  */
 const ENTRY_BYTES = { tsv: 300, ndjson: 1000 } as const
 
@@ -81,22 +81,28 @@ type ApiModalProps = {
 /** The longest response the dialog shows before it cuts the rest. */
 const EXCERPT_LENGTH = 2500
 
+/** The first `EXCERPT_LENGTH` UTF-16 units of the text, or one fewer when the cut would split a surrogate pair. */
+const cutExcerpt = (text: string): string => {
+  const splitsPair = text.charCodeAt(EXCERPT_LENGTH - 1) >= 0xd800 && text.charCodeAt(EXCERPT_LENGTH - 1) <= 0xdbff && text.charCodeAt(EXCERPT_LENGTH) >= 0xdc00 && text.charCodeAt(EXCERPT_LENGTH) <= 0xdfff
+  return text.slice(0, splitsPair ? EXCERPT_LENGTH - 1 : EXCERPT_LENGTH)
+}
+
 /**
  * The response as the dialog shows it: indented JSON without `datasetVersion`, so the part that answers the request
- * comes first, cut at `EXCERPT_LENGTH`. A body that is not JSON is cut as it is.
+ * comes first, cut as `cutExcerpt` does. A body that is not JSON is cut as it is.
  */
 export const responseExcerpt = (text: string): string => {
   let body: unknown
   try {
     body = JSON.parse(text)
   } catch {
-    return text.slice(0, EXCERPT_LENGTH)
+    return cutExcerpt(text)
   }
   if (typeof body === "object" && body !== null && !Array.isArray(body)) {
     body = Object.fromEntries(Object.entries(body).filter(([key]) => key !== "datasetVersion"))
   }
   const pretty = JSON.stringify(body, null, 2)
-  return pretty.length > EXCERPT_LENGTH ? `${pretty.slice(0, EXCERPT_LENGTH)}\n  …` : pretty
+  return pretty.length > EXCERPT_LENGTH ? `${cutExcerpt(pretty)}\n  …` : pretty
 }
 
 const BLOCK_HEADING = "mb-1.5 text-fs-body-sm font-semibold text-ink"

@@ -19,7 +19,7 @@ const FOCUSABLE = "a[href], button:not([disabled])"
 /**
  * Whether a panel is open: pinned by a click, or shown while the pointer rests on its hover trigger or on the panel.
  * Resting on the trigger opens the panel after `HOVER_OPEN_MS`; leaving the trigger and the panel closes it after
- * `HOVER_CLOSE_MS`, unless the pointer comes back first.
+ * `HOVER_CLOSE_MS`, unless the pointer returns first.
  */
 const usePanelState = (anchor: RefObject<HTMLElement | null>) => {
   const [pinned, setPinned] = useState(false)
@@ -62,7 +62,7 @@ type PanelProps = {
   /** The name of the panel, for assistive technology. */
   label: string
   id: string
-  /** Called after Escape or a click outside closes the panel. */
+  /** Called after Escape closes the panel. */
   onClose: () => void
   onKeyDown?: (event: KeyboardEvent<HTMLDivElement>) => void
   /** Moves the focus into the panel once it is pinned and drawn at its position. */
@@ -154,10 +154,11 @@ type PopoverProps = {
 
 /**
  * A button that opens a panel of details under it, in the disclosure pattern of a non-modal dialog. A click opens and
- * pins the panel and moves the focus to its first link or button, or to the panel itself while its links are on their
- * way, so that Tab reaches them; a second click closes it. Resting the pointer on `hoverTrigger` opens the panel without
- * moving the focus, and a click then pins it. A click outside, Escape, or Tab past the last link closes the panel, and
- * the focus goes back to the button.
+ * pins the panel. Then the focus moves to the first link or button in the panel, or to the panel itself if its links
+ * have not loaded, so that Tab reaches them. A second click closes the panel. Resting the pointer on `hoverTrigger`
+ * opens the panel without moving the focus, and a click then pins it. A click outside, Escape, Shift+Tab from the start
+ * of the panel, or Tab past the last link closes the panel. After Escape or Shift+Tab, the focus returns to the button.
+ * After Tab, the focus moves to the element after the button.
  */
 export const Popover = ({ trigger, hoverTrigger, triggerClassName, label, children }: PopoverProps) => {
   const buttonRef = useRef<HTMLButtonElement>(null)
@@ -185,7 +186,7 @@ export const Popover = ({ trigger, hoverTrigger, triggerClassName, label, childr
       event.preventDefault()
       close()
     } else if (!event.shiftKey && document.activeElement === last) {
-      // The focus goes back to the button before the browser moves it, so Tab continues from the button.
+      // close() returns the focus to the button before the browser moves the focus, so Tab continues from the button.
       close()
     }
   }

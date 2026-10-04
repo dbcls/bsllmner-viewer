@@ -1,7 +1,7 @@
 // Condition DSL grammar (Lark LALR(1)). The grammar is the Lucene subset used by
 // the DDBJ Search API `/db-portal/*` endpoints; a condition string parses to an
-// AST of the same shape in both. Free text and wildcards are accepted by the
-// grammar and rejected by validation, so error positions stay comparable.
+// AST of the same shape in both. A wildcard value is accepted by the grammar
+// and rejected by validation, so error positions stay comparable.
 
 start: or_expr
 
@@ -12,12 +12,11 @@ not_expr: NOT atom   -> not_op
 ?atom: field_clause
      | free_text_atom
      | "(" or_expr ")"
-// Field name and free-text token share the WORD terminal; the parser
-// distinguishes the two by 1-token lookahead on the following ``:``.
+// A field name and a free-text word are both WORD tokens. The parser reads
+// one token ahead: a WORD followed by ``:`` is a field name.
 field_clause: WORD ":" value
-// Space-separated bare words (e.g. ``cancer tumor``) collapse into a single
-// free-text value; the compiler AND-combines the intra-value spaces
-// (``multi_match.operator=and``).
+// Space-separated bare words (e.g. ``cancer tumor``) become one free-text
+// value. The compiler requires every word of the value to match.
 free_text_atom: PHRASE -> ft_phrase
               | WORD+  -> ft_word
 
@@ -35,16 +34,21 @@ AND.10: /AND(?![^\s:()\[\]"'{}^~*?\/])/
 OR.10: /OR(?![^\s:()\[\]"'{}^~*?\/])/
 NOT.10: /NOT(?![^\s:()\[\]"'{}^~*?\/])/
 
-PHRASE.5: /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'/
+// A single-quoted phrase closes at a `'` that a space, `)`, or the end follows. A
+// `'` inside the phrase that another character follows is part of the phrase,
+// as in 'Alzheimer's disease'.
+PHRASE.5: /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.|'(?=[^\s)]))*'(?![^\s)])/
 RANGE.5: /\[[^\s\]]+\s+TO\s+[^\s\]]+\]/
 DATE.4: /\d{4}-\d{2}-\d{2}/
-// WILDCARD is intentionally a narrower character class than WORD: only
-// alphanumerics, `_`, `-`, `.` plus the wildcard markers `*` / `?`.
-// Symbol-bearing tokens like ``HIF-1*`` / ``COVID-19*`` must parse as
-// wildcards so users can prefix-search gene / disease names, but Lucene /
-// Solr metacharacters (`\`, `+`, leading `-`, `!`, `|`, `&`, `<`, `>`, `=`)
-// are kept out at the grammar level to avoid downstream escape bugs.
+// WILDCARD is a narrower character class than WORD. A WILDCARD token has one
+// wildcard marker (`*` or `?`), with ASCII letters, digits, `_`, `-`, and `.`
+// before and after it. A wildcard value parses, so that validation rejects it
+// with the position of its clause. A wildcard marker in a bare word is a
+// syntax error.
 WILDCARD.3: /[A-Za-z0-9_\-.]*[*?][A-Za-z0-9_\-.]*/
-WORD.1: /[^\s:()\[\]"{}^~*?\/]+/
+// A WORD does not start where a single-quoted phrase starts, so a closed '...'
+// after a word is a syntax error, as a phrase next to a word is. A `'` that no
+// closing `'` follows starts a word, as in `'s`.
+WORD.1: /(?!'(?:[^'\\]|\\.|'(?=[^\s)]))*'(?![^\s)]))[^\s:()\[\]"{}^~*?\/]+/
 
 %ignore /\s+/

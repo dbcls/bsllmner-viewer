@@ -63,13 +63,16 @@ describe("useOutsidePointer", () => {
     "calls onOutside exactly when a press is outside every ref",
     (count, index, inside, kind) => {
       const onOutside = vi.fn()
-      render(<Harness open onOutside={onOutside} count={count} />)
-      const id = inside ? `child-${index % count}` : "outside"
-      const target = screen.getByTestId(id)
-      if (kind === "mouse") fireEvent.mouseDown(target)
-      else fireEvent.touchStart(target)
-      expect(onOutside).toHaveBeenCalledTimes(inside ? 0 : 1)
-      cleanup()
+      const { unmount } = render(<Harness open onOutside={onOutside} count={count} />)
+      try {
+        const id = inside ? `child-${index % count}` : "outside"
+        const target = screen.getByTestId(id)
+        if (kind === "mouse") fireEvent.mouseDown(target)
+        else fireEvent.touchStart(target)
+        expect(onOutside).toHaveBeenCalledTimes(inside ? 0 : 1)
+      } finally {
+        unmount()
+      }
     },
   )
 })

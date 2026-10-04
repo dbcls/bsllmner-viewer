@@ -7,7 +7,7 @@ type ToggleProps = {
   label: ReactNode
   checked: boolean
   onChange: () => void
-  /** The switch is shown but cannot change, as when what it shows or hides is not there. */
+  /** The switch is shown but cannot be changed, for example when there is nothing for it to show or hide. */
   disabled?: boolean
 }
 

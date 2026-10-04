@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from bsllmner_viewer.dsl.ast import BoolOp, FieldClause, FreeText, Node, Range, not_
+from bsllmner_viewer.dsl.ast import BoolOp, FieldClause, FreeText, Node, Range, not_, structurally_equal
 from bsllmner_viewer.dsl.errors import DslError, ErrorType
 from bsllmner_viewer.dsl.fields import FieldSet
 from bsllmner_viewer.dsl.parser import parse
@@ -88,7 +88,7 @@ def test_parse_wildcard_is_a_wildcard_clause() -> None:
 
 
 @pytest.mark.parametrize("dsl", ["", "   ", "disease:", "(disease:a", "disease:a OR", "disease:a ^2", "title:/re/"])
-def test_parse_syntax_error_raises_unexpected_token(dsl: str) -> None:
+def test_parse_syntax_error_or_blank_string_raises_unexpected_token(dsl: str) -> None:
     with pytest.raises(DslError) as info:
         parse(dsl)
     assert info.value.type is ErrorType.unexpected_token
@@ -172,3 +172,82 @@ def test_parse_reads_an_operator_before_a_parenthesis_a_quote_or_a_space(dsl: st
     ast = parse(dsl)
     assert isinstance(ast, BoolOp)
     assert ast.op == op
+
+
+@pytest.mark.parametrize(
+    "dsl",
+    ['"breast cancer" organoid', 'organoid "breast cancer"', '"a" "b"', "'a b' x", "x 'a b'", "x 'a' y"],
+)
+def test_parse_a_phrase_next_to_a_word_without_an_operator_is_an_unexpected_token(dsl: str) -> None:
+    with pytest.raises(DslError) as info:
+        parse(dsl)
+    assert info.value.type is ErrorType.unexpected_token
+
+
+@pytest.mark.parametrize(
+    ("dsl", "expected"),
+    [
+        ("'s", FreeText("'s")),
+        ("x 's", FreeText("x 's")),
+        ("x 's y's", FreeText("x 's y's")),
+        ("'a b'c", FreeText("'a b'c")),
+        ("x '", FreeText("x '")),
+        ("'Alzheimer's disease'", FreeText("Alzheimer's disease", is_phrase=True)),
+        ("('a b')", FreeText("a b", is_phrase=True)),
+    ],
+)
+def test_parse_reads_a_single_quote_that_no_closing_quote_follows_as_part_of_a_word(
+    dsl: str, expected: FreeText
+) -> None:
+    assert structurally_equal(parse(dsl), expected)
+
+
+def test_parse_reads_a_word_that_starts_with_an_unclosed_single_quote_after_an_operator_or_as_a_value() -> None:
+    assert structurally_equal(parse("x AND 's"), BoolOp(op="AND", children=(FreeText("x"), FreeText("'s"))))
+    assert structurally_equal(parse("NOT's"), BoolOp(op="NOT", children=(FreeText("'s"),)))
+    node = parse("title:'x")
+    assert isinstance(node, FieldClause)
+    assert (node.value_kind, node.value) == ("word", "'x")
+
+
+def test_parse_a_phrase_next_to_a_word_with_an_operator_is_accepted() -> None:
+    node = parse('"breast cancer" AND organoid')
+    assert isinstance(node, BoolOp)
+    assert [type(c) for c in node.children] == [FreeText, FreeText]
+
+
+def _alternating_groups(groups: int) -> str:
+    """A condition whose groups alternate between OR and AND so that no level is flattened into its parent."""
+    dsl = 'disease:"MONDO:0"'
+    for level in range(1, groups + 1):
+        op = "AND" if level % 2 else "OR"
+        dsl = f'disease:"MONDO:{level}" {op} ({dsl})'
+    return dsl
+
+
+def test_validate_accepts_groups_nested_five_levels_deep_and_rejects_six() -> None:
+    fields = FieldSet(("disease",))
+    validate(parse(_alternating_groups(5)), fields)
+    with pytest.raises(DslError) as info:
+        validate(parse(_alternating_groups(6)), fields)
+    assert info.value.type is ErrorType.nest_depth_exceeded
+    assert "nest depth 6 " in info.value.detail
+
+
+def test_validate_accepts_negations_nested_five_levels_deep_and_rejects_six() -> None:
+    fields = FieldSet(("disease",))
+    validate(parse("NOT (" * 5 + 'disease:"MONDO:1"' + ")" * 5), fields)
+    with pytest.raises(DslError) as info:
+        validate(parse("NOT (" * 6 + 'disease:"MONDO:1"' + ")" * 6), fields)
+    assert info.value.type is ErrorType.nest_depth_exceeded
+
+
+@pytest.mark.parametrize(
+    ("dsl", "column"),
+    [("disease:a OR", 11), ("(disease:a", 10), ("disease:a ^2", 11), ("title:/re/", 7), ("a OR b)", 7)],
+)
+def test_parse_syntax_error_reports_the_column_of_the_unexpected_token(dsl: str, column: int) -> None:
+    with pytest.raises(DslError) as info:
+        parse(dsl)
+    assert info.value.type is ErrorType.unexpected_token
+    assert info.value.column == column

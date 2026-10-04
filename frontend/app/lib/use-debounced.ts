@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react"
 
-/** The value, as it was `delay` milliseconds ago without a change in between. */
+/**
+ * The latest value that has stayed the same for `delay` milliseconds. The first value is returned at once. While the
+ * value keeps changing, the previous result is returned.
+ */
 export const useDebounced = <T>(value: T, delay: number): T => {
   const [debounced, setDebounced] = useState(value)
   useEffect(() => {

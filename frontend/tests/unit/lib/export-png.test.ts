@@ -18,10 +18,12 @@ describe("downloadPngMarkup", () => {
   const original = { create: URL.createObjectURL, revoke: URL.revokeObjectURL }
   let saved: Blob | undefined
   let sizes: number[]
+  let heights: number[]
 
   /** A canvas that makes no image when it holds more than `limit` pixels, as a browser with a smaller canvas limit does. */
   const stubBrowser = (limit: number) => {
     sizes = []
+    heights = []
     saved = undefined
     URL.createObjectURL = vi.fn((b: Blob | MediaSource) => {
       saved = b as Blob
@@ -37,6 +39,7 @@ describe("downloadPngMarkup", () => {
     vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({ fillRect: vi.fn(), drawImage: vi.fn(), set fillStyle(_: string) { /* the color is not read */ } } as unknown as CanvasRenderingContext2D)
     vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation(function (this: HTMLCanvasElement, callback) {
       sizes.push(this.width)
+      heights.push(this.height)
       callback(this.width * this.height > limit ? null : new Blob([PIXEL], { type: "image/png" }))
     })
   }
@@ -81,6 +84,30 @@ describe("downloadPngMarkup", () => {
     stubBrowser(10)
     await expect(downloadPngMarkup("x.png", svg, 100, 100)).rejects.toThrow("could not make the PNG")
     expect(sizes).toEqual([400, 200, 100])
+    expect(saved).toBeUndefined()
+  })
+
+  it("draws the canvas at the width and the height of the figure times the scale", async () => {
+    stubBrowser(Infinity)
+    await downloadPngMarkup("x.png", svg, 100, 50)
+    expect([sizes, heights]).toEqual([[400], [200]])
+  })
+
+  it("fails and saves nothing when the browser cannot render the SVG", async () => {
+    stubBrowser(Infinity)
+    vi.stubGlobal("Image", class {
+      src = ""
+      decode = async () => Promise.reject(new Error("bad image"))
+    })
+    await expect(downloadPngMarkup("x.png", svg, 100, 50)).rejects.toThrow("could not render the SVG")
+    expect(sizes).toEqual([])
+    expect(saved).toBeUndefined()
+  })
+
+  it("fails and saves nothing when the browser gives no canvas to draw on", async () => {
+    stubBrowser(Infinity)
+    vi.mocked(HTMLCanvasElement.prototype.getContext).mockReturnValue(null)
+    await expect(downloadPngMarkup("x.png", svg, 100, 50)).rejects.toThrow("could not make the PNG")
     expect(saved).toBeUndefined()
   })
 })

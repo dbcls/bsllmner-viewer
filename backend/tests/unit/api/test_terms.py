@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import json
+from collections.abc import Iterator
 from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
 
-from tests.synthetic import SYNONYMS, term_tier
+from bsllmner_viewer.api.app import create_app
+from bsllmner_viewer.build.ingest import build_full
+from bsllmner_viewer.build.manifest import load_manifest
+from tests.synthetic import ONTOLOGIES, SYNONYMS, generate, term_tier
 
 QUERIES = ["", "cancer", "breast", "mammary", "neoplasm", "muscle", "k562", "ad", "e", "MONDO", "carcinoma"]
 CONDITIONS = [{}, {"q": "library_strategy:RNA-Seq", "unit": "sra-experiment", "facetSelfExclude": "true"}]
@@ -68,3 +73,72 @@ def test_terms_search_names_the_matched_synonym_in_its_own_case(client: TestClie
     assert [(h["termId"], h["matchedSynonym"]) for h in _hits(client, "k562")] == [("CVCL:0004", "K562")]
     neoplasm = _hits(client, "neoplasm", field="disease")
     assert [(h["termId"], h["matchedSynonym"]) for h in neoplasm] == [("MONDO:0004992", "malignant neoplasm")]
+
+
+def test_term_parents_are_the_direct_parents_of_the_ontology_and_empty_for_a_root(client: TestClient) -> None:
+    for terms in ONTOLOGIES.values():
+        for term_id, _, _, parents in terms:
+            response = client.get(f"/api/terms/{term_id}")
+            assert response.status_code == 200, term_id
+            assert {p["termId"] for p in response.json()["parents"]} == set(parents), term_id
+            assert (response.json()["parents"] == []) == (not parents), term_id
+
+
+ABSENT = "MONDO:9999999"
+OBSOLETE = "OBS:1"
+
+
+@pytest.fixture(scope="module")
+def odd_client(tmp_path_factory: pytest.TempPathFactory) -> Iterator[tuple[TestClient, dict[str, str]]]:
+    """A store whose ontology files have a term of an unknown prefix, and whose run result uses two terms that the
+    ontology files do not have: one that is absent and one that every file marks obsolete. Also returns the accession
+    of the BioSample that has each of the two."""
+    root = tmp_path_factory.mktemp("odd")
+    synthetic = generate(root, seed=5, n_biosamples=12, n_runs=2)
+    with (root / "ontology" / "gene.obo").open("a") as f:
+        f.write("[Term]\nid: GO:0008150\nname: biological process\n\n")
+    result = root / "results" / "select_run1.json"
+    run2_accessions = {
+        e["extract"]["accession"] for e in json.loads((root / "results" / "select_run2.json").read_text())["entries"]
+    }
+    document = json.loads(result.read_text())
+    holders: dict[str, str] = {}
+    for term_id, label in ((ABSENT, "absent term"), (OBSOLETE, "obsolete term")):
+        for entry in document["entries"]:
+            accession = entry["extract"]["accession"]
+            items = entry["results"]["tissue"]
+            if accession in run2_accessions or accession in holders.values() or not items:
+                continue
+            items[0].update({"term_id": term_id, "label": label})
+            holders[term_id] = accession
+            break
+    assert set(holders) == {ABSENT, OBSOLETE}
+    result.write_text(json.dumps(document))
+    store = root / "store" / "odd.duckdb"
+    built = build_full(load_manifest(synthetic.manifest), store, workers=1)
+    assert built.ok, built.problems
+    with TestClient(create_app(store)) as client:
+        yield client, holders
+
+
+def test_term_with_an_unknown_prefix_has_no_url_and_its_prefix_as_the_ontology_name(
+    odd_client: tuple[TestClient, dict[str, str]],
+) -> None:
+    client, _ = odd_client
+    body = client.get("/api/terms/GO:0008150").json()
+    assert body["url"] is None
+    assert body["ontology"] == {"prefix": "GO", "name": "GO"}
+    assert {"prefix": "GO", "name": "GO"} in client.get("/api/dataset").json()["ontologies"]
+
+
+@pytest.mark.parametrize("term_id", [ABSENT, OBSOLETE])
+def test_term_that_the_reference_does_not_have_matches_by_its_id_and_only_itself(
+    odd_client: tuple[TestClient, dict[str, str]], term_id: str
+) -> None:
+    client, holders = odd_client
+    body = client.get(f"/api/terms/{term_id}").json()
+    assert client.get(f"/api/terms/{term_id}").status_code == 200
+    assert body["label"] == {ABSENT: "absent term", OBSOLETE: "obsolete term"}[term_id]
+    assert body["parents"] == []
+    items = client.get("/api/entries/biosample", params={"q": f'tissue:"{term_id}"'}).json()["items"]
+    assert [item["identifier"] for item in items] == [holders[term_id]]

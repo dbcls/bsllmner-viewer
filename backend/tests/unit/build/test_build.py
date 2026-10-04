@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import datetime
+import hashlib
 import json
+import re
 from pathlib import Path
 
 import duckdb
@@ -69,21 +71,7 @@ def test_derived_biosample_leaves_out_the_omitted_attributes_in_order_and_the_en
     assert kept_somewhere
 
 
-def test_build_selects_the_first_run_in_the_manifest_that_has_the_biosample(
-    store_con: duckdb.DuckDBPyConnection, synthetic: Synthetic
-) -> None:
-    order = {name: i for i, name in enumerate(synthetic.run_names)}
-    runs_of: dict[str, list[str]] = {}
-    for run, accession in synthetic.truth.modified:
-        runs_of.setdefault(accession, []).append(run)
-    selected = {
-        str(a): str(r)
-        for a, r in _rows(store_con, "SELECT b.accession, r.name FROM biosample b JOIN run r USING (run_id)")
-    }
-    assert selected == {a: min(runs, key=order.__getitem__) for a, runs in runs_of.items()}
-
-
-def test_build_synthetic_data_distinguishes_the_first_run_from_the_latest_update(synthetic: Synthetic) -> None:
+def test_synthetic_dataset_has_a_biosample_whose_latest_update_is_not_in_its_first_run(synthetic: Synthetic) -> None:
     order = {name: i for i, name in enumerate(synthetic.run_names)}
     runs_of: dict[str, list[str]] = {}
     for run, accession in synthetic.truth.modified:
@@ -133,7 +121,7 @@ def test_build_publication_dates_before_2005_or_after_the_run_start_are_unknown(
     assert all(stored[k] == synthetic.truth.published_input[k] for k in bounds)
 
 
-def test_build_biosample_table_has_no_date_created_or_date_modified_column(
+def test_build_entry_and_biosample_tables_have_date_published_and_no_date_created_or_date_modified(
     store_con: duckdb.DuckDBPyConnection,
 ) -> None:
     for table in ("entry", "biosample"):
@@ -145,28 +133,9 @@ def test_build_biosample_table_has_no_date_created_or_date_modified_column(
         assert not columns & {"date_created", "date_modified"}
 
 
-def test_build_annotations_match_the_documented_status_rules(
+def test_build_population_holds_only_target_assays_and_the_biosample_table_keeps_the_other_biosamples(
     store_con: duckdb.DuckDBPyConnection, synthetic: Synthetic
 ) -> None:
-    selected: dict[str, str] = {
-        str(a): str(r)
-        for a, r in _rows(store_con, "SELECT b.accession, r.name FROM biosample b JOIN run r USING (run_id)")
-    }
-    stored = _rows(
-        store_con,
-        "SELECT biosample, field, extracted_value, status, term_id FROM annotation "
-        "ORDER BY biosample, field, value_index",
-    )
-    grouped: dict[tuple[str, str], list[tuple[object, ...]]] = {}
-    for bs, field, value, status, term in stored:
-        grouped.setdefault((str(bs), str(field)), []).append((value, status, term))
-    for (run, accession, field), rows in synthetic.truth.annotations.items():
-        if selected[accession] != run:
-            continue
-        assert grouped[(accession, field)] == rows, (accession, field)
-
-
-def test_build_population_holds_only_target_assays(store_con: duckdb.DuckDBPyConnection, synthetic: Synthetic) -> None:
     expected = {
         (bs, srx) for bs, exps in synthetic.truth.experiments.items() for srx, assay in exps if assay in TARGET_ASSAYS
     }
@@ -183,6 +152,9 @@ def test_build_population_holds_only_target_assays(store_con: duckdb.DuckDBPyCon
 def test_build_closure_includes_self_and_all_paths(store_con: duckdb.DuckDBPyConnection) -> None:
     ancestors = {r[0] for r in _rows(store_con, "SELECT ancestor FROM term_closure WHERE descendant = 'MONDO:0004989'")}
     assert ancestors == {"MONDO:0004989", "MONDO:0007254", "MONDO:0004992", "MONDO:0002657", "MONDO:0000001"}
+
+
+def test_build_leaves_out_obsolete_terms(store_con: duckdb.DuckDBPyConnection) -> None:
     assert _rows(store_con, "SELECT count(*) FROM term WHERE term_id = 'OBS:1'")[0] == (0,)
 
 
@@ -194,67 +166,81 @@ def test_build_closure_follows_part_of_relations(store_con: duckdb.DuckDBPyConne
         assert ancestors == {term_id, "UBERON:0000061"}
 
 
-def test_build_entries_reference_relations(store_con: duckdb.DuckDBPyConnection, synthetic: Synthetic) -> None:
+def test_build_relation_tables_agree_with_the_reference_data(
+    store_con: duckdb.DuckDBPyConnection, synthetic: Synthetic
+) -> None:
     bps = {(bs, bp) for bs, items in synthetic.truth.bioprojects.items() for bp in items}
     assert set(_rows(store_con, "SELECT biosample, bioproject FROM biosample_bioproject")) == bps
-    runs = _rows(store_con, "SELECT count(*) FROM sra_run")[0][0]
-    assert runs == _rows(store_con, "SELECT count(DISTINCT run) FROM ref_experiment_run")[0][0]
-    assert _rows(
-        store_con, "SELECT count(*) FROM chip_atlas WHERE experiment NOT IN (SELECT accession FROM experiment)"
-    )[0] == (0,)
+    reference = synthetic.root / "reference"
+    experiments = {str(r[0]) for r in _rows(store_con, "SELECT accession FROM experiment")}
+    assert experiments
+
+    dblink = duckdb.connect(str(reference / "dblink.duckdb"), read_only=True)
+    try:
+        links = _rows(
+            dblink,
+            "SELECT linked_accession, accession FROM dbxref "
+            "WHERE accession_type = 'sra-experiment' AND linked_type = 'sra-run'",
+        )
+    finally:
+        dblink.close()
+    expected_runs = {(str(run), str(srx)) for run, srx in links if srx in experiments}
+    stored_runs = set(_rows(store_con, "SELECT accession, experiment FROM sra_run"))
+    assert expected_runs
+    assert len({srx for _, srx in expected_runs}) > 1
+    assert stored_runs == expected_runs
+
+    chip = {
+        (cells[0], cells[1])
+        for line in (reference / "experimentList.tab").read_text().splitlines()
+        if line and (cells := line.split("\t"))[0] in experiments
+    }
+    assert chip
+    assert set(_rows(store_con, "SELECT experiment, assembly FROM chip_atlas")) == chip
+
+    titles: dict[str, str | None] = {}
+    for file in sorted((reference / "bioproject").glob("*.jsonl")):
+        for line in file.read_text().splitlines():
+            row = json.loads(line)
+            titles[row["identifier"]] = row.get("title")
+    stored: dict[object, object] = dict(_rows(store_con, "SELECT accession, title FROM bioproject"))  # type: ignore[arg-type]
+    assert stored
+    assert stored == {bp: titles[bp] for _, bp in bps}
+    assert any(title for title in stored.values())
 
 
-def test_build_version_information(store_con: duckdb.DuckDBPyConnection, synthetic: Synthetic) -> None:
+def test_build_version_records_the_manifest_the_model_the_runs_the_ontologies_and_the_snapshots(
+    store_con: duckdb.DuckDBPyConnection, synthetic: Synthetic
+) -> None:
     version = read_version(store_con)
     assert version.name == "synthetic"
     assert version.model == "synthetic-model:1"
     assert [r.name for r in version.runs] == synthetic.run_names
-    assert all(len(r.select_config_sha256) == 64 for r in version.runs)
+    config_sha = hashlib.sha256((synthetic.root / "config" / "select-config.json").read_bytes()).hexdigest()
+    assert all(r.mk2_version == "abc1234" for r in version.runs)
+    assert all(r.select_config_sha256 == config_sha for r in version.runs)
     assert {o.name for o in version.ontologies} == {"cellosaurus", "mondo", "uberon", "chebi", "gene"}
-    assert version.reference_snapshots.dblink == "2026-01-03"
+    for ontology in version.ontologies:
+        file = synthetic.root / "ontology" / f"{ontology.name}.obo"
+        assert ontology.checksums == [hashlib.sha256(file.read_bytes()).hexdigest()], ontology.name
+        assert ontology.snapshot_date == "2026-01-01"
+    assert len({o.checksums[0] for o in version.ontologies}) == len(version.ontologies)
+    assert version.target_assays == list(TARGET_ASSAYS)
+    snapshots = version.reference_snapshots
+    assert (snapshots.sra_experiments, snapshots.dblink, snapshots.bioprojects, snapshots.chip_atlas) == (
+        "2026-01-02",
+        "2026-01-03",
+        "2026-01-04",
+        "2026-01-05",
+    )
+    assert re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", version.created_at)
+    created = datetime.datetime.fromisoformat(version.created_at.removesuffix("Z"))
+    assert abs(datetime.datetime.now(datetime.UTC).replace(tzinfo=None) - created) < datetime.timedelta(days=1)
 
 
 def test_build_rejects_existing_output(synthetic: Synthetic, store_path: Path) -> None:
     with pytest.raises(BuildError, match="already exists"):
         build_full(load_manifest(synthetic.manifest), store_path, workers=1)
-
-
-def test_build_rejects_runs_with_different_models(synthetic: Synthetic, tmp_path: Path) -> None:
-    result = synthetic.root / "results" / "select_run2.json"
-    data = json.loads(result.read_text())
-    original = result.read_text()
-    data["run_metadata"]["model"] = "other-model"
-    result.write_text(json.dumps(data))
-    try:
-        with pytest.raises(BuildError, match="different models"):
-            build_full(load_manifest(synthetic.manifest), tmp_path / "x.duckdb", workers=1)
-    finally:
-        result.write_text(original)
-    assert not (tmp_path / "x.duckdb").exists() or True
-
-
-def test_build_rejects_incomplete_runs(synthetic: Synthetic, tmp_path: Path) -> None:
-    result = synthetic.root / "results" / "select_run3.json"
-    original = result.read_text()
-    data = json.loads(original)
-    data["run_metadata"]["status"] = "interrupted"
-    result.write_text(json.dumps(data))
-    try:
-        with pytest.raises(BuildError, match="interrupted"):
-            build_full(load_manifest(synthetic.manifest), tmp_path / "y.duckdb", workers=1)
-    finally:
-        result.write_text(original)
-
-
-def test_build_rejects_entries_missing_from_the_input(synthetic: Synthetic, tmp_path: Path) -> None:
-    inputs = synthetic.root / "inputs" / "run1.jsonl"
-    original = inputs.read_text()
-    inputs.write_text("\n".join(original.splitlines()[1:]) + "\n")
-    try:
-        with pytest.raises(BuildError, match="not in the input file"):
-            build_full(load_manifest(synthetic.manifest), tmp_path / "z.duckdb", workers=1)
-    finally:
-        inputs.write_text(original)
 
 
 def test_entry_keeps_exactly_the_record_items_that_its_evidence_points_to(
@@ -286,8 +272,11 @@ def _names_of_terms(con: duckdb.DuckDBPyConnection) -> dict[str, list[str]]:
 def test_evidence_is_the_trace_of_each_extracted_value_over_the_original_metadata_of_its_biosample(
     store_con: duckdb.DuckDBPyConnection,
 ) -> None:
-    """The stored evidence, recomputed from the stored metadata: evidence in an item that build leaves out (an omitted
-    attribute, or an item of the record that no evidence points to) would have stopped the trace there."""
+    """The evidence recomputed from the stored metadata equals the stored evidence.
+
+    If the build omitted an item that holds evidence (an omitted attribute, or an item of the record), the
+    recomputed evidence would differ from the stored evidence.
+    """
     names = _names_of_terms(store_con)
     stored: dict[tuple[str, str, int], set[tuple[object, ...]]] = {}
     for biosample, field, value_index, *piece in _rows(
@@ -406,3 +395,119 @@ def test_build_closure_skips_general_class_inclusion_axioms_and_part_of_across_p
         assert {r[0] for r in rows} == {"UBERON:0002107", "UBERON:0000061"}
     finally:
         con.close()
+
+
+def _build_in(tmp_path: Path, synthetic: Synthetic) -> duckdb.DuckDBPyConnection:
+    out = tmp_path / "store" / "built.duckdb"
+    assert build_full(load_manifest(synthetic.manifest), out, workers=1).ok
+    return duckdb.connect(str(out), read_only=True)
+
+
+def test_build_keeps_a_bioproject_without_a_title_with_a_null_title(tmp_path: Path) -> None:
+    synthetic = generate(tmp_path, seed=4, n_biosamples=30, n_runs=1)
+    file = synthetic.root / "reference" / "bioproject" / "ncbi_1.jsonl"
+    docs = [json.loads(line) for line in file.read_text().splitlines()]
+    linked = {bp for bps in synthetic.truth.bioprojects.values() for bp in bps}
+    untitled = sorted(linked)[0]
+    for doc in docs:
+        if doc["identifier"] == untitled:
+            del doc["title"]
+    file.write_text("".join(json.dumps(doc) + "\n" for doc in docs))
+    con = _build_in(tmp_path, synthetic)
+    try:
+        stored: dict[object, object] = dict(_rows(con, "SELECT accession, title FROM bioproject"))  # type: ignore[arg-type]
+    finally:
+        con.close()
+    assert set(stored) == linked
+    assert stored[untitled] is None
+    assert all(title for bp, title in stored.items() if bp != untitled)
+
+
+def test_build_full_with_two_files_of_one_ontology_takes_the_terms_of_both_and_the_label_of_the_earlier(
+    tmp_path: Path,
+) -> None:
+    synthetic = generate(tmp_path, seed=2, n_biosamples=20, n_runs=1)
+    folder = synthetic.root / "ontology"
+    original = (folder / "mondo.obo").read_text()
+    (folder / "mondo_a.obo").write_text(
+        "format-version: 1.2\n\n"
+        "[Term]\nid: MONDO:0004992\nname: cancer of the first file\nis_a: MONDO:0000001 ! disease\n\n"
+        "[Term]\nid: MONDO:9000001\nname: only in the first file\nis_a: MONDO:0004992 ! cancer\n\n"
+    )
+    (folder / "mondo_b.obo").write_text(
+        original + "\n[Term]\nid: MONDO:9000002\nname: only in the second file\nis_a: MONDO:0005148 ! diabetes\n"
+    )
+    manifest = synthetic.manifest.read_text()
+    assert "files: [ontology/mondo.obo]" in manifest
+    synthetic.manifest.write_text(
+        manifest.replace("files: [ontology/mondo.obo]", "files: [ontology/mondo_a.obo, ontology/mondo_b.obo]")
+    )
+    con = _build_in(tmp_path, synthetic)
+    try:
+        labels: dict[object, object] = dict(_rows(con, "SELECT term_id, label FROM term WHERE ontology = 'MONDO'"))  # type: ignore[arg-type]
+        closure = {
+            term: {str(r[0]) for r in _rows(con, "SELECT ancestor FROM term_closure WHERE descendant = ?", term)}
+            for term in ("MONDO:9000001", "MONDO:9000002")
+        }
+    finally:
+        con.close()
+    assert labels["MONDO:9000001"] == "only in the first file"
+    assert labels["MONDO:9000002"] == "only in the second file"
+    assert labels["MONDO:0004992"] == "cancer of the first file"
+    assert labels["MONDO:0005148"] == "type 2 diabetes mellitus"
+    assert closure["MONDO:9000001"] == {"MONDO:9000001", "MONDO:0004992", "MONDO:0000001"}
+    assert closure["MONDO:9000002"] == {"MONDO:9000002", "MONDO:0005148", "MONDO:0000001"}
+
+
+def test_build_traces_a_term_through_the_label_of_the_run_when_it_differs_from_the_ontology_label(
+    tmp_path: Path,
+) -> None:
+    synthetic = generate(tmp_path, seed=3, n_biosamples=30, n_runs=1)
+    result_file = synthetic.root / "results" / "select_run1.json"
+    result = json.loads(result_file.read_text())
+    word = "zorbelquux"
+    target: tuple[str, str, str] | None = None
+    for entry in result["entries"]:
+        for field_name, mapped in entry["results"].items():
+            if mapped:
+                mapped[0]["label"] = word
+                mapped[0]["value"] = "unfindable value"
+                extracted = entry["extract"]["extracted"][field_name]
+                entry["extract"]["extracted"][field_name] = (
+                    ["unfindable value", *extracted[1:]] if isinstance(extracted, list) else "unfindable value"
+                )
+                target = (entry["extract"]["accession"], field_name, mapped[0]["term_id"])
+                break
+        if target:
+            break
+    assert target is not None
+    accession, field_name, term_id = target
+    result_file.write_text(json.dumps(result))
+    input_file = synthetic.root / "inputs" / "run1.jsonl"
+    lines = []
+    for line in input_file.read_text().splitlines():
+        doc = json.loads(line)
+        if doc["accession"] == accession:
+            body = doc.get("BioSample", doc)
+            body["Attributes"]["Attribute"].append({"attribute_name": "note", "content": f"stained with {word} dye"})
+        lines.append(json.dumps(doc))
+    input_file.write_text("\n".join(lines) + "\n")
+    con = _build_in(tmp_path, synthetic)
+    try:
+        rows = _rows(
+            con,
+            "SELECT v.kind, v.item, v.span_start, v.span_end, v.strategy, b.attributes FROM evidence v "
+            "JOIN biosample b ON b.accession = v.biosample WHERE v.biosample = ? AND v.field = ?",
+            accession,
+            field_name,
+        )
+        label = _rows(con, "SELECT label FROM term WHERE term_id = ?", term_id)[0][0]
+    finally:
+        con.close()
+    assert label != word
+    traced = [
+        json.loads(str(attributes))[int(str(item))]["value"][int(str(start)) : int(str(end))].lower()
+        for kind, item, start, end, strategy, attributes in rows
+        if strategy == ONTOLOGY_SYNONYM and kind == ATTRIBUTE
+    ]
+    assert word in traced

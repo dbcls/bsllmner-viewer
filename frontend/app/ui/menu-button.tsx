@@ -32,7 +32,7 @@ type MenuButtonProps = {
   /** The glyph of the action, on the button and before every item. */
   icon: IconName
   items: readonly (MenuButtonItem | MenuButtonGroup)[]
-  /** `text` is text that acts as a button. `bar` is a secondary button that fills the width of its column, with a menu of the width of a column of the condition bar. */
+  /** `text` is text that acts as a button. `bar` is a secondary button that fills the width of its column. */
   appearance?: "text" | "bar"
   /** The hints are in a monospace font, for identifiers. */
   monoHints?: boolean
@@ -111,7 +111,7 @@ export const MenuButton = ({ label, icon, items, appearance = "text", monoHints 
         event.stopPropagation()
         return close()
       case "Tab":
-        // The focus goes back to the button before the browser moves it, so Tab continues from the button.
+        // close() returns the focus to the button before the browser moves the focus, so Tab continues from the button.
         return close()
     }
   }

@@ -1,5 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query"
-import { act, fireEvent, render, screen } from "@testing-library/react"
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { createMemoryRouter, RouterProvider } from "react-router"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -40,6 +40,8 @@ import { ConditionPanel } from "~/features/workspace/condition-panel"
 import { useWorkspaceState } from "~/features/workspace/state"
 import { useCondition } from "~/features/workspace/use-condition"
 
+// The data router builds each Request with the AbortSignal of jsdom. The Request of Node (undici) accepts only its own
+// AbortSignal and throws a TypeError. The Request class below drops the signal, so the data router can build its requests.
 const NativeRequest = globalThis.Request
 globalThis.Request = class extends NativeRequest {
   constructor(input: RequestInfo | URL, init?: RequestInit) {
@@ -74,10 +76,7 @@ const mount = async () => {
 
 const clearAndRelease = async () => {
   act(() => hook.clear())
-  await flush()
   await act(async () => pending[0]?.release())
-  await flush()
-  await flush()
 }
 
 beforeEach(() => {
@@ -91,16 +90,14 @@ describe("Keyword box when its change is dropped", () => {
     fireEvent.focus(box)
     fireEvent.change(box, { target: { value: "liver" } })
     fireEvent.blur(box)
-    await flush()
-    expect(pending).toHaveLength(1)
+    await waitFor(() => expect(pending).toHaveLength(1))
     await clearAndRelease()
     expect(new URLSearchParams(router.state.location.search).get("q")).toBeNull()
-    expect(box).toHaveValue("")
+    await waitFor(() => expect(box).toHaveValue(""))
     fireEvent.focus(box)
     fireEvent.change(box, { target: { value: "liver" } })
     fireEvent.blur(box)
-    await flush()
-    expect(pending).toHaveLength(2)
+    await waitFor(() => expect(pending).toHaveLength(2))
     expect(pending[1]?.body.keyword).toBe("liver")
   })
 })
@@ -113,16 +110,14 @@ describe("Publication date when its change is dropped", () => {
     fireEvent.change(from, { target: { value: "2020-01-01" } })
     fireEvent.change(to, { target: { value: "2020-12-31" } })
     fireEvent.blur(to)
-    await flush()
-    expect(pending).toHaveLength(1)
+    await waitFor(() => expect(pending).toHaveLength(1))
     await clearAndRelease()
     expect(new URLSearchParams(router.state.location.search).get("q")).toBeNull()
-    expect(from).toHaveValue("")
+    await waitFor(() => expect(from).toHaveValue(""))
     expect(to).toHaveValue("")
     fireEvent.change(from, { target: { value: "2020-01-01" } })
     fireEvent.change(to, { target: { value: "2020-12-31" } })
     fireEvent.blur(to)
-    await flush()
-    expect(pending).toHaveLength(2)
+    await waitFor(() => expect(pending).toHaveLength(2))
   })
 })

@@ -3,7 +3,10 @@ import { expect, type Locator, type Page, test } from "@playwright/test"
 import { dataset, distribution, select } from "./_api"
 import { conditionPanel, conditionRegion, workspaceUrl } from "./_helpers"
 
-/** Whether the focus ring around the element (an outline and a ring of 4px, 5px out from its box) is drawn whole, not cut off by a box that clips its content. */
+/**
+ * Whether the focus ring of the element is drawn whole. The ring reaches 4px out from the box of the element. The check
+ * requires 5px of room, so that no ancestor that clips its content cuts the ring.
+ */
 const ringIsWhole = (element: Locator): Promise<boolean> =>
   element.evaluate((target) => {
     const ring = 5
@@ -24,7 +27,7 @@ const hasOutline = (element: Locator): Promise<boolean> => element.evaluate((tar
 const pressed = (page: Page, x: number, y: number) => page.evaluate(({ px, py }) => document.elementFromPoint(px, py)?.outerHTML.slice(0, 80) ?? "", { px: x, py: y })
 
 test.describe("layout", () => {
-  test("the skip link shows when it has the focus, and leads to the main content", async ({ page }) => {
+  test("the skip link shows when it has the focus, and the page has one main element with the id main", async ({ page }) => {
     await page.goto("/")
     await page.keyboard.press("Tab")
     const skip = page.getByRole("link", { name: "Skip to main content" })
@@ -35,7 +38,7 @@ test.describe("layout", () => {
     await expect(page.locator("main#main")).toHaveCount(1)
   })
 
-  test("the values of an annotation stay inside their cell, cut with an ellipsis when they are longer", async ({ page, request }) => {
+  test("the values of an annotation do not extend beyond the right edge of their cell", async ({ page, request }) => {
     const [cellLine] = (await distribution(request, "cell_line")).elements
     if (!cellLine) throw new Error("the dataset has no cell line")
     await page.goto(workspaceUrl({ q: await select(request, null, cellLine.clauses), perPage: "100" }))

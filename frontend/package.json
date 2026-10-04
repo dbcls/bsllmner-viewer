@@ -14,7 +14,7 @@
     "lint:fix": "eslint . --fix",
     "test": "vitest run",
     "test:e2e": "playwright test --config=tests/e2e/playwright.config.ts",
-    "gen:api-types": "openapi-typescript ${BSLLMNER_VIEWER_OPENAPI_URL:-http://api:8000/api/openapi.json} -o app/lib/api/openapi-types.ts"
+    "gen:api-types": "openapi-typescript ../backend/openapi.json -o app/lib/api/openapi-types.ts"
   },
   "dependencies": {
     "@fontsource/ibm-plex-mono": "^5.2.5",

@@ -39,7 +39,7 @@ describe("backLinkState", () => {
     expect(backHref(structuredClone(backLinkState(search)))).toBe(backHref(backLinkState(search)))
   })
 
-  test("of the whole dataset returns to the bare entries page", () => {
+  test("returns to the bare entries page for the state of the whole dataset", () => {
     expect(backHref(backLinkState(workspaceSearch(DEFAULTS)))).toBe("/entries")
   })
 })

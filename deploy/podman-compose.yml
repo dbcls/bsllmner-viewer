@@ -1,9 +1,10 @@
 # What podman-compose adds to compose.yml. podman-compose reads both files in this directory, and docker compose reads
 # only compose.yml.
 #
-# Each container writes its output to a file of its own in the directory log at the root of the checkout, and not to
-# the journal of the host, whose oldest lines go when the other services of the host write a lot. The directory must
-# exist before the containers start. Before a file grows past max-size, podman starts it again empty.
+# Each container writes its output to its own file in the directory log at the root of the checkout. The containers
+# do not write to the journal of the host, because the journal drops its oldest lines when the other services of the
+# host write a lot. The directory must exist before the containers start. When a file reaches max-size, podman
+# replaces the file with an empty file.
 services:
   api:
     logging:

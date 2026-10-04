@@ -1,5 +1,6 @@
 import { screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
+import type { ReactElement } from "react"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import type * as Client from "~/lib/api/client"
@@ -59,9 +60,13 @@ import { DistributionTab } from "~/features/workspace/distribution/distribution-
 import { HeatmapTab } from "~/features/workspace/heatmap/heatmap-tab"
 import { TREND_LINE } from "~/features/workspace/trend/trend-style"
 import { TrendTab } from "~/features/workspace/trend/trend-tab"
-import type { Condition } from "~/features/workspace/use-condition"
+import { type Condition, useCondition } from "~/features/workspace/use-condition"
 
-const condition = { isSelected: () => false, selected: [], toggle: vi.fn(), toggleNarrow: vi.fn() } as unknown as Condition
+const noUpdate = () => undefined
+const latestState = () => DEFAULTS
+
+/** Gives the view the condition of the real hook, for a page without a condition. */
+const WithCondition = ({ children }: { children: (condition: Condition) => ReactElement }) => children(useCondition(null, noUpdate, latestState))
 
 type Saved = { name: string; text: string }
 
@@ -103,7 +108,7 @@ describe("the files that the tabs save", () => {
   })
 
   /** Chooses `format` in the Export menu of the figure and gives the file that is saved. */
-  const save = async (figure: string, format: "TSV" | "SVG"): Promise<Saved> => {
+  const save = async (figure: string, format: "TSV" | "SVG" | "PNG"): Promise<Saved> => {
     const user = userEvent.setup()
     const button = await screen.findByRole("button", { name: `Export the ${figure}` })
     await vi.waitFor(() => expect(button).toBeEnabled())
@@ -117,7 +122,9 @@ describe("the files that the tabs save", () => {
   const svgOf = (saved: Saved) => new DOMParser().parseFromString(saved.text, "image/svg+xml")
 
   describe("Distribution", () => {
-    const render = (state: Partial<WorkspaceState> = {}) => renderWithQuery(<DistributionTab state={{ ...DEFAULTS, tab: "distribution", ...state }} condition={condition} onUnit={vi.fn()} onTermIds={vi.fn()} onAlert={vi.fn()} />)
+    const render = (state: Partial<WorkspaceState> = {}) => renderWithQuery(
+      <WithCondition>{(condition) => <DistributionTab state={{ ...DEFAULTS, tab: "distribution", ...state }} condition={condition} onUnit={vi.fn()} onTermIds={vi.fn()} onAlert={vi.fn()} />}</WithCondition>,
+    )
 
     it("saves the TSV with the elements, the part without a term, and the total", async () => {
       render()
@@ -143,14 +150,18 @@ describe("the files that the tabs save", () => {
       net.hold = false
       net.empty = true
       render()
-      await screen.findByText(/have a term in this field/)
+      expect(await screen.findAllByText(/have a term in this field/)).not.toHaveLength(0)
       expect(screen.getByRole("button", { name: "Export the Disease distribution" })).toBeDisabled()
     })
   })
 
   describe("Heatmap", () => {
     const render = (state: Partial<WorkspaceState> = {}) =>
-      renderWithQuery(<HeatmapTab state={{ ...DEFAULTS, tab: "heatmap", row: "disease", col: "cell_type", ...state }} condition={condition} update={vi.fn()} latest={() => DEFAULTS} replacing={false} setReplacing={vi.fn()} onAlert={vi.fn()} />)
+      renderWithQuery(
+        <WithCondition>
+          {(condition) => <HeatmapTab state={{ ...DEFAULTS, tab: "heatmap", row: "disease", col: "cell_type", ...state }} condition={condition} update={vi.fn()} latest={() => DEFAULTS} replacing={false} setReplacing={vi.fn()} onAlert={vi.fn()} />}
+        </WithCondition>,
+      )
 
     it("saves the TSV with the cells and the totals, named without ratio even when Cells is Ratio to expected", async () => {
       render({ color: "ratio" })
@@ -191,7 +202,13 @@ describe("the files that the tabs save", () => {
 
   describe("Trend", () => {
     const render = (state: Partial<WorkspaceState> = {}) =>
-      renderWithQuery(<TrendTab state={{ ...DEFAULTS, tab: "trend", q: "disease:D:1", trendField: "disease", trendAll: true, trendCondition: true, ...state }} condition={condition} update={vi.fn()} latest={() => DEFAULTS} replacing={false} setReplacing={vi.fn()} onAlert={vi.fn()} />)
+      renderWithQuery(
+        <WithCondition>
+          {(condition) => (
+            <TrendTab state={{ ...DEFAULTS, tab: "trend", q: "disease:D:1", trendField: "disease", trendAll: true, trendCondition: true, ...state }} condition={condition} update={vi.fn()} latest={() => DEFAULTS} replacing={false} setReplacing={vi.fn()} onAlert={vi.fn()} />
+          )}
+        </WithCondition>,
+      )
 
     it("saves the TSV with a row for each point of each line", async () => {
       render()
@@ -206,6 +223,7 @@ describe("the files that the tabs save", () => {
     it("saves the SVG named by the field and the publication year, with the line widths and radii of the page", async () => {
       render()
       const saved = await save("trend", "SVG")
+      expect(saved.name).toBe("trend-disease-biosample.svg")
       const svg = svgOf(saved)
       const texts = [...svg.querySelectorAll("text")].map((t) => t.textContent)
       expect(texts).toEqual(expect.arrayContaining(["Disease by publication year", "BioSamples"]))
@@ -224,6 +242,53 @@ describe("the files that the tabs save", () => {
       render()
       await vi.waitFor(() => expect(screen.getByRole("button", { name: "Export the trend" })).toBeDisabled())
       expect(await screen.findByText(/match this condition|No .* match/)).toBeTruthy()
+    })
+  })
+
+  describe("PNG", () => {
+    const PIXEL = Uint8Array.from(atob("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=="), (c) => c.charCodeAt(0))
+    const arrayBuffer = Blob.prototype.arrayBuffer
+
+    // jsdom has no image decoding, canvas drawing, or Blob.arrayBuffer, which every browser has.
+    beforeEach(() => {
+      vi.stubGlobal(
+        "Image",
+        class {
+          src = ""
+          decode = async () => undefined
+        },
+      )
+      vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({ fillRect: vi.fn(), drawImage: vi.fn(), set fillStyle(_: string) { /* the color is not read */ } } as unknown as CanvasRenderingContext2D)
+      vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation((callback) => callback(new Blob([PIXEL], { type: "image/png" })))
+      Blob.prototype.arrayBuffer ??= function (this: Blob) {
+        return new Promise<ArrayBuffer>((resolve) => {
+          const reader = new FileReader()
+          reader.onload = () => resolve(reader.result as ArrayBuffer)
+          reader.readAsArrayBuffer(this)
+        })
+      }
+    })
+
+    afterEach(() => {
+      Blob.prototype.arrayBuffer = arrayBuffer
+    })
+
+    const view = (tab: string, condition: Condition): ReactElement => {
+      const state = { ...DEFAULTS, tab: tab as WorkspaceState["tab"], q: tab === "trend" ? "disease:D:1" : null, row: "disease", col: "cell_type", trendField: "disease", trendAll: true, trendCondition: true }
+      if (tab === "distribution") return <DistributionTab state={state} condition={condition} onUnit={vi.fn()} onTermIds={vi.fn()} onAlert={vi.fn()} />
+      if (tab === "heatmap") return <HeatmapTab state={state} condition={condition} update={vi.fn()} latest={() => DEFAULTS} replacing={false} setReplacing={vi.fn()} onAlert={vi.fn()} />
+      return <TrendTab state={state} condition={condition} update={vi.fn()} latest={() => DEFAULTS} replacing={false} setReplacing={vi.fn()} onAlert={vi.fn()} />
+    }
+
+    it.each([
+      ["distribution", "Disease distribution", "distribution-disease-biosample.png"],
+      ["heatmap", "heatmap", "heatmap-disease-x-cell_type-biosample.png"],
+      ["trend", "trend", "trend-disease-biosample.png"],
+    ])("saves the PNG of the %s tab with the name of its SVG and the extension png", async (tab, figure, name) => {
+      renderWithQuery(<WithCondition>{(condition) => view(tab, condition)}</WithCondition>)
+      const saved = await save(figure, "PNG")
+      expect(saved.name).toBe(name)
+      expect(blobs[0]?.type).toBe("image/png")
     })
   })
 })

@@ -16,7 +16,7 @@ type ThProps = {
   children: ReactNode
   /** A fixed width for the column, whose header then ends in an ellipsis instead of widening it. */
   width?: string
-  /** The column stays put when the table scrolls sideways. */
+  /** The column does not move when the table scrolls sideways. */
   frozen?: boolean
   align?: "left" | "right"
 }
@@ -38,8 +38,9 @@ type TableMessageRowProps = {
 }
 
 /**
- * A row that holds one message in place of the rows of a table: that nothing matches, or that the rows could not be
- * loaded. The message brings its own space. The message stays at the left edge of the visible part, so that it is in view when the table scrolls sideways.
+ * A row that shows one message in place of the rows of a table, such as "nothing matches" or "the rows could not be
+ * loaded". The children set their own padding. The message is sticky at the left edge of the scroll area, so it stays in
+ * view when the table scrolls sideways.
  */
 export const TableMessageRow = ({ columns, children }: TableMessageRowProps) => (
   <tr>

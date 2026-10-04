@@ -14,9 +14,9 @@ const DOWNLOADS = [
 ] as const
 
 /**
- * The schema.org Dataset of the top page, for dataset search engines. The Dataset is the annotations of the RO-Crate, so
- * its creator and its license are those of the RO-Crate, and its description says that the license is that of the
- * annotations and where the rest of the data comes from. Its addresses are on the host that serves the page.
+ * The schema.org Dataset of the top page. The Dataset is the annotations of the RO-Crate, so its creator and its license
+ * are those of the RO-Crate. The description of the Dataset says that the license is that of the annotations, and where
+ * the rest of the data comes from. The URLs in the Dataset use the host that serves the page.
  */
 export const datasetSchema = (dataset: DatasetResponse, origin: string) => {
   const { name, createdAt, model } = dataset.datasetVersion

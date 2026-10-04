@@ -5,10 +5,12 @@ from __future__ import annotations
 import datetime
 
 import duckdb
+import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
 from bsllmner_viewer.build.derive import derive
+from bsllmner_viewer.build.errors import BuildError
 from bsllmner_viewer.store.schema import create_raw_tables
 
 BIOSAMPLES = ["SAMD1", "SAMD2", "SAMD3"]
@@ -23,9 +25,18 @@ entries = st.sets(st.tuples(st.sampled_from([1, 2]), st.sampled_from(BIOSAMPLES)
 ref_terms = st.lists(st.tuples(st.sampled_from(TERMS), st.integers(0, 2), st.sampled_from(["a", "b", None])))
 annotation_terms = st.lists(st.sampled_from([*TERMS, *UNLISTED_TERMS, None]), max_size=6)
 ref_experiments = st.lists(st.tuples(st.sampled_from(EXPERIMENTS), st.sampled_from(STRATEGIES)))
+# Rows that repeat an experiment with its one library strategy, or without a strategy.
+consistent_experiments = st.tuples(
+    st.fixed_dictionaries({e: st.sampled_from(STRATEGIES) for e in EXPERIMENTS}),
+    st.lists(st.tuples(st.sampled_from(EXPERIMENTS), st.booleans())),
+).map(lambda chosen: [(e, chosen[0][e] if with_strategy else None) for e, with_strategy in chosen[1]])
 links = st.lists(st.tuples(st.sampled_from(BIOSAMPLES), st.sampled_from(EXPERIMENTS)))
 ref_bioprojects = st.lists(st.tuples(st.sampled_from(BIOPROJECTS), st.sampled_from(["x", "y", None])))
 project_links = st.lists(st.tuples(st.sampled_from(BIOSAMPLES), st.sampled_from(BIOPROJECTS)))
+
+
+def label_of(term_id: str | None) -> str | None:
+    return None if term_id is None else f"run label of {term_id}"
 
 
 def _raw(
@@ -54,7 +65,14 @@ def _raw(
         for value_index, term_id in enumerate(annotated):
             con.execute(
                 "INSERT INTO entry_annotation VALUES (?, ?, 'disease', ?, 'v', ?, ?, ?)",
-                [run_id, accession, value_index, "unmapped" if term_id is None else "mapped_exact", term_id, term_id],
+                [
+                    run_id,
+                    accession,
+                    value_index,
+                    "unmapped" if term_id is None else "mapped_exact",
+                    term_id,
+                    label_of(term_id),
+                ],
             )
     for sql, rows in (
         ("INSERT INTO ref_term VALUES (?, 'MONDO', ?, ?)", terms),
@@ -68,7 +86,7 @@ def _raw(
     return con
 
 
-@given(entries, ref_terms, annotation_terms, ref_experiments, links, ref_bioprojects, project_links)
+@given(entries, ref_terms, annotation_terms, consistent_experiments, links, ref_bioprojects, project_links)
 def test_the_derived_biosamples_terms_experiments_and_bioprojects_have_one_row_per_key(
     entry_keys: set[tuple[int, str]],
     terms: list[tuple[str, int, str | None]],
@@ -88,3 +106,44 @@ def test_the_derived_biosamples_terms_experiments_and_bioprojects_have_one_row_p
     listed = {t for t, _, _ in terms}
     unlisted = {t for t in annotated if t is not None and t not in listed}
     assert {r[0] for r in con.execute("SELECT term_id FROM term").fetchall()} == listed | unlisted
+
+
+@given(entries, ref_terms, annotation_terms)
+def test_a_term_that_no_ontology_file_has_takes_the_label_of_the_run_and_is_its_own_closure(
+    entry_keys: set[tuple[int, str]], terms: list[tuple[str, int, str | None]], annotated: list[str | None]
+) -> None:
+    con = _raw(entry_keys, terms, annotated, [], [], [], [])
+    derive(con, ["RNA-Seq"])
+    listed = {t for t, _, _ in terms}
+    unlisted = {t for t in annotated if t is not None and t not in listed}
+    rows = con.execute("SELECT term_id, label, in_reference FROM term").fetchall()
+    assert {t for t, _, in_reference in rows if not in_reference} == unlisted
+    assert {t for t, _, in_reference in rows if in_reference} == listed
+    for term_id, label, in_reference in rows:
+        ancestors = {
+            r[0] for r in con.execute("SELECT ancestor FROM term_closure WHERE descendant = ?", [term_id]).fetchall()
+        }
+        assert ancestors == {term_id}
+        if not in_reference:
+            assert label == label_of(term_id) != term_id
+
+
+@given(entries, ref_experiments, links)
+def test_a_derived_experiment_takes_its_one_library_strategy_and_two_strategies_stop_the_derivation(
+    entry_keys: set[tuple[int, str]], experiments: list[tuple[str, str | None]], experiment_links: list[tuple[str, str]]
+) -> None:
+    con = _raw(entry_keys, [], [], experiments, experiment_links, [], [])
+    dataset = {accession for _, accession in entry_keys}
+    used = {experiment for biosample, experiment in experiment_links if biosample in dataset}
+    strategies: dict[str, set[str]] = {}
+    for experiment, strategy in experiments:
+        if strategy is not None:
+            strategies.setdefault(experiment, set()).add(strategy)
+    conflicting = sorted(e for e in used if len(strategies.get(e, set())) > 1)
+    if conflicting:
+        with pytest.raises(BuildError, match=conflicting[0]):
+            derive(con, ["RNA-Seq", "ChIP-Seq"])
+        return
+    derive(con, ["RNA-Seq", "ChIP-Seq"])
+    stored = dict(con.execute("SELECT accession, library_strategy FROM experiment").fetchall())
+    assert stored == {e: next(iter(strategies[e])) if e in strategies else None for e in used}

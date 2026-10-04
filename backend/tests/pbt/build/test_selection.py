@@ -9,6 +9,7 @@ from hypothesis import strategies as st
 
 from bsllmner_viewer.build.ingest import build_append, build_full
 from bsllmner_viewer.build.manifest import load_manifest
+from bsllmner_viewer.store.schema import DERIVED_TABLES, RAW_TABLES
 from tests.synthetic import Synthetic, generate
 
 type Stored = dict[str, tuple[str, datetime.date | None, str, list[tuple[object, ...]]]]
@@ -29,6 +30,23 @@ def _stored(path: Path) -> Stored:
                 "SELECT b.accession, r.name, b.date_published, b.attributes FROM biosample b JOIN run r USING (run_id)"
             ).fetchall()
         }
+    finally:
+        con.close()
+
+
+def _snapshot(path: Path) -> dict[str, list[tuple[object, ...]]]:
+    """Every table of a store without the columns that hold the time of the build."""
+    con = duckdb.connect(str(path), read_only=True)
+    try:
+        out: dict[str, list[tuple[object, ...]]] = {}
+        for table in (*RAW_TABLES, *DERIVED_TABLES):
+            if table == "store_meta":
+                rows = con.execute("SELECT key, value FROM store_meta WHERE key <> 'created_at'").fetchall()
+            else:
+                columns = [c[0] for c in con.execute(f"DESCRIBE {table}").fetchall() if c[0] != "ingested_at"]
+                rows = con.execute(f"SELECT {', '.join(columns)} FROM {table}").fetchall()
+            out[table] = sorted(rows, key=repr)
+        return out
     finally:
         con.close()
 
@@ -69,7 +87,7 @@ def test_selection_keeps_the_first_manifest_run_whatever_the_dates_of_the_entrie
 
 @settings(max_examples=6)
 @given(seed=st.integers(0, 10_000), n_runs=st.integers(2, 4), overlap=st.floats(0.2, 0.9), data=st.data())
-def test_append_never_changes_a_biosample_already_in_the_store(
+def test_append_never_changes_a_biosample_already_in_the_store_and_equals_a_full_build(
     seed: int, n_runs: int, overlap: float, data: st.DataObject, tmp_path_factory: object
 ) -> None:
     root = tmp_path_factory.mktemp("append")  # type: ignore[attr-defined]
@@ -85,3 +103,5 @@ def test_append_never_changes_a_biosample_already_in_the_store(
     assert before
     assert {a: after[a] for a in before} == before
     assert set(after) >= set(before)
+    assert build_full(load_manifest(synthetic.manifest), root / "full.duckdb", workers=1).ok
+    assert _snapshot(root / "appended.duckdb") == _snapshot(root / "full.duckdb")

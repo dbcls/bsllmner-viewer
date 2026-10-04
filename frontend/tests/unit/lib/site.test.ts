@@ -7,7 +7,7 @@ describe("pageTitle", () => {
     expect(pageTitle()).toBe("bsllmner-viewer")
   })
 
-  it("puts the names from the page up to its section before the name of the site, set apart by bars", () => {
+  it("puts the names from the page up to its section before the name of the site, separated by bars", () => {
     expect(pageTitle("SAMD00000593", "Entries")).toBe("SAMD00000593 | Entries | bsllmner-viewer")
   })
 })

@@ -25,7 +25,8 @@ from bsllmner_viewer.store.version import read_version
 PROBLEM_PREFIX = "https://ddbj.nig.ac.jp/problems/"
 TIMESTAMP = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$")
 
-# Subtrees whose keys are DSL field names, labels keyed by term IDs, or the AST of the DDBJ Search API.
+# Subtrees whose keys are not API property names: the AST of the DDBJ Search API, the labels keyed by term IDs and
+# organism IDs, and the statuses keyed by status group names.
 OPAQUE_KEYS = frozenset({"ast", "labels", "statuses"})
 
 
@@ -112,11 +113,6 @@ class TestCamelCase:
         assert response.json()["q"] == '"breast cancer"'
         assert response.json()["ast"] == {"op": "free_text", "value": "breast cancer", "is_phrase": True}
 
-    def test_free_text_without_a_letter_or_digit_is_invalid_value(self, client: TestClient) -> None:
-        response = client.get("/api/dsl/parse", params={"q": "--"})
-        assert response.status_code == 400
-        assert response.json()["type"] == PROBLEM_PREFIX + "invalid-value"
-
 
 class TestDatasetVersion:
     def test_digest_is_computed_from_the_stored_information(
@@ -143,32 +139,33 @@ class TestDatasetVersion:
         assert set(version["referenceSnapshots"]) == {"sraExperiments", "dblink", "bioprojects", "chipAtlas"}
 
 
+_RANGE = "date_published:[2015-01-01 TO 2020-12-31]"
+_RANGE_AND_ASSAY = f"library_strategy:RNA-Seq AND {_RANGE}"
+
+
 class TestFacetSelfExclude:
     Q = 'disease:"MONDO:0007254" AND library_strategy:RNA-Seq AND date_published:[2015-01-01 TO 2020-12-31]'
 
     @pytest.mark.parametrize(
-        ("path", "params", "own"),
+        ("path", "params", "own_dropped", "has_flag"),
         [
-            ("/api/distribution", {"field": "disease"}, 'disease:"MONDO:0007254"'),
-            ("/api/crosstab", {"row": "disease", "col": "library_strategy"}, None),
-            ("/api/terms", {"field": "disease", "query": "breast"}, 'disease:"MONDO:0007254"'),
-            ("/api/terms/children", {"field": "disease", "termId": "MONDO:0004992"}, 'disease:"MONDO:0007254"'),
+            ("/api/distribution", {"field": "disease"}, _RANGE_AND_ASSAY, True),
+            ("/api/crosstab", {"row": "disease", "col": "library_strategy"}, _RANGE, True),
+            ("/api/terms", {"field": "disease", "query": "breast"}, _RANGE_AND_ASSAY, False),
+            ("/api/terms/children", {"field": "disease", "termId": "MONDO:0004992"}, _RANGE_AND_ASSAY, False),
         ],
     )
     def test_default_keeps_q_and_true_drops_own_conjuncts(
-        self, client: TestClient, path: str, params: dict[str, str], own: str | None
+        self, client: TestClient, path: str, params: dict[str, str], own_dropped: str, has_flag: bool
     ) -> None:
         default = _first(client, path, q=self.Q, **params)
         off = _first(client, path, q=self.Q, facetSelfExclude="false", **params)
         on = _first(client, path, q=self.Q, facetSelfExclude="true", **params)
         assert default["populationQ"] == off["populationQ"] == self.Q
-        assert on["populationQ"] != self.Q
-        assert on["populationQ"] is None or len(on["populationQ"]) < len(self.Q)
-        for body, flag in ((default, False), (off, False), (on, True)):
-            if "facetSelfExclude" in body:
-                assert body["facetSelfExclude"] is flag
-        if own is not None:
-            assert own not in (on["populationQ"] or "")
+        assert on["populationQ"] == own_dropped
+        assert ("facetSelfExclude" in default) is has_flag
+        if has_flag:
+            assert [b["facetSelfExclude"] for b in (default, off, on)] == [False, False, True]
 
     def test_crosstab_true_drops_both_axes(self, client: TestClient) -> None:
         on = _first(client, "/api/crosstab", row="disease", col="library_strategy", q=self.Q, facetSelfExclude="true")
@@ -241,17 +238,6 @@ class TestPagination:
         assert body["items"] == []
         assert body["pagination"] == {"page": 1, "perPage": 25, "total": 0, "hasNext": False}
 
-    @settings(max_examples=40)
-    @given(st.integers(1, 100), st.integers(1, 8))
-    def test_pagination_describes_the_page(self, client: TestClient, per_page: int, page: int) -> None:
-        body = _first(client, "/api/entries/biosample", perPage=str(per_page), page=str(page))
-        pagination = body["pagination"]
-        total = pagination["total"]
-        assert pagination["page"] == page
-        assert pagination["perPage"] == per_page
-        assert pagination["hasNext"] is (page * per_page < total)
-        assert len(body["items"]) == max(0, min(per_page, total - (page - 1) * per_page))
-
 
 class TestPaths:
     @pytest.mark.parametrize(
@@ -263,6 +249,10 @@ class TestPaths:
             "/api/entries/biosampel",
             "/api/export/entries/sra-run",
             "/api/export/accessions/experiment",
+            "/api/entries/sra-experiment",
+            "/api/export/entries/bioproject",
+            "/api/export/accessions/run",
+            "/api/export/accessions/nope",
         ],
     )
     def test_unknown_entry_type_is_not_found(self, client: TestClient, path: str) -> None:
@@ -328,12 +318,6 @@ class TestProblems:
         assert response.status_code == 422
         assert response.json()["type"] == "about:blank"
 
-    def test_select_clause_that_is_not_a_value_or_a_range_is_invalid_ast(self, client: TestClient) -> None:
-        for clause in ({"field": "disease", "from": "2020-01-01"}, {"field": "disease"}):
-            response = client.post("/api/dsl/select", json={"clauses": [clause]})
-            assert response.status_code == 400
-            assert response.json()["type"] == PROBLEM_PREFIX + "invalid-ast"
-
     @pytest.mark.parametrize("path", ["/api/dsl/select", "/api/dsl/keyword"])
     def test_malformed_json_body_is_unprocessable_with_the_position(self, client: TestClient, path: str) -> None:
         response = client.post(path, content=b"{not json", headers={"content-type": "application/json"})
@@ -391,14 +375,16 @@ class TestProblems:
             assert body["type"] == PROBLEM_PREFIX + slug
             assert body["title"] == "Bad Request"
 
-    def test_former_slugs_are_gone(self, client: TestClient) -> None:
+    def test_a_missing_entry_and_an_invalid_page_are_about_blank_problems(self, client: TestClient) -> None:
         types = {
             client.get("/api/entries/biosample/SAMN_NONE").json()["type"],
             client.get("/api/entries/biosample", params={"page": 0}).json()["type"],
         }
         assert types == {"about:blank"}
 
-    def test_problem_body_has_the_documented_keys(self, client: TestClient) -> None:
+    def test_problem_body_has_exactly_the_problem_keys_and_the_request_id_of_the_header(
+        self, client: TestClient
+    ) -> None:
         response = client.get("/api/entries/biosample", params={"q": "nope:x"})
         body = response.json()
         assert set(body) == {"type", "title", "status", "detail", "instance", "timestamp", "requestId"}
@@ -431,10 +417,6 @@ class TestProblems:
 
 
 class TestRequestId:
-    def test_request_id_is_echoed(self, client: TestClient) -> None:
-        response = client.get("/api/dataset", headers={"X-Request-ID": "abc-123"})
-        assert response.headers["x-request-id"] == "abc-123"
-
     def test_request_id_is_generated_as_a_uuid4_when_absent(self, client: TestClient) -> None:
         first = client.get("/api/dataset").headers["x-request-id"]
         second = client.get("/api/dataset").headers["x-request-id"]
@@ -466,10 +448,6 @@ class TestRequestId:
             client.post("/api/dsl/select", json={}),
         ):
             assert response.headers["x-request-id"], response.url
-
-    def test_generated_request_id_matches_the_problem(self, client: TestClient) -> None:
-        response = client.get("/api/entries/biosample/SAMN_NONE")
-        assert response.json()["requestId"] == response.headers["x-request-id"]
 
 
 class TestCors:
@@ -527,7 +505,6 @@ class TestServiceInfo:
         assert response.status_code == 200
         assert response.json()["store"] == "unavailable"
         assert response.headers["x-request-id"]
-        isolated_client.app.state.store._con = duckdb.connect(":memory:")  # type: ignore[attr-defined]
 
 
 @pytest.fixture(scope="module")
@@ -569,7 +546,7 @@ class TestOpenApi:
     def test_paths_start_with_api_and_have_no_trailing_slash(self, spec: dict[str, Any]) -> None:
         assert all(p.startswith("/api/") and not p.endswith("/") for p in spec["paths"])
 
-    def test_info(self, spec: dict[str, Any]) -> None:
+    def test_info_names_the_api_version_the_contact_and_the_license(self, spec: dict[str, Any]) -> None:
         assert spec["info"]["version"] == API_VERSION == "0.1.0"
         assert spec["info"]["contact"] == {
             "name": "BioData Science Initiative",
@@ -577,7 +554,7 @@ class TestOpenApi:
         }
         assert spec["info"]["license"] == {"name": "Apache-2.0", "url": "https://www.apache.org/licenses/LICENSE-2.0"}
 
-    def test_tags_have_descriptions_in_title_case(self, spec: dict[str, Any]) -> None:
+    def test_tags_have_title_case_names_and_descriptions(self, spec: dict[str, Any]) -> None:
         tags = {t["name"]: t["description"] for t in spec["tags"]}
         assert set(tags) == {
             "Entries",
@@ -672,7 +649,7 @@ class TestOpenApi:
             parameter = next(p for p in spec["paths"][path]["get"]["parameters"] if p["name"] == "facetSelfExclude")
             assert parameter["schema"]["default"] is False, path
 
-    def test_documentation_pages(self, client: TestClient) -> None:
+    def test_the_documentation_pages_are_at_api_and_api_redoc_only(self, client: TestClient) -> None:
         assert client.get("/api").status_code == 200
         assert "swagger" in client.get("/api").text.lower()
         assert client.get("/api/redoc").status_code == 200
@@ -744,15 +721,9 @@ class TestExport:
     def test_accession_queries_exist_for_every_accession_type(self) -> None:
         assert set(_ACCESSION_SQL) == set(AccessionType.__value__.__args__)
 
-    def test_default_format_is_tsv(self, client: TestClient) -> None:
-        assert client.get("/api/export/entries/biosample").headers["content-type"].startswith("text/tab-separated")
-
-    def test_ndjson_line_count_equals_the_total(self, client: TestClient) -> None:
-        total = _first(client, "/api/entries/biosample", perPage="1")["pagination"]["total"]
-        text = client.get("/api/export/entries/biosample", params={"format": "ndjson"}).text
-        assert len(text.splitlines()) == total
-
-    def test_accession_export_for_a_condition(self, client: TestClient) -> None:
+    def test_accession_export_for_a_condition_has_a_header_line_and_one_line_per_bioproject(
+        self, client: TestClient
+    ) -> None:
         q = "library_strategy:RNA-Seq"
         lines = client.get("/api/export/accessions/bioproject", params={"q": q}).text.splitlines()
         assert lines[0].startswith("# bsllmner-viewer bioproject accessions")

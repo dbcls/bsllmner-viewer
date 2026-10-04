@@ -74,13 +74,13 @@ class SlugInfo:
     remedy: str
 
 
-# The one place that says what each slug of the status 400 and 503 means. Every operation shows the entries of its own
-# slugs in the description of its 400 and 503 responses. A rule that causes a slug is in the docs, under the heading
-# that the remedy names.
+# The one place that says what each slug of the status 400 and 503 means. Every operation lists its own slugs in the
+# description of its 400 and 503 responses.
 SLUG_INFO: dict[str, SlugInfo] = {
     "unexpected-token": SlugInfo(
         f"The condition does not parse, is longer than {MAX_LENGTH} characters, or is blank where a condition is "
-        "required, or a keyword has a wildcard.",
+        "required, or a keyword has a wildcard. Parse, select, and keyword also return this slug if the condition "
+        f"that they return would be longer than {MAX_LENGTH} characters.",
         "Fix the condition at the column that `detail` gives. Quote a value that has a colon or a space. "
         'See "Grammar" in /llms-full.txt.',
     ),
@@ -89,12 +89,16 @@ SLUG_INFO: dict[str, SlugInfo] = {
         "Use a field that `dslFields` of `GET /api/dataset` lists.",
     ),
     "invalid-date-format": SlugInfo(
-        "A date is not a calendar date in the form `YYYY-MM-DD`.",
+        "A value of `date_published` in the form `YYYY-MM-DD` is not a calendar date, such as `2020-13-45`, or a "
+        "bound of a range is not a date in that form.",
         'Write the date as `YYYY-MM-DD`, such as `2020-12-31`. See "Fields" in /llms-full.txt.',
     ),
     "invalid-operator-for-field": SlugInfo(
-        "The form of a value does not fit the field, such as a range on a field other than `date_published`.",
-        'Use `field:value` for the field, or `date_published:[a TO b]` for a range. See "Fields" in /llms-full.txt.',
+        "The form of a value does not fit the field, such as a range or a date on a field other than "
+        "`date_published`, a value with a wildcard, or a value of `date_published` that is neither a date in the form "
+        '`YYYY-MM-DD` nor a range (`2020-1-1`, a quoted date, or `""`).',
+        "Use `field:value` for the field, `date_published:YYYY-MM-DD` for a date, or `date_published:[a TO b]` for a "
+        'range. See "Fields" in /llms-full.txt.',
     ),
     "invalid-value": SlugInfo(
         "A value is not allowed for the field: a status that is not a status group, an assay that the dataset does "
@@ -108,7 +112,8 @@ SLUG_INFO: dict[str, SlugInfo] = {
         'Flatten the groups or split the condition. See "Limits" in /llms-full.txt.',
     ),
     "missing-value": SlugInfo(
-        "A clause has an empty value.", 'Give the clause a value. See "Fields" in /llms-full.txt.'
+        "A clause on a field other than `date_published` has an empty value.",
+        'Give the clause a value. See "Fields" in /llms-full.txt.',
     ),
     "invalid-ast": SlugInfo(
         "A clause has neither `value`, nor `from` and `to` together.",

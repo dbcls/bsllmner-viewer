@@ -84,9 +84,11 @@ ColParam = Annotated[
 
 
 def _ordered(dim: FieldDef, named: str | None, chosen: list[str], counts: dict[str, int]) -> list[str]:
-    """The default elements of an axis in descending order of their count, and in ascending order of the element
-    among equal counts. Organism IDs compare as numbers, as in the query that chooses them. Named elements keep their
-    order."""
+    """The elements of a term, assay, or organism axis by count, highest first, and by element for equal counts.
+
+    Organism IDs compare as numbers, as in the query that chooses them. The elements that the request names keep the
+    order of the request. The elements of a date axis keep their order.
+    """
     if split_csv(named) or dim.kind not in NAMED_BY_CONDITION:
         return chosen
     if dim.kind == "organism":
@@ -121,11 +123,12 @@ def _elements(
     operation_id="getDistribution",
     responses=error_responses(bad_request=AGGREGATION_SLUGS, busy=True),
     response_model=DistributionResponse,
-    summary="Counts per element of one dimension",
+    summary="Count the population per element of one dimension",
     description=(
         "Counts the population per element of the dimension `field`, in `unit`. The population is `q`, or `q` without "
         "the conjuncts on `field` with `facetSelfExclude`. `total` is the count of the population. An element counts "
         "the units that have its value. For a term dimension, the units have the term or one of its descendants. "
+        "The Distribution view of the UI calls this operation once per field. "
         'See "Aggregations" and "Default elements" in /llms-full.txt for the elements and their order.'
     ),
 )
@@ -172,11 +175,12 @@ def get_distribution(
     operation_id="getCrosstab",
     responses=error_responses(bad_request=AGGREGATION_SLUGS, busy=True),
     response_model=CrosstabResponse,
-    summary="Counts per cell of two dimensions with expected counts",
+    summary="Count the population per cell of two dimensions, with expected counts",
     description=(
         "Counts the population per pair of an element of `row` and an element of `col`, in `unit`. The population is "
         "`q`, or `q` without the conjuncts on `row` and `col` with `facetSelfExclude`. Each cell has the expected "
-        "count under independence, the ratio and the residual against it, and a classification. "
+        "count under independence, the ratio and the residual against it, and a classification. The Heatmap view "
+        "of the UI uses this operation. "
         'See "Expected counts in cross-tabulations" in /llms-full.txt for the formulas and the thresholds.'
     ),
 )
@@ -263,13 +267,15 @@ def _year_span(years: Iterable[int]) -> list[int]:
     operation_id="getTrend",
     responses=error_responses(bad_request=AGGREGATION_SLUGS, busy=True),
     response_model=TrendResponse,
-    summary="Counts of the condition per BioSample publication year",
+    summary="Count the population per publication year of the BioSample",
     description=(
         "Counts the population per publication year of the BioSample, in `unit`: `total` for `q`, `series` for each "
         "element of `field`, and `allEntries` for the whole population without `q`. With `facetSelfExclude`, `total` "
-        "leaves out the conjuncts on `date_published`, and `series` also the conjuncts on `field`. Otherwise both "
+        "is counted without the conjuncts on `date_published`, and `series` also without the conjuncts on `field`. "
+        "Otherwise both "
         "count `q`. `yearFrom` and `yearTo` limit the years returned without changing the counts or the elements, and "
-        '`firstYear` and `lastYear` ignore them. See "Trend" in /llms-full.txt.'
+        "`firstYear` and `lastYear` ignore them. The Trend view of the UI uses this operation. "
+        'See "Trend" in /llms-full.txt.'
     ),
 )
 def get_trend(

@@ -22,14 +22,14 @@ describe("TermPanel", () => {
     expect(screen.getByRole("link", { name: "Show BioSamples with this term" })).toBeTruthy()
   })
 
-  it("leaves out the rows without values, the link of an ontology without a page, and the last line without links", () => {
+  it("omits the rows without values, the link of an ontology without a page, and the last line without links", () => {
     renderPanel({ ...CHEBI, ontologyName: null, url: null, synonyms: [], parents: [] })
     expect(screen.queryByText("Synonyms")).toBeNull()
     expect(screen.queryByText("Parent terms")).toBeNull()
     expect(screen.queryAllByRole("link")).toHaveLength(0)
   })
 
-  it("draws the label and the ID, and holds the place of the details, before they arrive", () => {
+  it("draws the label and the ID without links before the details arrive", () => {
     renderPanel(undefined)
     expect(screen.getByText("dimethyl sulfoxide")).toBeTruthy()
     expect(screen.getByText("CHEBI:28262")).toBeTruthy()

@@ -1,4 +1,4 @@
-import { isClientError } from "~/lib/api/client"
+import { canTryAgain, isClientError } from "~/lib/api/client"
 import { AXIS_TERM_LIMIT } from "~/lib/workspace-state"
 
 /**
@@ -54,11 +54,12 @@ const REJECTED = Symbol("rejected")
 
 /**
  * The element values that pasted entries name, in the order of the entries and without repeats, the number of entries
- * that name nothing, and the number of entries that the api does not take (too long, or refused with a 4xx response). On
- * an annotation field, an entry in the form of a term ID is taken as it is, and any other entry is a label that
- * `findTerm` resolves to a term ID, or to null when nothing matches. On another dimension, such as the assay, an entry is
- * the value itself. Up to `LABEL_LOOKUPS` labels are looked up at the same time. A failure of the server or of the
- * network is thrown after the lookups in progress end, and no lookup starts after it.
+ * that name nothing, and the number of entries that the api does not take (too long, or refused with a 4xx response
+ * other than 429). On an annotation field, an entry in the form of a term ID is taken as it is, and any other entry is
+ * a label that `findTerm` resolves to a term ID, or to null when nothing matches. On another dimension, such as the
+ * assay, an entry is the value itself. Up to `LABEL_LOOKUPS` labels are looked up at the same time. A failure of the
+ * server or of the network, and a 429 (the api is busy), is thrown after the lookups in progress end, and no lookup
+ * starts after it.
  */
 export const resolvePasted = async (
   entries: readonly string[],
@@ -83,7 +84,7 @@ export const resolvePasted = async (
       try {
         named[index] = await findTerm(entry)
       } catch (error) {
-        if (isClientError(error)) named[index] = REJECTED
+        if (isClientError(error) && !canTryAgain(error)) named[index] = REJECTED
         else failures.push(error)
       }
     }
@@ -132,7 +133,8 @@ export const toggleTerm = (values: readonly string[], value: string, limit?: Ter
 
 /**
  * The terms that pasted entries make the axis show, with the alert that says what happened: the first terms up to the
- * limit, or null terms when no entry names a term. The alert names the entries that the api rejected.
+ * limit, or null terms when no entry names a term. The alert also says how many entries the api does not take, as "N
+ * not valid".
  */
 export const replaceTerms = async (
   entries: readonly string[],

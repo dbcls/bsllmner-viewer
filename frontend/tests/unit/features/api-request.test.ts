@@ -1,18 +1,7 @@
 import fc from "fast-check"
 import { describe, expect, it } from "vitest"
 
-import {
-  apiRequestsFor,
-  crosstabAxes,
-  crosstabParams,
-  distributionFields,
-  distributionParams,
-  entriesParams,
-  projectsParams,
-  trendParams,
-} from "~/features/workspace/view-requests"
-import { apiUrl } from "~/lib/api/client"
-import { crosstabQuery, distributionQuery, entriesQuery, projectsQuery, trendQuery } from "~/lib/api/queries"
+import { apiRequestsFor, crosstabAxes } from "~/features/workspace/view-requests"
 import { DEFAULTS, readState, type Tab, TABS, type WorkspaceState } from "~/lib/workspace-state"
 
 describe("crosstabAxes", () => {
@@ -147,22 +136,24 @@ const stateArb: fc.Arbitrary<WorkspaceState> = fc
   })
   .map((patch) => ({ ...DEFAULTS, ...patch }) as WorkspaceState)
 
-describe("apiRequestsFor properties", () => {
-  it("builds the query that the tab passes to its hook, for any state and dataset", () => {
+const condition = fc.oneof(fc.string({ unit: "grapheme", maxLength: 40 }), fc.constantFrom("&", "=", "#", "+", " ", "%", "%20", "a&b=c#d", "肝臓", "\u{1F600}"))
+
+describe("apiRequestsFor condition", () => {
+  it("sends the condition of the state unchanged in every request, and no q when there is no condition", () => {
     fc.assert(
-      fc.property(stateArb, fc.option(fieldNames, { nil: null }), (state, fields) => {
-        const expected: Record<Tab, string[]> = {
-          samples: [apiUrl("/api/entries/biosample", entriesQuery(entriesParams(state)))],
-          distribution: distributionFields(fields ?? []).map((field) => apiUrl("/api/distribution", distributionQuery(distributionParams(state, field)))),
-          heatmap: [apiUrl("/api/crosstab", crosstabQuery(crosstabParams(state, fields)))],
-          trend: [apiUrl("/api/trend", trendQuery(trendParams(state, fields)))],
-          projects: [apiUrl("/api/projects", projectsQuery(projectsParams(state)))],
+      fc.property(stateArb, fc.option(condition, { nil: null }), fieldNames, (state, q, fields) => {
+        const requests = apiRequestsFor({ ...state, q }, fields)
+        for (const request of requests) {
+          const params = new URL(request, "http://localhost").searchParams
+          if (q) expect(params.get("q")).toBe(q)
+          else expect(params.has("q")).toBe(false)
         }
-        expect(apiRequestsFor(state, fields)).toEqual(expected[state.tab])
       }),
     )
   })
+})
 
+describe("apiRequestsFor properties", () => {
   it("always sends the limit of an aggregation", () => {
     fc.assert(
       fc.property(stateArb, fieldNames, (state, fields) => {

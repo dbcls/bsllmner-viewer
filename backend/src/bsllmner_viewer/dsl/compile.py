@@ -96,7 +96,7 @@ def _two_valued(predicate: str) -> str:
 
 def _keyword(node: FreeText, alias: str, keyword_tables: bool) -> Predicate:
     """Every word must hold: an accession word against the accessions, the others against the searchable text."""
-    # Every word must hold, so a repeated word adds nothing.
+    # A repeated word adds nothing, because every word must match.
     matches = list(dict.fromkeys(word_matches(node)))
     if not matches:
         raise DslError(type=ErrorType.invalid_value, detail="a keyword needs a letter or a digit")

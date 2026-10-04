@@ -31,7 +31,7 @@ def test_exclude_dimensions_treats_status_as_its_own_field() -> None:
     assert _serialized(exclude_dimensions(ast, ["disease"])) == "disease_status:mapped"
 
 
-def test_select_element_builds_the_documented_example() -> None:
+def test_select_element_joins_clauses_of_one_field_with_or_and_of_different_fields_with_and() -> None:
     ast = select_element(None, [clause("disease", "A")])
     ast = select_element(ast, [clause("library_strategy", "ATAC-seq")])
     ast = select_element(ast, [clause("disease", "B")])
@@ -161,14 +161,6 @@ def test_replace_keywords_on_a_condition_that_is_an_or_of_keywords_adds_the_new_
     assert structurally_equal(parse(_serialized(out) or ""), out)  # type: ignore[arg-type]
 
 
-def test_replace_keywords_with_the_same_keywords_is_idempotent() -> None:
-    once = replace_keywords(parse("disease:x"), [FreeText("a")])
-    twice = replace_keywords(once, [FreeText("a")])
-    assert once is not None
-    assert twice is not None
-    assert structurally_equal(once, twice)
-
-
 def test_exclude_dimensions_keeps_a_keyword_conjunct() -> None:
     ast = parse('hypoxia AND disease:"MONDO:1"')
     assert _serialized(exclude_dimensions(ast, ["disease"])) == "hypoxia"
@@ -185,6 +177,9 @@ def test_select_element_ignores_keywords_when_joining_clauses() -> None:
     ast = parse("hypoxia AND disease:A")
     assert _serialized(select_element(ast, [clause("disease", "B")])) == "hypoxia AND (disease:A OR disease:B)"
     assert _serialized(select_element(ast, [clause("disease", "A")])) == "hypoxia"
+
+
+def test_narrow_adds_a_clause_that_is_only_inside_a_group_with_a_keyword() -> None:
     assert _serialized(narrow(parse("a OR disease:A"), [clause("disease", "A")])) == "(a OR disease:A) AND disease:A"
 
 

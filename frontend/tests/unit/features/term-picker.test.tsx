@@ -1,14 +1,14 @@
 import { act, fireEvent, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import { describe, expect, it, vi } from "vitest"
+import { beforeEach, describe, expect, it, vi } from "vitest"
 
 import type * as Client from "~/lib/api/client"
 
 import { renderWithQuery } from "../query"
 
-type TermsQuery = { query?: string; field?: string }
+type TermsQuery = { query?: string; field?: string; facetSelfExclude?: boolean }
 
-const state = vi.hoisted(() => ({ releaseSlow: undefined as (() => void) | undefined, requests: [] as string[] }))
+const state = vi.hoisted(() => ({ releaseSlow: undefined as (() => void) | undefined, requests: [] as string[], queries: [] as TermsQuery[] }))
 
 vi.mock("~/lib/api/client", async (importOriginal) => {
   const original = await importOriginal<typeof Client>()
@@ -16,6 +16,7 @@ vi.mock("~/lib/api/client", async (importOriginal) => {
   const GET = async (_path: string, init: { params: { query: TermsQuery } }) => {
     const query = init.params.query.query ?? ""
     state.requests.push(query)
+    state.queries.push(init.params.query)
     const field = init.params.query.field ?? null
     // The search for "slow" answers only when the test releases it, as a slow network would.
     if (query === "slow") {
@@ -41,10 +42,20 @@ vi.mock("~/lib/api/client", async (importOriginal) => {
 })
 
 import { TermPicker } from "~/features/workspace/term-picker/term-picker"
+import type { TermHit } from "~/lib/api/types"
 
-const renderPicker = () => {
+/** The wait after the last keystroke that the search promises. It is written here so that a change of the wait fails the test. */
+const DEBOUNCE_MS = 200
+
+beforeEach(() => {
+  state.requests = []
+  state.queries = []
+  state.releaseSlow = undefined
+})
+
+const renderPicker = (isSelected: (hit: TermHit) => boolean = () => false) => {
   renderWithQuery(
-    <TermPicker open onClose={vi.fn()} fields={["tissue", "disease"]} q={null} isSelected={() => false} onPick={vi.fn()} />,
+    <TermPicker open onClose={vi.fn()} fields={["tissue", "disease"]} q={null} isSelected={isSelected} onPick={vi.fn()} />,
   )
   const list = screen.getByRole("dialog").querySelector<HTMLElement>(".max-h-picker-list")
   if (!list) throw new Error("no result list")
@@ -52,6 +63,15 @@ const renderPicker = () => {
 }
 
 describe("TermPicker", () => {
+  it("searches terms with self-exclusion", async () => {
+    renderPicker()
+    await screen.findByText("all 0")
+    fireEvent.change(screen.getByRole("textbox", { name: "Search terms by label, synonym, or ID" }), { target: { value: "liver" } })
+    await screen.findByText((_, element) => element?.textContent === "all liver 0")
+    expect(state.queries.length).toBeGreaterThanOrEqual(2)
+    for (const query of state.queries) expect(query).toHaveProperty("facetSelfExclude", true)
+  })
+
   it("opens with the focus in the search box", () => {
     renderPicker()
     expect(screen.getByRole("textbox", { name: "Search terms by label, synonym, or ID" })).toHaveFocus()
@@ -88,26 +108,56 @@ describe("TermPicker", () => {
   })
 
   it("searches once with the trimmed text, 200 ms after typing stops", async () => {
-    const list = renderPicker()
+    renderPicker()
     await screen.findByText("all 0")
     state.requests.length = 0
     vi.useFakeTimers()
     try {
       const input = screen.getByRole("textbox", { name: "Search terms by label, synonym, or ID" })
-      for (const value of ["h", "hy", "hyp", " hyp "]) {
+      // Each millisecond is its own step, so that a request that starts earlier than the debounce is seen.
+      for (const value of ["h", "hy", "hyp"]) {
         fireEvent.change(input, { target: { value } })
-        await act(async () => {
-          await vi.advanceTimersByTimeAsync(50)
-        })
+        for (let elapsed = 1; elapsed < DEBOUNCE_MS; elapsed++) {
+          await act(async () => {
+            await vi.advanceTimersByTimeAsync(1)
+          })
+        }
       }
+      // The trimmed text is the same, so the wait does not start again.
+      fireEvent.change(input, { target: { value: " hyp " } })
       expect(state.requests).toEqual([])
       await act(async () => {
-        await vi.advanceTimersByTimeAsync(200)
+        await vi.advanceTimersByTimeAsync(1)
       })
       expect(state.requests).toEqual(["hyp"])
     } finally {
       vi.useRealTimers()
     }
-    expect(list).toBeInTheDocument()
+  })
+
+  it("shows the results of an emptied search immediately, without a wait for the debounce", async () => {
+    renderPicker()
+    await screen.findByText("all 0")
+    const input = screen.getByRole("textbox", { name: "Search terms by label, synonym, or ID" })
+    fireEvent.change(input, { target: { value: "liver" } })
+    await screen.findByText((_, element) => element?.textContent === "all liver 0")
+    vi.useFakeTimers()
+    try {
+      fireEvent.change(input, { target: { value: " " } })
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0)
+      })
+      expect(screen.getByText("all 0")).toBeInTheDocument()
+      expect(screen.queryByText((_, element) => element?.textContent === "all liver 0")).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("marks a term that the condition already has", async () => {
+    renderPicker((hit) => hit.termId === "T:all::0")
+    const row = (await screen.findByText("all 0")).closest("button") as HTMLElement
+    expect(row).toHaveTextContent("✓ in condition")
+    expect(screen.getAllByText("✓ in condition")).toHaveLength(1)
   })
 })

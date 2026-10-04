@@ -180,7 +180,7 @@ const SkeletonRows = ({ count, className }: { count: number; className: string }
   </div>
 )
 
-/** The items under a heading of the pane, set in a little from the heading's rule. */
+/** The items under a heading of the pane, indented slightly from the heading. */
 const Section = ({ children }: { children: ReactNode }) => <div className="pl-1">{children}</div>
 
 type ChoiceProps = {

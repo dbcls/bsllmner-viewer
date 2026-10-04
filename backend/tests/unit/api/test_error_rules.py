@@ -11,14 +11,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from bsllmner_viewer.api.app import create_app
+from tests.api_helpers import count
 
 PROBLEM_PREFIX = "https://ddbj.nig.ac.jp/problems/"
-
-
-@pytest.fixture
-def isolated_client(store_path: Path) -> Iterator[TestClient]:
-    with TestClient(create_app(store_path), raise_server_exceptions=False) as client:
-        yield client
 
 
 @pytest.fixture
@@ -48,6 +43,7 @@ class TestBodyErrors:
             ({"field": "disease", "value": ""}, "missing-value"),
             ({"field": "date_published", "value": "x"}, "invalid-operator-for-field"),
             ({"field": "disease", "from": "2020-01-01"}, "invalid-ast"),
+            ({"field": "disease"}, "invalid-ast"),
         ],
     )
     def test_select_clause_of_a_wrong_field_or_value_has_the_slug_that_the_condition_would_have(
@@ -95,6 +91,10 @@ class TestDimensions:
             ("/api/terms", {"field": "disease_status"}),
             ("/api/terms/children", {"field": "library_strategy", "termId": "x"}),
             ("/api/crosstab", {"row": "disease", "col": "disease"}),
+            ("/api/distribution", {"field": "disease_status"}),
+            ("/api/crosstab", {"row": "disease", "col": "disease_status"}),
+            ("/api/crosstab", {"row": "tissue_status", "col": "disease"}),
+            ("/api/trend", {"field": "disease_status"}),
         ],
     )
     def test_a_field_that_cannot_be_a_dimension_is_an_invalid_dimension(
@@ -147,8 +147,14 @@ class TestUnknownQueryParameters:
         for name in ("q", "page", "perPage"):
             assert name in detail
 
-    def test_a_repeated_declared_parameter_is_accepted(self, client: TestClient) -> None:
-        assert client.get("/api/entries/biosample", params=[("q", ""), ("q", "")]).status_code == 200
+    def test_a_repeated_parameter_takes_its_last_value(self, client: TestClient) -> None:
+        first, last = "organism_id:9606", "organism_id:10090"
+        assert count(client, first) != count(client, last)
+        response = client.get("/api/entries/biosample", params=[("q", first), ("q", last)])
+        assert response.status_code == 200
+        assert response.json()["pagination"]["total"] == count(client, last)
+        page = client.get("/api/entries/biosample", params=[("perPage", "5"), ("perPage", "10")])
+        assert page.json()["pagination"]["perPage"] == 10
 
 
 class TestReversedDateRange:
@@ -209,6 +215,16 @@ def operations(client: TestClient) -> dict[str, dict[str, Any]]:
     return {op["operationId"]: op["responses"] for item in spec["paths"].values() for op in item.values()}
 
 
+@pytest.fixture(scope="module")
+def parameters(client: TestClient) -> dict[str, set[str]]:
+    spec = client.get("/api/openapi.json").json()
+    return {
+        op["operationId"]: {p["name"] for p in op.get("parameters", [])}
+        for item in spec["paths"].values()
+        for op in item.values()
+    }
+
+
 class TestOpenApiErrorDeclarations:
     def test_operations_without_a_condition_or_a_dimension_declare_no_400(
         self, operations: dict[str, dict[str, Any]]
@@ -224,11 +240,14 @@ class TestOpenApiErrorDeclarations:
         assert "`invalid-ast`" in operations["selectElement"]["400"]["description"]
         assert "`too-many-elements`" in operations["getDistribution"]["400"]["description"]
 
-    def test_operations_with_a_path_parameter_declare_404(self, operations: dict[str, dict[str, Any]]) -> None:
-        for name in ("listEntries", "getEntry", "getTerm", "listTermChildren", "exportEntries", "exportAccessions"):
-            assert "404" in operations[name], name
-        for name in ("getDataset", "getDistribution", "listProjects"):
-            assert "404" not in operations[name], name
+    def test_only_operations_taking_a_type_an_accession_or_a_term_declare_404_and_none_declares_405_413_or_429(
+        self, operations: dict[str, dict[str, Any]], parameters: dict[str, set[str]]
+    ) -> None:
+        takes_target = {name for name, names in parameters.items() if names & {"type", "accession", "termId"}}
+        assert takes_target
+        assert {name for name, responses in operations.items() if "404" in responses} == takes_target
+        for name, responses in operations.items():
+            assert not {"405", "413", "429"} & set(responses), name
 
     def test_operations_that_wait_for_a_slot_declare_503(self, operations: dict[str, dict[str, Any]]) -> None:
         for name in ("listEntries", "getDistribution", "getCrosstab", "getTrend", "listProjects", "searchTerms"):

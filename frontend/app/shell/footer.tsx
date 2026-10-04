@@ -22,7 +22,7 @@ const ORGANIZATIONS = [
   { name: "Chiba University", url: "https://www.chiba-u.ac.jp/e/", logo: "/logos/chiba-u.svg", height: "h-5" },
 ]
 
-/** The dataset line while the description of the dataset is on its way. */
+/** The dataset line while the description of the dataset loads. */
 const DatasetLineSkeleton = () => (
   <span aria-busy="true" className="w-96">
     <Skeleton />
@@ -30,9 +30,9 @@ const DatasetLineSkeleton = () => (
 )
 
 /**
- * Two lines of text on the left, the dataset and where its annotations are published with their license, and the
- * logos of the organizations on the right across both lines, always visible. The items of a line are set apart by
- * space, not by a separator character. The first line holds what is known of the dataset.
+ * The footer has two lines of text on the left and the organization logos on the right. The first line shows the
+ * dataset. The second line shows where the annotations are published, with their license. Items in a line are
+ * separated by space, not by a separator character.
  */
 const FooterFrame = ({ dataset }: { dataset: ReactNode }) => {
   const commit = buildCommit()

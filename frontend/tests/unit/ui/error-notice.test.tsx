@@ -2,10 +2,10 @@ import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, it, vi } from "vitest"
 
-import { EmptyNotice, ErrorNotice } from "~/ui"
+import { ErrorNotice } from "~/ui"
 
 describe("ErrorNotice", () => {
-  it("shows the message as an alert with a Try again button that calls onRetry", async () => {
+  it("shows the message as a status with a Try again button that calls onRetry", async () => {
     const onRetry = vi.fn()
     render(<ErrorNotice onRetry={onRetry} message="Could not load the BioSamples." />)
     expect(screen.getByRole("status")).toHaveTextContent("Could not load the BioSamples.")
@@ -29,12 +29,5 @@ describe("ErrorNotice as a status", () => {
   it("names what the button loads again", () => {
     render(<ErrorNotice onRetry={vi.fn()} retryName="Disease distribution" message="Could not load the Disease distribution." />)
     expect(screen.getByRole("button", { name: "Try again: Disease distribution" })).toBeInTheDocument()
-  })
-})
-
-describe("EmptyNotice", () => {
-  it("shows the text", () => {
-    render(<EmptyNotice>No BioSamples match this condition.</EmptyNotice>)
-    expect(screen.getByText("No BioSamples match this condition.")).toBeInTheDocument()
   })
 })

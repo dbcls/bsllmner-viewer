@@ -28,6 +28,16 @@ describe("page ranges", () => {
       expect(range?.from).toBe(page === 1 ? 1 : (pageRange(page - 1, perPage, total)?.to ?? 0) + 1)
     },
   )
+
+  test.prop([list.chain(([total, perPage]) => fc.tuple(fc.constant(total), fc.constant(perPage), fc.integer({ min: 1, max: pageCount(total, perPage) })))])(
+    "fill every page before the last one with exactly perPage items",
+    ([total, perPage, page]) => {
+      if (total === 0 || page === pageCount(total, perPage)) return
+      const range = pageRange(page, perPage, total)
+      expect(range).not.toBeNull()
+      expect((range?.to ?? 0) - (range?.from ?? 0) + 1).toBe(perPage)
+    },
+  )
 })
 
 describe("pageAfterLast", () => {

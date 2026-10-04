@@ -32,7 +32,7 @@ describe("chipAtlasHref", () => {
   it.each([
     ["SRX000001", "https://chip-atlas.org/view?id=SRX000001"],
     ["DRX123456", "https://chip-atlas.org/view?id=DRX123456"],
-  ])("builds the page of the experiment %s", (accession, expected) => {
+  ])("builds the page of the SRA Experiment %s", (accession, expected) => {
     expect(chipAtlasHref(accession)).toBe(expected)
   })
 })

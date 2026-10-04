@@ -62,5 +62,7 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# The default of pytest without "build", because the tests of the build are in tests/unit/build and tests/pbt/build.
+norecursedirs = ["*.egg", ".*", "_darcs", "CVS", "dist", "node_modules", "venv", "{arch}"]
 addopts = "-q"
 filterwarnings = ["error::DeprecationWarning:bsllmner_viewer"]

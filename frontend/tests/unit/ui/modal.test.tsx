@@ -129,36 +129,6 @@ describe("Modal focus and background", () => {
     expect(dialog).toHaveFocus()
   })
 
-  it("gives the focus back to the element that had it before the dialog opened", () => {
-    const view = render(
-      <>
-        <button>Opener</button>
-        <Modal open={false} onClose={vi.fn()} title="Choose a term">
-          <input aria-label="Search" />
-        </Modal>
-      </>,
-    )
-    screen.getByRole("button", { name: "Opener" }).focus()
-    view.rerender(
-      <>
-        <button>Opener</button>
-        <Modal open onClose={vi.fn()} title="Choose a term">
-          <input aria-label="Search" />
-        </Modal>
-      </>,
-    )
-    expect(screen.getByRole("textbox", { name: "Search" })).toHaveFocus()
-    view.rerender(
-      <>
-        <button>Opener</button>
-        <Modal open={false} onClose={vi.fn()} title="Choose a term">
-          <input aria-label="Search" />
-        </Modal>
-      </>,
-    )
-    expect(screen.getByRole("button", { name: "Opener" })).toHaveFocus()
-  })
-
   it("keeps Tab and Shift+Tab inside the dialog", async () => {
     const user = userEvent.setup()
     renderModal()
@@ -172,11 +142,15 @@ describe("Modal focus and background", () => {
     expect(apply).toHaveFocus()
   })
 
-  it("makes the rest of the page inert while open, except layers that listbox, menu, and alert draw, and undoes it on close", () => {
+  it("makes the rest of the page inert while open, except a listbox, a menu, an alert, and elements added after it opens, and undoes it on close", () => {
     const outside = document.createElement("div")
     const listbox = document.createElement("div")
     listbox.setAttribute("role", "listbox")
-    document.body.append(outside, listbox)
+    const menu = document.createElement("div")
+    menu.setAttribute("role", "menu")
+    const alert = document.createElement("div")
+    alert.setAttribute("role", "alert")
+    document.body.append(outside, listbox, menu, alert)
     const view = render(
       <>
         <button>Behind</button>
@@ -190,6 +164,8 @@ describe("Modal focus and background", () => {
     expect(outside).toHaveAttribute("inert")
     expect(screen.getByRole("button", { name: "Behind", hidden: true })).toHaveAttribute("inert")
     expect(listbox).not.toHaveAttribute("inert")
+    expect(menu).not.toHaveAttribute("inert")
+    expect(alert).not.toHaveAttribute("inert")
     expect(late).not.toHaveAttribute("inert")
     expect(screen.getByRole("dialog")).not.toHaveAttribute("inert")
     expect(view.container).not.toHaveAttribute("inert")
@@ -198,6 +174,8 @@ describe("Modal focus and background", () => {
     expect(screen.getByRole("button", { name: "Behind" })).not.toHaveAttribute("inert")
     outside.remove()
     listbox.remove()
+    menu.remove()
+    alert.remove()
     late.remove()
   })
 

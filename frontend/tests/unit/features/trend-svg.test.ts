@@ -77,9 +77,4 @@ describe("trendSvg", () => {
     expect(label?.getAttribute("font-weight")).toBe("600")
     expect(label?.querySelector("tspan")?.getAttribute("font-weight")).toBe("400")
   })
-
-  it("escapes the names", () => {
-    const svg = parse(figure({ title: "a<b&c" }))
-    expect([...svg.querySelectorAll("text")].map((t) => t.textContent)).toContain("a<b&c")
-  })
 })

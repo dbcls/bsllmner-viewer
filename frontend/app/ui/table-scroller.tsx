@@ -34,12 +34,12 @@ export const TableScroller = ({ children, boxClassName = "overflow-x-auto" }: Ta
     const room = element.scrollWidth - element.clientWidth
     const back = element.scrollLeft > 1
     const on = element.scrollLeft < room - 1
-    // A box that scrolls and holds nothing to focus is a stop of Tab itself, so the keyboard can scroll it.
+    // A box that scrolls and holds nothing to focus is itself a tab stop, so the keyboard can scroll it.
     const bare = room > 0 && element.querySelector(FOCUSABLE) === null
     setReach((was) => (was.back === back && was.on === on && was.bare === bare ? was : { back, on, bare }))
   }, [])
 
-  // A wider window, or rows that arrive later, can change how far the table travels.
+  // A wider window, or rows that load later, can change how far the table travels.
   useEffect(() => {
     const element = box.current
     if (!element) return
@@ -63,8 +63,8 @@ export const TableScroller = ({ children, boxClassName = "overflow-x-auto" }: Ta
         <ScrolledBack.Provider value={reach.back}>{children}</ScrolledBack.Provider>
       </div>
       {/*
-       * A box that the keyboard can stop at fills a card that clips its edges, and its frozen column covers its content,
-       * so its focus ring is drawn inside it, over the table.
+       * The scroller can take the keyboard focus. The card around it clips the outside focus ring, and the frozen column
+       * covers the inside edge. So the ring is drawn inside the scroller, over the table.
        */}
       {reach.bare && (
         <div

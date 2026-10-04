@@ -14,5 +14,8 @@ export const orderAssays = (assays: readonly string[], targetAssays: readonly st
 
 const DOT_CLASSES = ["bg-assay-1", "bg-assay-2", "bg-assay-3"] as const
 
-/** The class of the dot that marks an assay: one color per target assay, in their order, and gray for the others. */
+/**
+ * The class of the dot that marks an assay: one color for each of the first three target assays, in their order, and
+ * gray for the others.
+ */
 export const assayDotClass = (assay: string, targetAssays: readonly string[]): string => DOT_CLASSES[targetAssays.indexOf(assay)] ?? "bg-ink-softer"

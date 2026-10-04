@@ -1,16 +1,16 @@
 """Store schema.
 
 Raw tables persist what build read (runs, entries, reference data). Derived tables are recomputed from
-the raw tables by every build operation. The api queries the derived tables, and reads from the raw tables only the
-store metadata, the runs, the fields, and the ontology files. `omitted_attribute` is the one derived table that the api
-does not read: it records the attribute names that derivation left out, so that a store can be checked against them.
+the raw tables by every build operation. The api queries the derived tables, and reads only the raw tables
+`store_meta`, `run`, `field`, and `ref_ontology`. `omitted_attribute` is the one derived table that the api
+does not read: it records the attribute names that derivation omitted, so that a store can be checked against them.
 """
 
 from __future__ import annotations
 
 import duckdb
 
-SCHEMA_VERSION = 8
+SCHEMA_VERSION = 9
 
 RAW_TABLES: tuple[str, ...] = (
     "store_meta",

@@ -101,9 +101,9 @@ def test_keyword_endpoint_without_the_keyword_field_is_unprocessable(client: Tes
     assert response.json()["type"] == "about:blank"
 
 
-def test_keyword_endpoint_accepts_a_keyword_of_the_most_words(client: TestClient) -> None:
+def test_keyword_endpoint_accepts_a_keyword_at_the_word_limit(client: TestClient) -> None:
     body = _set(client, None, " ".join(f"w{i}" for i in range(64)))
-    assert str(body["dsl"]).startswith("w0 w1 w2")
+    assert str(body["dsl"]).split() == [f"w{i}" for i in range(64)]
 
 
 def test_keyword_endpoint_rejects_a_keyword_of_more_words_than_the_limit(client: TestClient) -> None:
@@ -154,3 +154,20 @@ def test_problem_detail_of_an_error_with_a_span_keeps_the_position(client: TestC
         assert "column" in detail, q
     unknown = client.get("/api/entries/biosample", params={"q": "nope:x"}).json()["detail"]
     assert unknown.count("column") == 1
+
+
+@pytest.mark.parametrize(
+    ("one", "other"),
+    [("\u03b2-catenin", "\u03b1-catenin"), ("IFN-\u03b3", "IFN-\u03b1"), ("M\u00fcller", "Muller")],
+)
+def test_keyword_tells_apart_words_that_differ_only_in_a_letter_outside_ascii(
+    client: TestClient, one: str, other: str
+) -> None:
+    assert count(client, one) > 0
+    assert count(client, other) > 0
+    assert count(client, f"{one} AND {other}") == 0
+
+
+def test_keyword_of_letters_outside_ascii_matches_them_as_a_word(client: TestClient) -> None:
+    assert count(client, "\u809d\u81d3") > 0
+    assert count(client, '"\u809d\u81d3 \u304c\u3093"') == count(client, "\u809d\u81d3")

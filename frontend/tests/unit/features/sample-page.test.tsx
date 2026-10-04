@@ -33,7 +33,7 @@ vi.mock("~/lib/api/client", async (importOriginal) => {
       libraryStrategy: "RNA-Seq",
       inPopulation: true,
       runs: [],
-      chipAtlas: [],
+      chipAtlas: accession.startsWith("SAMN") && index === 0 ? ["hg38"] : [],
     }))
     const data = {
       identifier: accession,
@@ -105,6 +105,19 @@ describe("SamplePage", () => {
     expect(screen.getByText("SRX21")).toBeTruthy()
     expect(screen.queryByText("SRX1")).toBeNull()
     expect(screen.getByText("21–21 / 21")).toBeTruthy()
+  })
+
+  it("says that no BioProject is linked when the BioSample has none", async () => {
+    renderSample("SAMN1")
+    expect(await screen.findByText("No linked BioProject.")).toBeTruthy()
+  })
+
+  it("links an SRA Experiment to ChIP-Atlas only when ChIP-Atlas processed it", async () => {
+    renderSample("SAMN2")
+    await screen.findByText("SRX2")
+    const row = (accession: string) => within(screen.getByText(accession).closest("tr") as HTMLElement)
+    expect(row("SRX1").getByRole("link", { name: /ChIP-Atlas/ })).toBeTruthy()
+    expect(row("SRX2").queryByRole("link", { name: /ChIP-Atlas/ })).toBeNull()
   })
 
   it("shows 20 SRA Experiments on one page without a pager", async () => {

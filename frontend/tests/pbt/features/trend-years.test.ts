@@ -27,15 +27,15 @@ describe("yearChoices", () => {
   )
 
   test.prop({ span, from: chosen, to: chosen })(
-    "offers no first year after the last year and no last year before the first year that are chosen, unless the URL reverses them",
+    "offers both chosen years in each select, no first year after the later chosen year, and no last year before the earlier one",
     ({ span: { first, last }, from, to }) => {
       const start = from ?? first
       const end = to ?? last
       const choices = yearChoices(first, last, from, to)
-      if (start <= end) {
-        expect(Math.max(...choices.from)).toBe(end)
-        expect(Math.min(...choices.to)).toBe(start)
-      }
+      expect(choices.from).toEqual(expect.arrayContaining([start, end]))
+      expect(choices.to).toEqual(expect.arrayContaining([start, end]))
+      expect(Math.max(...choices.from)).toBe(Math.max(start, end))
+      expect(Math.min(...choices.to)).toBe(Math.min(start, end))
     },
   )
 

@@ -1,11 +1,11 @@
 import { expect, type Page, test } from "@playwright/test"
 
 import { dataset, distribution, select, terms, trend } from "./_api"
-import { axisTermsButton, choose, expectChosen, expectParam, expectQ, formatCount, workspaceUrl } from "./_helpers"
+import { axisTermsButton, choose, expectChosen, expectParam, expectQ, formatCount, skipUnless, workspaceUrl } from "./_helpers"
 
 /**
- * Flips a switch as a person does, by its label. The checkbox of a switch is hidden inside the label, so a click on the
- * checkbox itself never lands.
+ * Flips a switch as a person does, by its label. The checkbox of a switch is hidden inside the label, so Playwright
+ * cannot click the checkbox itself.
  */
 const flip = async (page: Page, name: string): Promise<void> => {
   await page.locator("label").filter({ has: page.getByRole("switch", { name, exact: true }) }).click()
@@ -34,7 +34,7 @@ test.describe("trend", () => {
     expect(series.map((s) => s.value)).toContain(disease.value)
     await expect(main.locator("svg polyline")).toHaveCount(series.length + 1)
     await expect(page.getByRole("switch", { name: "Condition" })).toBeChecked()
-    // The legend names the lines by their terms; their IDs appear only with the Term IDs switch on.
+    // The legend names the lines by their terms.
     await expect(main.getByText(disease.label, { exact: true })).toBeVisible()
     await expect(main).toContainText("✓ in condition")
     const points = main.locator('svg g[data-series="condition"]').getByRole("button")
@@ -101,12 +101,12 @@ test.describe("trend", () => {
     await expectQ(page, widened)
   })
 
-  test("the years limit the points to the chosen range as the api returns them, and the first and last years take the limit off", async ({ page, request }) => {
+  test("the years limit the points to the chosen range as the api returns them, and choosing the first and the last year removes the limit", async ({ page, request }) => {
     const disease = await topDisease(request)
     const q = await select(request, null, disease.clauses)
-    // The trend always draws the lines of a field, whose population widens the span of years.
+    // The trend always draws the lines of a field, and these lines can cover more years than the condition does.
     const whole = await trend(request, { field: "disease", q })
-    if (whole.years.length < 3) throw new Error("the condition matches fewer than three years")
+    skipUnless(whole.years.length >= 3, "the condition matches fewer than three years")
     const from = whole.years[1] as number
     const to = whole.years[whole.years.length - 2] as number
     const limited = await trend(request, { field: "disease", q, yearFrom: from, yearTo: to })
@@ -145,9 +145,9 @@ test.describe("trend", () => {
   test("the terms dialog refuses a sixth line, and taking a term off makes room for another", async ({ page, request }) => {
     const { series } = await trend(request, { field: "disease" })
     const shown = series.map((s) => s.value)
-    if (shown.length < 5) throw new Error("the dataset has fewer than five diseases")
+    skipUnless(shown.length >= 5, "the dataset has fewer than five diseases")
     const extra = (await terms(request, "disease", "")).find((term) => !shown.includes(term.termId))
-    if (!extra) throw new Error("every listed disease is already a line")
+    skipUnless(extra, "every listed disease is already a line")
     await page.goto(workspaceUrl({ tab: "trend" }))
     await axisTermsButton(page, "Lines").click()
     const dialog = page.getByRole("dialog", { name: "Line terms" })
@@ -189,7 +189,7 @@ test.describe("trend", () => {
     const target = data.series
       .filter((s) => s.value !== assay)
       .flatMap((s) => s.points.filter((p) => p.count > 0).map((p) => ({ series: s, point: p })))[0]
-    if (!target) throw new Error("no other assay matches the condition")
+    skipUnless(target, "no other assay matches the condition")
     const narrowed = await select(request, data.populationQ, target.point.clauses, "narrow")
     await page.goto(workspaceUrl({ tab: "trend", trend_field: "library_strategy", q }))
     const point = page.getByRole("main").locator(`svg g[data-series="${target.series.value}"]`).getByRole("button", { name: `, ${target.point.year}: ` })

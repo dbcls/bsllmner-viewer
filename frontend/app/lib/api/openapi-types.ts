@@ -12,7 +12,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Version information, fields, and population totals
+         * Get the dataset version, the fields, and the population totals
          * @description Returns what a client needs before it writes conditions: the version of the dataset, the target assays, the fields of the condition language with their kinds, the status groups, and the BioSample counts of the whole population per assay, organism, and field. Counts are in the BioSample unit, except `totals`, which has all three units.
          */
         get: operations["getDataset"];
@@ -32,8 +32,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Parse a condition string into an AST
-         * @description Parses `q` into the AST of the DDBJ Search API, with the display labels of its term IDs and organism IDs. An invalid condition gets 400 with the column of the error, so this operation also checks a condition before it is used. See "Condition DSL" in /llms-full.txt.
+         * Parse a condition into an abstract syntax tree
+         * @description Parses `q` into the abstract syntax tree (AST) of the DDBJ Search API, with the display labels of its term IDs and organism IDs. An invalid condition gets 400 with the column of the error, so this operation also checks a condition before it is used. See "Condition DSL" in /llms-full.txt.
          */
         get: operations["parseCondition"];
         put?: never;
@@ -75,7 +75,7 @@ export interface paths {
         put?: never;
         /**
          * Replace the keywords of a condition
-         * @description Replaces the keywords among the top-level AND conjuncts of `q` with the keywords of `keyword`, read as a search box reads text: quoted parts are phrases, and the other words form one keyword. A part is quoted by double quotes, or by a `'` at the start of a word and a `'` at the end of a word. A `'` inside a word or only at its end, as in `Alzheimer's` or `3'`, is part of the word. `AND`, `OR`, and `NOT` are ordinary words. An empty `keyword` removes the keywords.
+         * @description Replaces the keywords among the top-level AND conjuncts of `q` with the keywords of `keyword`. The operation reads `keyword` as a search box reads text: quoted parts are phrases, and the other words form one keyword. Double quotes around a part make a phrase. A single quote (`'`) at the start of a word and another at the end of the same or a later word also make a phrase, as in `'cell line'`. Any other single quote is part of its word, as in `Alzheimer's` or `3'`. `AND`, `OR`, and `NOT` are ordinary words. An empty `keyword` removes the keywords.
          */
         post: operations["setKeyword"];
         delete?: never;
@@ -92,8 +92,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * BioSample entries that match the condition
-         * @description Lists the BioSamples that match `q`, one page at a time. `pagination.total` is the count of `q` in the BioSample unit, and each item lists the experiments of the BioSample that match `q`. An entry type that is not `biosample` gets 404. See "Entries" in /llms-full.txt.
+         * List the BioSamples that match a condition
+         * @description Lists the BioSamples that match `q`, one page at a time. `pagination.total` is the count of `q` in the BioSample unit. Each item lists the SRA Experiments of the BioSample that match `q`. An entry type that is not `biosample` gets 404. The Samples view of the UI uses this operation. See "Entries" in /llms-full.txt.
          */
         get: operations["listEntries"];
         put?: never;
@@ -112,8 +112,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * A BioSample with its annotations and evidence
-         * @description Returns one BioSample with its original metadata, annotations with evidence, experiments, and BioProjects. The BioSample does not have to be in the population: `inPopulation` of each experiment tells whether the experiment is in the population. `run` is the name of the bsllmner-mk2 run that analyzed the BioSample, not an SRA Run. An accession that is not that of a BioSample gets 404. Find the BioSample of another accession with the accession as a keyword in `q`. See "Entries" in /llms-full.txt.
+         * Get a BioSample with its annotations and evidence
+         * @description Returns one BioSample with its original metadata, annotations with evidence, SRA Experiments, and BioProjects. The BioSample does not have to be in the population: `inPopulation` of each SRA Experiment tells whether the SRA Experiment is in the population. `run` is the name of the bsllmner-mk2 run that analyzed the BioSample, not an SRA Run. An accession that is not that of a BioSample gets 404. Find the BioSample of another accession with the accession as a keyword in `q`. See "Entries" in /llms-full.txt.
          */
         get: operations["getEntry"];
         put?: never;
@@ -132,8 +132,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Counts per element of one dimension
-         * @description Counts the population per element of the dimension `field`, in `unit`. The population is `q`, or `q` without the conjuncts on `field` with `facetSelfExclude`. `total` is the count of the population. An element counts the units that have its value. For a term dimension, the units have the term or one of its descendants. See "Aggregations" and "Default elements" in /llms-full.txt for the elements and their order.
+         * Count the population per element of one dimension
+         * @description Counts the population per element of the dimension `field`, in `unit`. The population is `q`, or `q` without the conjuncts on `field` with `facetSelfExclude`. `total` is the count of the population. An element counts the units that have its value. For a term dimension, the units have the term or one of its descendants. The Distribution view of the UI calls this operation once per field. See "Aggregations" and "Default elements" in /llms-full.txt for the elements and their order.
          */
         get: operations["getDistribution"];
         put?: never;
@@ -152,8 +152,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Counts per cell of two dimensions with expected counts
-         * @description Counts the population per pair of an element of `row` and an element of `col`, in `unit`. The population is `q`, or `q` without the conjuncts on `row` and `col` with `facetSelfExclude`. Each cell has the expected count under independence, the ratio and the residual against it, and a classification. See "Expected counts in cross-tabulations" in /llms-full.txt for the formulas and the thresholds.
+         * Count the population per cell of two dimensions, with expected counts
+         * @description Counts the population per pair of an element of `row` and an element of `col`, in `unit`. The population is `q`, or `q` without the conjuncts on `row` and `col` with `facetSelfExclude`. Each cell has the expected count under independence, the ratio and the residual against it, and a classification. The Heatmap view of the UI uses this operation. See "Expected counts in cross-tabulations" in /llms-full.txt for the formulas and the thresholds.
          */
         get: operations["getCrosstab"];
         put?: never;
@@ -172,8 +172,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Counts of the condition per BioSample publication year
-         * @description Counts the population per publication year of the BioSample, in `unit`: `total` for `q`, `series` for each element of `field`, and `allEntries` for the whole population without `q`. With `facetSelfExclude`, `total` leaves out the conjuncts on `date_published`, and `series` also the conjuncts on `field`. Otherwise both count `q`. `yearFrom` and `yearTo` limit the years returned without changing the counts or the elements, and `firstYear` and `lastYear` ignore them. See "Trend" in /llms-full.txt.
+         * Count the population per publication year of the BioSample
+         * @description Counts the population per publication year of the BioSample, in `unit`: `total` for `q`, `series` for each element of `field`, and `allEntries` for the whole population without `q`. With `facetSelfExclude`, `total` is counted without the conjuncts on `date_published`, and `series` also without the conjuncts on `field`. Otherwise both count `q`. `yearFrom` and `yearTo` limit the years returned without changing the counts or the elements, and `firstYear` and `lastYear` ignore them. The Trend view of the UI uses this operation. See "Trend" in /llms-full.txt.
          */
         get: operations["getTrend"];
         put?: never;
@@ -192,8 +192,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * BioProjects of the matching BioSamples
-         * @description Lists the BioProjects of the BioSamples in the population. The population is `q`. With `facetSelfExclude`, it is `q` without the conjuncts on `bioproject`. `biosampleCount`, `experimentCount`, and `assays` of a BioProject count only the BioSamples and SRA Experiments of the population, not the whole BioProject. `pagination.total` is the number of BioProjects. See "Aggregations" in /llms-full.txt.
+         * List the BioProjects of the BioSamples that match a condition
+         * @description Lists the BioProjects of the BioSamples in the population. The population is `q`. With `facetSelfExclude`, it is `q` without the conjuncts on `bioproject`. `biosampleCount`, `experimentCount`, and `assays` of a BioProject count only the BioSamples and SRA Experiments of the population, not the whole BioProject. `pagination.total` is the number of BioProjects. The Projects view of the UI uses this operation. See "Aggregations" in /llms-full.txt.
          */
         get: operations["listProjects"];
         put?: never;
@@ -232,7 +232,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Child terms of a term annotated in a field
+         * List the child terms of a term annotated in a field
          * @description Lists the direct child terms of `termId` that have a count above 0 in the population, in `unit`, in the order of their direct counts in the whole dataset. `count` of a child includes its descendants. The population is `q`. With `facetSelfExclude`, it is `q` without the conjuncts on `field`. To expand a term of a cross-tabulation, pass its `populationQ` as `q`. See "Aggregations" in /llms-full.txt.
          */
         get: operations["listTermChildren"];
@@ -252,7 +252,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * A term with its synonyms, parents, ontology, and page
+         * Get a term with its synonyms, parents, ontology, and page
          * @description Returns one term of the dataset: its label, synonyms, direct parent terms, ontology, and the address of its page. `parents` is empty for a root of an ontology and for a term of an ontology without hierarchy. See "Term hierarchy" in /llms-full.txt.
          */
         get: operations["getTerm"];
@@ -272,7 +272,7 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Accession list of the matching entries, with a header line and then one accession per line
+         * Export the accessions of the entries that match a condition
          * @description Returns every distinct accession of `type` among the entries that match `q`, as plain text: a header line that starts with `#` and names `q` and the dataset version, then one accession per line in ascending order. See "Entries" in /llms-full.txt.
          */
         get: operations["exportAccessions"];
@@ -292,8 +292,8 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * Matching entries as TSV or newline-delimited JSON
-         * @description Returns every BioSample that matches `q`, in the order of the entry list, as TSV or as newline-delimited JSON. See "Entries" in /llms-full.txt for the columns and the cells.
+         * Export the BioSamples that match a condition as TSV or NDJSON
+         * @description Returns every BioSample that matches `q`, in the order of the entry list, as TSV or as NDJSON. NDJSON is newline-delimited JSON: one JSON object per line. See "Entries" in /llms-full.txt for the columns and the cells.
          */
         get: operations["exportEntries"];
         put?: never;
@@ -337,6 +337,7 @@ export interface components {
              * @description The extracted value; null when none was extracted
              */
             value: string | null;
+            /** @description Annotation status. The UI shows `mapped_exact` as "Exact match", `mapped_selected` as "LLM selected" (LLM: large language model), `unmapped_no_candidate` as "No candidate", `unmapped_rejected` as "Rejected", `not_stated` as "Not stated", and `extraction_failed` as "Extraction failed". See "Annotation status" in /llms-full.txt for the meanings */
             status: components["schemas"]["Status"];
             /**
              * Termid
@@ -530,7 +531,7 @@ export interface components {
             name: string;
             /**
              * Biosamplecount
-             * @description BioSamples of the whole population with an experiment of the assay
+             * @description BioSamples of the whole population with an SRA Experiment of the assay
              */
             biosampleCount: number;
         };
@@ -732,6 +733,7 @@ export interface components {
              * @description The extracted value; null when none was extracted
              */
             value: string | null;
+            /** @description Annotation status. The UI shows `mapped_exact` as "Exact match", `mapped_selected` as "LLM selected" (LLM: large language model), `unmapped_no_candidate` as "No candidate", `unmapped_rejected` as "Rejected", `not_stated` as "Not stated", and `extraction_failed` as "Extraction failed". See "Annotation status" in /llms-full.txt for the meanings */
             status: components["schemas"]["Status"];
             /**
              * Termid
@@ -769,17 +771,17 @@ export interface components {
             libraryStrategy: string | null;
             /**
              * Inpopulation
-             * @description Whether the experiment is in the population
+             * @description Whether the SRA Experiment is in the population
              */
             inPopulation: boolean;
             /**
              * Runs
-             * @description Accessions of the SRA Runs of the experiment
+             * @description Accessions of the SRA Runs of the SRA Experiment
              */
             runs: string[];
             /**
              * Chipatlas
-             * @description Genome assemblies under which ChIP-Atlas processed the experiment
+             * @description Genome assemblies under which ChIP-Atlas processed the SRA Experiment
              */
             chipAtlas: string[];
         };
@@ -801,7 +803,7 @@ export interface components {
             organism: components["schemas"]["Organism"] | null;
             /**
              * Librarystrategy
-             * @description Assays of the matching experiments
+             * @description Assays of the matching SRA Experiments
              */
             libraryStrategy: string[];
             /**
@@ -816,7 +818,7 @@ export interface components {
             datePublished: string | null;
             /**
              * Chipatlas
-             * @description Genome assemblies under which ChIP-Atlas processed the experiments
+             * @description Genome assemblies under which ChIP-Atlas processed the SRA Experiments
              */
             chipAtlas: string[];
             /**
@@ -891,7 +893,7 @@ export interface components {
              * @description Unicode code point offset after the last code point of the match in that name or value as stored
              */
             end: number;
-            /** @description The matching strategy that found the evidence */
+            /** @description The matching strategy that found the evidence. Each strategy accepts more variation than the strategy before it: `exact` (none), `case_insensitive` (letter case and Unicode compatibility forms), `normalized` (separators, brackets, and genotype affixes such as `KO`), `bag_of_words` (word order), `fuzzy` (small spelling errors), and `ontology_synonym` (another name of the assigned term) */
             strategy: components["schemas"]["EvidenceStrategy"];
         };
         /** @enum {string} */
@@ -1463,13 +1465,13 @@ export interface operations {
             /**
              * @description Bad Request. The slug that ends `type` is one of:
              *
-             *     - `unexpected-token`: The condition does not parse, is longer than 4096 characters, or is blank where a condition is required, or a keyword has a wildcard. Fix the condition at the column that `detail` gives. Quote a value that has a colon or a space. See "Grammar" in /llms-full.txt.
+             *     - `unexpected-token`: The condition does not parse, is longer than 4096 characters, or is blank where a condition is required, or a keyword has a wildcard. Parse, select, and keyword also return this slug if the condition that they return would be longer than 4096 characters. Fix the condition at the column that `detail` gives. Quote a value that has a colon or a space. See "Grammar" in /llms-full.txt.
              *     - `unknown-field`: A condition, a clause, or a parameter (`field`, `row`, `col`) names a field that the dataset does not have. Use a field that `dslFields` of `GET /api/dataset` lists.
-             *     - `invalid-date-format`: A date is not a calendar date in the form `YYYY-MM-DD`. Write the date as `YYYY-MM-DD`, such as `2020-12-31`. See "Fields" in /llms-full.txt.
-             *     - `invalid-operator-for-field`: The form of a value does not fit the field, such as a range on a field other than `date_published`. Use `field:value` for the field, or `date_published:[a TO b]` for a range. See "Fields" in /llms-full.txt.
+             *     - `invalid-date-format`: A value of `date_published` in the form `YYYY-MM-DD` is not a calendar date, such as `2020-13-45`, or a bound of a range is not a date in that form. Write the date as `YYYY-MM-DD`, such as `2020-12-31`. See "Fields" in /llms-full.txt.
+             *     - `invalid-operator-for-field`: The form of a value does not fit the field, such as a range or a date on a field other than `date_published`, a value with a wildcard, or a value of `date_published` that is neither a date in the form `YYYY-MM-DD` nor a range (`2020-1-1`, a quoted date, or `""`). Use `field:value` for the field, `date_published:YYYY-MM-DD` for a date, or `date_published:[a TO b]` for a range. See "Fields" in /llms-full.txt.
              *     - `invalid-value`: A value is not allowed for the field: a status that is not a status group, an assay that the dataset does not have, a term value that is not a term ID, an organism that is not a number, a keyword without a letter or a digit, or keywords over their limits. Use the values that `detail` lists. Find a term ID with `GET /api/terms`. See "Fields" and "Keywords" in /llms-full.txt.
              *     - `nest-depth-exceeded`: Groups nest deeper than 5 levels, or the condition has more than 512 nodes. Flatten the groups or split the condition. See "Limits" in /llms-full.txt.
-             *     - `missing-value`: A clause has an empty value. Give the clause a value. See "Fields" in /llms-full.txt.
+             *     - `missing-value`: A clause on a field other than `date_published` has an empty value. Give the clause a value. See "Fields" in /llms-full.txt.
              */
             400: {
                 headers: {
@@ -1524,13 +1526,13 @@ export interface operations {
             /**
              * @description Bad Request. The slug that ends `type` is one of:
              *
-             *     - `unexpected-token`: The condition does not parse, is longer than 4096 characters, or is blank where a condition is required, or a keyword has a wildcard. Fix the condition at the column that `detail` gives. Quote a value that has a colon or a space. See "Grammar" in /llms-full.txt.
+             *     - `unexpected-token`: The condition does not parse, is longer than 4096 characters, or is blank where a condition is required, or a keyword has a wildcard. Parse, select, and keyword also return this slug if the condition that they return would be longer than 4096 characters. Fix the condition at the column that `detail` gives. Quote a value that has a colon or a space. See "Grammar" in /llms-full.txt.
              *     - `unknown-field`: A condition, a clause, or a parameter (`field`, `row`, `col`) names a field that the dataset does not have. Use a field that `dslFields` of `GET /api/dataset` lists.
-             *     - `invalid-date-format`: A date is not a calendar date in the form `YYYY-MM-DD`. Write the date as `YYYY-MM-DD`, such as `2020-12-31`. See "Fields" in /llms-full.txt.
-             *     - `invalid-operator-for-field`: The form of a value does not fit the field, such as a range on a field other than `date_published`. Use `field:value` for the field, or `date_published:[a TO b]` for a range. See "Fields" in /llms-full.txt.
+             *     - `invalid-date-format`: A value of `date_published` in the form `YYYY-MM-DD` is not a calendar date, such as `2020-13-45`, or a bound of a range is not a date in that form. Write the date as `YYYY-MM-DD`, such as `2020-12-31`. See "Fields" in /llms-full.txt.
+             *     - `invalid-operator-for-field`: The form of a value does not fit the field, such as a range or a date on a field other than `date_published`, a value with a wildcard, or a value of `date_published` that is neither a date in the form `YYYY-MM-DD` nor a range (`2020-1-1`, a quoted date, or `""`). Use `field:value` for the field, `date_published:YYYY-MM-DD` for a date, or `date_published:[a TO b]` for a range. See "Fields" in /llms-full.txt.
              *     - `invalid-value`: A value is not allowed for the field: a status that is not a status group, an assay that the dataset does not have, a term value that is not a term ID, an organism that is not a number, a keyword without a letter or a digit, or keywords over their limits. Use the values that `detail` lists. Find a term ID with `GET /api/terms`. See "Fields" and "Keywords" in /llms-full.txt.
              *     - `nest-depth-exceeded`: Groups nest deeper than 5 levels, or the condition has more than 512 nodes. Flatten the groups or split the condition. See "Limits" in /llms-full.txt.
-             *     - `missing-value`: A clause has an empty value. Give the clause a value. See "Fields" in /llms-full.txt.
+             *     - `missing-value`: A clause on a field other than `date_published` has an empty value. Give the clause a value. See "Fields" in /llms-full.txt.
              *     - `invalid-ast`: A clause has neither `value`, nor `from` and `to` together. Give each clause `value`, or both `from` and `to`.
              */
             400: {
@@ -1586,13 +1588,13 @@ export interface operations {
             /**
              * @description Bad Request. The slug that ends `type` is one of:
              *
-             *     - `unexpected-token`: The condition does not parse, is longer than 4096 characters, or is blank where a condition is required, or a keyword has a wildcard. Fix the condition at the column that `detail` gives. Quote a value that has a colon or a space. See "Grammar" in /llms-full.txt.
+             *     - `unexpected-token`: The condition does not parse, is longer than 4096 characters, or is blank where a condition is required, or a keyword has a wildcard. Parse, select, and keyword also return this slug if the condition that they return would be longer than 4096 characters. Fix the condition at the column that `detail` gives. Quote a value that has a colon or a space. See "Grammar" in /llms-full.txt.
              *     - `unknown-field`: A condition, a clause, or a parameter (`field`, `row`, `col`) names a field that the dataset does not have. Use a field that `dslFields` of `GET /api/dataset` lists.
-             *     - `invalid-date-format`: A date is not a calendar date in the form `YYYY-MM-DD`. Write the date as `YYYY-MM-DD`, such as `2020-12-31`. See "Fields" in /llms-full.txt.
-             *     - `invalid-operator-for-field`: The form of a value does not fit the field, such as a range on a field other than `date_published`. Use `field:value` for the field, or `date_published:[a TO b]` for a range. See "Fields" in /llms-full.txt.
+             *     - `invalid-date-format`: A value of `date_published` in the form `YYYY-MM-DD` is not a calendar date, such as `2020-13-45`, or a bound of a range is not a date in that form. Write the date as `YYYY-MM-DD`, such as `2020-12-31`. See "Fields" in /llms-full.txt.
+             *     - `invalid-operator-for-field`: The form of a value does not fit the field, such as a range or a date on a field other than `date_published`, a value with a wildcard, or a value of `date_published` that is neither a date in the form `YYYY-MM-DD` nor a range (`2020-1-1`, a quoted date, or `""`). Use `field:value` for the field, `date_published:YYYY-MM-DD` for a date, or `date_published:[a TO b]` for a range. See "Fields" in /llms-full.txt.
              *     - `invalid-value`: A value is not allowed for the field: a status that is not a status group, an assay that the dataset does not have, a term value that is not a term ID, an organism that is not a number, a keyword without a letter or a digit, or keywords over their limits. Use the values that `detail` lists. Find a term ID with `GET /api/terms`. See "Fields" and "Keywords" in /llms-full.txt.
              *     - `nest-depth-exceeded`: Groups nest deeper than 5 levels, or the condition has more than 512 nodes. Flatten the groups or split the condition. See "Limits" in /llms-full.txt.
-             *     - `missing-value`: A clause has an empty value. Give the clause a value. See "Fields" in /llms-full.txt.
+             *     - `missing-value`: A clause on a field other than `date_published` has an empty value. Give the clause a value. See "Fields" in /llms-full.txt.
              */
             400: {
                 headers: {
@@ -1625,7 +1627,7 @@ export interface operations {
     listEntries: {
         parameters: {
             query?: {
-                /** @description Condition in the condition language: `field:value`, `field:"phrase"`, `field:[a TO b]`, keywords without a field, `AND`, `OR`, `NOT`, and parentheses. Omitted or empty means the whole population. The value of an annotation term field is a term ID, which `GET /api/terms` finds, and it matches the term and its descendants. The value of `<field>_status` is the group `mapped`, `unmapped`, or `no_value`. The value of `library_strategy` is a target assay of `GET /api/dataset`. A keyword matches the searchable text of a BioSample, or the entry that has the accession that it spells. See "Condition DSL" in /llms-full.txt */
+                /** @description The condition, in the condition language: `field:value`, `field:"phrase"`, `field:[a TO b]`, keywords without a field, `AND`, `OR`, `NOT`, and parentheses. If `q` is omitted or empty, the condition is the whole population. The value of an annotation term field is a term ID. `GET /api/terms` finds term IDs. A term ID matches the term and its descendants. The value of `<field>_status` is a status group: `mapped`, `unmapped`, or `no_value`. The value of `library_strategy` is a target assay of `GET /api/dataset`. A keyword matches the searchable text of a BioSample. A keyword in the form of an accession matches the entries that have the accession instead. See "Condition DSL" in /llms-full.txt */
                 q?: string | null;
                 /** @description Page number, starting at 1. A page after the last page has empty `items` */
                 page?: number;
@@ -1653,13 +1655,13 @@ export interface operations {
             /**
              * @description Bad Request. The slug that ends `type` is one of:
              *
-             *     - `unexpected-token`: The condition does not parse, is longer than 4096 characters, or is blank where a condition is required, or a keyword has a wildcard. Fix the condition at the column that `detail` gives. Quote a value that has a colon or a space. See "Grammar" in /llms-full.txt.
+             *     - `unexpected-token`: The condition does not parse, is longer than 4096 characters, or is blank where a condition is required, or a keyword has a wildcard. Parse, select, and keyword also return this slug if the condition that they return would be longer than 4096 characters. Fix the condition at the column that `detail` gives. Quote a value that has a colon or a space. See "Grammar" in /llms-full.txt.
              *     - `unknown-field`: A condition, a clause, or a parameter (`field`, `row`, `col`) names a field that the dataset does not have. Use a field that `dslFields` of `GET /api/dataset` lists.
-             *     - `invalid-date-format`: A date is not a calendar date in the form `YYYY-MM-DD`. Write the date as `YYYY-MM-DD`, such as `2020-12-31`. See "Fields" in /llms-full.txt.
-             *     - `invalid-operator-for-field`: The form of a value does not fit the field, such as a range on a field other than `date_published`. Use `field:value` for the field, or `date_published:[a TO b]` for a range. See "Fields" in /llms-full.txt.
+             *     - `invalid-date-format`: A value of `date_published` in the form `YYYY-MM-DD` is not a calendar date, such as `2020-13-45`, or a bound of a range is not a date in that form. Write the date as `YYYY-MM-DD`, such as `2020-12-31`. See "Fields" in /llms-full.txt.
+             *     - `invalid-operator-for-field`: The form of a value does not fit the field, such as a range or a date on a field other than `date_published`, a value with a wildcard, or a value of `date_published` that is neither a date in the form `YYYY-MM-DD` nor a range (`2020-1-1`, a quoted date, or `""`). Use `field:value` for the field, `date_published:YYYY-MM-DD` for a date, or `date_published:[a TO b]` for a range. See "Fields" in /llms-full.txt.
              *     - `invalid-value`: A value is not allowed for the field: a status that is not a status group, an assay that the dataset does not have, a term value that is not a term ID, an organism that is not a number, a keyword without a letter or a digit, or keywords over their limits. Use the values that `detail` lists. Find a term ID with `GET /api/terms`. See "Fields" and "Keywords" in /llms-full.txt.
              *     - `nest-depth-exceeded`: Groups nest deeper than 5 levels, or the condition has more than 512 nodes. Flatten the groups or split the condition. See "Limits" in /llms-full.txt.
-             *     - `missing-value`: A clause has an empty value. Give the clause a value. See "Fields" in /llms-full.txt.
+             *     - `missing-value`: A clause on a field other than `date_published` has an empty value. Give the clause a value. See "Fields" in /llms-full.txt.
              */
             400: {
                 headers: {
@@ -1768,11 +1770,11 @@ export interface operations {
             query: {
                 /** @description Dimension of the counts. An annotation term field, `library_strategy`, `organism_id`, or `date_published`. `dslFields` of `GET /api/dataset` lists the fields with their kinds `term`, `assay`, `organism`, and `date` */
                 field: string;
-                /** @description Condition in the condition language: `field:value`, `field:"phrase"`, `field:[a TO b]`, keywords without a field, `AND`, `OR`, `NOT`, and parentheses. Omitted or empty means the whole population. The value of an annotation term field is a term ID, which `GET /api/terms` finds, and it matches the term and its descendants. The value of `<field>_status` is the group `mapped`, `unmapped`, or `no_value`. The value of `library_strategy` is a target assay of `GET /api/dataset`. A keyword matches the searchable text of a BioSample, or the entry that has the accession that it spells. See "Condition DSL" in /llms-full.txt */
+                /** @description The condition, in the condition language: `field:value`, `field:"phrase"`, `field:[a TO b]`, keywords without a field, `AND`, `OR`, `NOT`, and parentheses. If `q` is omitted or empty, the condition is the whole population. The value of an annotation term field is a term ID. `GET /api/terms` finds term IDs. A term ID matches the term and its descendants. The value of `<field>_status` is a status group: `mapped`, `unmapped`, or `no_value`. The value of `library_strategy` is a target assay of `GET /api/dataset`. A keyword matches the searchable text of a BioSample. A keyword in the form of an accession matches the entries that have the accession instead. See "Condition DSL" in /llms-full.txt */
                 q?: string | null;
                 /** @description Counting unit. `biosample` counts distinct BioSamples, `sra-experiment` distinct SRA Experiments, and `bioproject` distinct BioProjects. See "Counting" in /llms-full.txt */
                 unit?: components["schemas"]["Unit"];
-                /** @description If true, compute without the top-level conjuncts of `q` that are only on the dimensions of this operation, as the screens of the UI do. The description of the operation names its dimensions. If false, compute from `q` itself. See "Self-exclusion" in /llms-full.txt */
+                /** @description If true, the operation removes from `q` each top-level conjunct whose clauses are all on the dimensions of the operation, as the UI does. The top-level conjuncts are the operands of the `AND` at the root of `q`, or `q` itself if the root is not `AND`. A conjunct that has a keyword stays. The description of the operation names its dimensions. If false, the operation uses `q` as it is. See "Self-exclusion" in /llms-full.txt */
                 facetSelfExclude?: boolean;
                 /** @description Comma-separated elements, at most 100. An element is a term ID for an annotation term field, a target assay for `library_strategy`, an NCBI Taxonomy ID for `organism_id`, and a year for `date_published`. See "Default elements" in /llms-full.txt */
                 elements?: string | null;
@@ -1797,13 +1799,13 @@ export interface operations {
             /**
              * @description Bad Request. The slug that ends `type` is one of:
              *
-             *     - `unexpected-token`: The condition does not parse, is longer than 4096 characters, or is blank where a condition is required, or a keyword has a wildcard. Fix the condition at the column that `detail` gives. Quote a value that has a colon or a space. See "Grammar" in /llms-full.txt.
+             *     - `unexpected-token`: The condition does not parse, is longer than 4096 characters, or is blank where a condition is required, or a keyword has a wildcard. Parse, select, and keyword also return this slug if the condition that they return would be longer than 4096 characters. Fix the condition at the column that `detail` gives. Quote a value that has a colon or a space. See "Grammar" in /llms-full.txt.
              *     - `unknown-field`: A condition, a clause, or a parameter (`field`, `row`, `col`) names a field that the dataset does not have. Use a field that `dslFields` of `GET /api/dataset` lists.
-             *     - `invalid-date-format`: A date is not a calendar date in the form `YYYY-MM-DD`. Write the date as `YYYY-MM-DD`, such as `2020-12-31`. See "Fields" in /llms-full.txt.
-             *     - `invalid-operator-for-field`: The form of a value does not fit the field, such as a range on a field other than `date_published`. Use `field:value` for the field, or `date_published:[a TO b]` for a range. See "Fields" in /llms-full.txt.
+             *     - `invalid-date-format`: A value of `date_published` in the form `YYYY-MM-DD` is not a calendar date, such as `2020-13-45`, or a bound of a range is not a date in that form. Write the date as `YYYY-MM-DD`, such as `2020-12-31`. See "Fields" in /llms-full.txt.
+             *     - `invalid-operator-for-field`: The form of a value does not fit the field, such as a range or a date on a field other than `date_published`, a value with a wildcard, or a value of `date_published` that is neither a date in the form `YYYY-MM-DD` nor a range (`2020-1-1`, a quoted date, or `""`). Use `field:value` for the field, `date_published:YYYY-MM-DD` for a date, or `date_published:[a TO b]` for a range. See "Fields" in /llms-full.txt.
              *     - `invalid-value`: A value is not allowed for the field: a status that is not a status group, an assay that the dataset does not have, a term value that is not a term ID, an organism that is not a number, a keyword without a letter or a digit, or keywords over their limits. Use the values that `detail` lists. Find a term ID with `GET /api/terms`. See "Fields" and "Keywords" in /llms-full.txt.
              *     - `nest-depth-exceeded`: Groups nest deeper than 5 levels, or the condition has more than 512 nodes. Flatten the groups or split the condition. See "Limits" in /llms-full.txt.
-             *     - `missing-value`: A clause has an empty value. Give the clause a value. See "Fields" in /llms-full.txt.
+             *     - `missing-value`: A clause on a field other than `date_published` has an empty value. Give the clause a value. See "Fields" in /llms-full.txt.
              *     - `invalid-dimension`: A field exists but cannot be the dimension of the operation, or the two dimensions of a cross-tabulation are the same field. Choose from the fields that `detail` lists.
              *     - `invalid-element`: A named element does not fit its dimension, such as an organism that is not an NCBI Taxonomy ID or a year that is not a number. Name elements of the form that `detail` gives, or omit them to get the default elements.
              *     - `too-many-elements`: A request names more elements of one dimension than the limit of 100. Name at most 100 elements.
@@ -1858,11 +1860,11 @@ export interface operations {
                 row: string;
                 /** @description Dimension of the columns, a field other than `row`. An annotation term field, `library_strategy`, `organism_id`, or `date_published`. `dslFields` of `GET /api/dataset` lists the fields with their kinds `term`, `assay`, `organism`, and `date` */
                 col: string;
-                /** @description Condition in the condition language: `field:value`, `field:"phrase"`, `field:[a TO b]`, keywords without a field, `AND`, `OR`, `NOT`, and parentheses. Omitted or empty means the whole population. The value of an annotation term field is a term ID, which `GET /api/terms` finds, and it matches the term and its descendants. The value of `<field>_status` is the group `mapped`, `unmapped`, or `no_value`. The value of `library_strategy` is a target assay of `GET /api/dataset`. A keyword matches the searchable text of a BioSample, or the entry that has the accession that it spells. See "Condition DSL" in /llms-full.txt */
+                /** @description The condition, in the condition language: `field:value`, `field:"phrase"`, `field:[a TO b]`, keywords without a field, `AND`, `OR`, `NOT`, and parentheses. If `q` is omitted or empty, the condition is the whole population. The value of an annotation term field is a term ID. `GET /api/terms` finds term IDs. A term ID matches the term and its descendants. The value of `<field>_status` is a status group: `mapped`, `unmapped`, or `no_value`. The value of `library_strategy` is a target assay of `GET /api/dataset`. A keyword matches the searchable text of a BioSample. A keyword in the form of an accession matches the entries that have the accession instead. See "Condition DSL" in /llms-full.txt */
                 q?: string | null;
                 /** @description Counting unit. `biosample` counts distinct BioSamples, `sra-experiment` distinct SRA Experiments, and `bioproject` distinct BioProjects. See "Counting" in /llms-full.txt */
                 unit?: components["schemas"]["Unit"];
-                /** @description If true, compute without the top-level conjuncts of `q` that are only on the dimensions of this operation, as the screens of the UI do. The description of the operation names its dimensions. If false, compute from `q` itself. See "Self-exclusion" in /llms-full.txt */
+                /** @description If true, the operation removes from `q` each top-level conjunct whose clauses are all on the dimensions of the operation, as the UI does. The top-level conjuncts are the operands of the `AND` at the root of `q`, or `q` itself if the root is not `AND`. A conjunct that has a keyword stays. The description of the operation names its dimensions. If false, the operation uses `q` as it is. See "Self-exclusion" in /llms-full.txt */
                 facetSelfExclude?: boolean;
                 /** @description Elements of the rows. Omitted means the default elements. Comma-separated elements, at most 100. An element is a term ID for an annotation term field, a target assay for `library_strategy`, an NCBI Taxonomy ID for `organism_id`, and a year for `date_published`. See "Default elements" in /llms-full.txt */
                 rowElements?: string | null;
@@ -1889,13 +1891,13 @@ export interface operations {
             /**
              * @description Bad Request. The slug that ends `type` is one of:
              *
-             *     - `unexpected-token`: The condition does not parse, is longer than 4096 characters, or is blank where a condition is required, or a keyword has a wildcard. Fix the condition at the column that `detail` gives. Quote a value that has a colon or a space. See "Grammar" in /llms-full.txt.
+             *     - `unexpected-token`: The condition does not parse, is longer than 4096 characters, or is blank where a condition is required, or a keyword has a wildcard. Parse, select, and keyword also return this slug if the condition that they return would be longer than 4096 characters. Fix the condition at the column that `detail` gives. Quote a value that has a colon or a space. See "Grammar" in /llms-full.txt.
              *     - `unknown-field`: A condition, a clause, or a parameter (`field`, `row`, `col`) names a field that the dataset does not have. Use a field that `dslFields` of `GET /api/dataset` lists.
-             *     - `invalid-date-format`: A date is not a calendar date in the form `YYYY-MM-DD`. Write the date as `YYYY-MM-DD`, such as `2020-12-31`. See "Fields" in /llms-full.txt.
-             *     - `invalid-operator-for-field`: The form of a value does not fit the field, such as a range on a field other than `date_published`. Use `field:value` for the field, or `date_published:[a TO b]` for a range. See "Fields" in /llms-full.txt.
+             *     - `invalid-date-format`: A value of `date_published` in the form `YYYY-MM-DD` is not a calendar date, such as `2020-13-45`, or a bound of a range is not a date in that form. Write the date as `YYYY-MM-DD`, such as `2020-12-31`. See "Fields" in /llms-full.txt.
+             *     - `invalid-operator-for-field`: The form of a value does not fit the field, such as a range or a date on a field other than `date_published`, a value with a wildcard, or a value of `date_published` that is neither a date in the form `YYYY-MM-DD` nor a range (`2020-1-1`, a quoted date, or `""`). Use `field:value` for the field, `date_published:YYYY-MM-DD` for a date, or `date_published:[a TO b]` for a range. See "Fields" in /llms-full.txt.
              *     - `invalid-value`: A value is not allowed for the field: a status that is not a status group, an assay that the dataset does not have, a term value that is not a term ID, an organism that is not a number, a keyword without a letter or a digit, or keywords over their limits. Use the values that `detail` lists. Find a term ID with `GET /api/terms`. See "Fields" and "Keywords" in /llms-full.txt.
              *     - `nest-depth-exceeded`: Groups nest deeper than 5 levels, or the condition has more than 512 nodes. Flatten the groups or split the condition. See "Limits" in /llms-full.txt.
-             *     - `missing-value`: A clause has an empty value. Give the clause a value. See "Fields" in /llms-full.txt.
+             *     - `missing-value`: A clause on a field other than `date_published` has an empty value. Give the clause a value. See "Fields" in /llms-full.txt.
              *     - `invalid-dimension`: A field exists but cannot be the dimension of the operation, or the two dimensions of a cross-tabulation are the same field. Choose from the fields that `detail` lists.
              *     - `invalid-element`: A named element does not fit its dimension, such as an organism that is not an NCBI Taxonomy ID or a year that is not a number. Name elements of the form that `detail` gives, or omit them to get the default elements.
              *     - `too-many-elements`: A request names more elements of one dimension than the limit of 100. Name at most 100 elements.
@@ -1948,11 +1950,11 @@ export interface operations {
             query?: {
                 /** @description Dimension of the series: an annotation term field, `library_strategy`, or `organism_id`. Omitted means no series. `dslFields` of `GET /api/dataset` lists the fields with their kinds */
                 field?: string | null;
-                /** @description Condition in the condition language: `field:value`, `field:"phrase"`, `field:[a TO b]`, keywords without a field, `AND`, `OR`, `NOT`, and parentheses. Omitted or empty means the whole population. The value of an annotation term field is a term ID, which `GET /api/terms` finds, and it matches the term and its descendants. The value of `<field>_status` is the group `mapped`, `unmapped`, or `no_value`. The value of `library_strategy` is a target assay of `GET /api/dataset`. A keyword matches the searchable text of a BioSample, or the entry that has the accession that it spells. See "Condition DSL" in /llms-full.txt */
+                /** @description The condition, in the condition language: `field:value`, `field:"phrase"`, `field:[a TO b]`, keywords without a field, `AND`, `OR`, `NOT`, and parentheses. If `q` is omitted or empty, the condition is the whole population. The value of an annotation term field is a term ID. `GET /api/terms` finds term IDs. A term ID matches the term and its descendants. The value of `<field>_status` is a status group: `mapped`, `unmapped`, or `no_value`. The value of `library_strategy` is a target assay of `GET /api/dataset`. A keyword matches the searchable text of a BioSample. A keyword in the form of an accession matches the entries that have the accession instead. See "Condition DSL" in /llms-full.txt */
                 q?: string | null;
                 /** @description Counting unit. `biosample` counts distinct BioSamples, `sra-experiment` distinct SRA Experiments, and `bioproject` distinct BioProjects. See "Counting" in /llms-full.txt */
                 unit?: components["schemas"]["Unit"];
-                /** @description If true, compute without the top-level conjuncts of `q` that are only on the dimensions of this operation, as the screens of the UI do. The description of the operation names its dimensions. If false, compute from `q` itself. See "Self-exclusion" in /llms-full.txt */
+                /** @description If true, the operation removes from `q` each top-level conjunct whose clauses are all on the dimensions of the operation, as the UI does. The top-level conjuncts are the operands of the `AND` at the root of `q`, or `q` itself if the root is not `AND`. A conjunct that has a keyword stays. The description of the operation names its dimensions. If false, the operation uses `q` as it is. See "Self-exclusion" in /llms-full.txt */
                 facetSelfExclude?: boolean;
                 /** @description Elements of the series. Comma-separated elements, at most 100. An element is a term ID for an annotation term field, a target assay for `library_strategy`, and an NCBI Taxonomy ID for `organism_id`. See "Default elements" in /llms-full.txt */
                 elements?: string | null;
@@ -1981,13 +1983,13 @@ export interface operations {
             /**
              * @description Bad Request. The slug that ends `type` is one of:
              *
-             *     - `unexpected-token`: The condition does not parse, is longer than 4096 characters, or is blank where a condition is required, or a keyword has a wildcard. Fix the condition at the column that `detail` gives. Quote a value that has a colon or a space. See "Grammar" in /llms-full.txt.
+             *     - `unexpected-token`: The condition does not parse, is longer than 4096 characters, or is blank where a condition is required, or a keyword has a wildcard. Parse, select, and keyword also return this slug if the condition that they return would be longer than 4096 characters. Fix the condition at the column that `detail` gives. Quote a value that has a colon or a space. See "Grammar" in /llms-full.txt.
              *     - `unknown-field`: A condition, a clause, or a parameter (`field`, `row`, `col`) names a field that the dataset does not have. Use a field that `dslFields` of `GET /api/dataset` lists.
-             *     - `invalid-date-format`: A date is not a calendar date in the form `YYYY-MM-DD`. Write the date as `YYYY-MM-DD`, such as `2020-12-31`. See "Fields" in /llms-full.txt.
-             *     - `invalid-operator-for-field`: The form of a value does not fit the field, such as a range on a field other than `date_published`. Use `field:value` for the field, or `date_published:[a TO b]` for a range. See "Fields" in /llms-full.txt.
+             *     - `invalid-date-format`: A value of `date_published` in the form `YYYY-MM-DD` is not a calendar date, such as `2020-13-45`, or a bound of a range is not a date in that form. Write the date as `YYYY-MM-DD`, such as `2020-12-31`. See "Fields" in /llms-full.txt.
+             *     - `invalid-operator-for-field`: The form of a value does not fit the field, such as a range or a date on a field other than `date_published`, a value with a wildcard, or a value of `date_published` that is neither a date in the form `YYYY-MM-DD` nor a range (`2020-1-1`, a quoted date, or `""`). Use `field:value` for the field, `date_published:YYYY-MM-DD` for a date, or `date_published:[a TO b]` for a range. See "Fields" in /llms-full.txt.
              *     - `invalid-value`: A value is not allowed for the field: a status that is not a status group, an assay that the dataset does not have, a term value that is not a term ID, an organism that is not a number, a keyword without a letter or a digit, or keywords over their limits. Use the values that `detail` lists. Find a term ID with `GET /api/terms`. See "Fields" and "Keywords" in /llms-full.txt.
              *     - `nest-depth-exceeded`: Groups nest deeper than 5 levels, or the condition has more than 512 nodes. Flatten the groups or split the condition. See "Limits" in /llms-full.txt.
-             *     - `missing-value`: A clause has an empty value. Give the clause a value. See "Fields" in /llms-full.txt.
+             *     - `missing-value`: A clause on a field other than `date_published` has an empty value. Give the clause a value. See "Fields" in /llms-full.txt.
              *     - `invalid-dimension`: A field exists but cannot be the dimension of the operation, or the two dimensions of a cross-tabulation are the same field. Choose from the fields that `detail` lists.
              *     - `invalid-element`: A named element does not fit its dimension, such as an organism that is not an NCBI Taxonomy ID or a year that is not a number. Name elements of the form that `detail` gives, or omit them to get the default elements.
              *     - `too-many-elements`: A request names more elements of one dimension than the limit of 100. Name at most 100 elements.
@@ -2038,9 +2040,9 @@ export interface operations {
     listProjects: {
         parameters: {
             query?: {
-                /** @description Condition in the condition language: `field:value`, `field:"phrase"`, `field:[a TO b]`, keywords without a field, `AND`, `OR`, `NOT`, and parentheses. Omitted or empty means the whole population. The value of an annotation term field is a term ID, which `GET /api/terms` finds, and it matches the term and its descendants. The value of `<field>_status` is the group `mapped`, `unmapped`, or `no_value`. The value of `library_strategy` is a target assay of `GET /api/dataset`. A keyword matches the searchable text of a BioSample, or the entry that has the accession that it spells. See "Condition DSL" in /llms-full.txt */
+                /** @description The condition, in the condition language: `field:value`, `field:"phrase"`, `field:[a TO b]`, keywords without a field, `AND`, `OR`, `NOT`, and parentheses. If `q` is omitted or empty, the condition is the whole population. The value of an annotation term field is a term ID. `GET /api/terms` finds term IDs. A term ID matches the term and its descendants. The value of `<field>_status` is a status group: `mapped`, `unmapped`, or `no_value`. The value of `library_strategy` is a target assay of `GET /api/dataset`. A keyword matches the searchable text of a BioSample. A keyword in the form of an accession matches the entries that have the accession instead. See "Condition DSL" in /llms-full.txt */
                 q?: string | null;
-                /** @description If true, compute without the top-level conjuncts of `q` that are only on the dimensions of this operation, as the screens of the UI do. The description of the operation names its dimensions. If false, compute from `q` itself. See "Self-exclusion" in /llms-full.txt */
+                /** @description If true, the operation removes from `q` each top-level conjunct whose clauses are all on the dimensions of the operation, as the UI does. The top-level conjuncts are the operands of the `AND` at the root of `q`, or `q` itself if the root is not `AND`. A conjunct that has a keyword stays. The description of the operation names its dimensions. If false, the operation uses `q` as it is. See "Self-exclusion" in /llms-full.txt */
                 facetSelfExclude?: boolean;
                 /** @description Order of the projects: the count and the direction. Equal counts are ordered by the other count in the same direction, then by the accession */
                 sort?: components["schemas"]["ProjectSort"];
@@ -2067,13 +2069,13 @@ export interface operations {
             /**
              * @description Bad Request. The slug that ends `type` is one of:
              *
-             *     - `unexpected-token`: The condition does not parse, is longer than 4096 characters, or is blank where a condition is required, or a keyword has a wildcard. Fix the condition at the column that `detail` gives. Quote a value that has a colon or a space. See "Grammar" in /llms-full.txt.
+             *     - `unexpected-token`: The condition does not parse, is longer than 4096 characters, or is blank where a condition is required, or a keyword has a wildcard. Parse, select, and keyword also return this slug if the condition that they return would be longer than 4096 characters. Fix the condition at the column that `detail` gives. Quote a value that has a colon or a space. See "Grammar" in /llms-full.txt.
              *     - `unknown-field`: A condition, a clause, or a parameter (`field`, `row`, `col`) names a field that the dataset does not have. Use a field that `dslFields` of `GET /api/dataset` lists.
-             *     - `invalid-date-format`: A date is not a calendar date in the form `YYYY-MM-DD`. Write the date as `YYYY-MM-DD`, such as `2020-12-31`. See "Fields" in /llms-full.txt.
-             *     - `invalid-operator-for-field`: The form of a value does not fit the field, such as a range on a field other than `date_published`. Use `field:value` for the field, or `date_published:[a TO b]` for a range. See "Fields" in /llms-full.txt.
+             *     - `invalid-date-format`: A value of `date_published` in the form `YYYY-MM-DD` is not a calendar date, such as `2020-13-45`, or a bound of a range is not a date in that form. Write the date as `YYYY-MM-DD`, such as `2020-12-31`. See "Fields" in /llms-full.txt.
+             *     - `invalid-operator-for-field`: The form of a value does not fit the field, such as a range or a date on a field other than `date_published`, a value with a wildcard, or a value of `date_published` that is neither a date in the form `YYYY-MM-DD` nor a range (`2020-1-1`, a quoted date, or `""`). Use `field:value` for the field, `date_published:YYYY-MM-DD` for a date, or `date_published:[a TO b]` for a range. See "Fields" in /llms-full.txt.
              *     - `invalid-value`: A value is not allowed for the field: a status that is not a status group, an assay that the dataset does not have, a term value that is not a term ID, an organism that is not a number, a keyword without a letter or a digit, or keywords over their limits. Use the values that `detail` lists. Find a term ID with `GET /api/terms`. See "Fields" and "Keywords" in /llms-full.txt.
              *     - `nest-depth-exceeded`: Groups nest deeper than 5 levels, or the condition has more than 512 nodes. Flatten the groups or split the condition. See "Limits" in /llms-full.txt.
-             *     - `missing-value`: A clause has an empty value. Give the clause a value. See "Fields" in /llms-full.txt.
+             *     - `missing-value`: A clause on a field other than `date_published` has an empty value. Give the clause a value. See "Fields" in /llms-full.txt.
              */
             400: {
                 headers: {
@@ -2125,11 +2127,11 @@ export interface operations {
                 field?: string | null;
                 /** @description Text to find in the label, a synonym, or the ID of a term, ignoring letter case; empty lists the most annotated terms. This is not the condition `q` */
                 query?: string;
-                /** @description Condition in the condition language: `field:value`, `field:"phrase"`, `field:[a TO b]`, keywords without a field, `AND`, `OR`, `NOT`, and parentheses. Omitted or empty means the whole population. The value of an annotation term field is a term ID, which `GET /api/terms` finds, and it matches the term and its descendants. The value of `<field>_status` is the group `mapped`, `unmapped`, or `no_value`. The value of `library_strategy` is a target assay of `GET /api/dataset`. A keyword matches the searchable text of a BioSample, or the entry that has the accession that it spells. See "Condition DSL" in /llms-full.txt */
+                /** @description The condition, in the condition language: `field:value`, `field:"phrase"`, `field:[a TO b]`, keywords without a field, `AND`, `OR`, `NOT`, and parentheses. If `q` is omitted or empty, the condition is the whole population. The value of an annotation term field is a term ID. `GET /api/terms` finds term IDs. A term ID matches the term and its descendants. The value of `<field>_status` is a status group: `mapped`, `unmapped`, or `no_value`. The value of `library_strategy` is a target assay of `GET /api/dataset`. A keyword matches the searchable text of a BioSample. A keyword in the form of an accession matches the entries that have the accession instead. See "Condition DSL" in /llms-full.txt */
                 q?: string | null;
                 /** @description Counting unit. `biosample` counts distinct BioSamples, `sra-experiment` distinct SRA Experiments, and `bioproject` distinct BioProjects. See "Counting" in /llms-full.txt */
                 unit?: components["schemas"]["Unit"];
-                /** @description If true, compute without the top-level conjuncts of `q` that are only on the dimensions of this operation, as the screens of the UI do. The description of the operation names its dimensions. If false, compute from `q` itself. See "Self-exclusion" in /llms-full.txt */
+                /** @description If true, the operation removes from `q` each top-level conjunct whose clauses are all on the dimensions of the operation, as the UI does. The top-level conjuncts are the operands of the `AND` at the root of `q`, or `q` itself if the root is not `AND`. A conjunct that has a keyword stays. The description of the operation names its dimensions. If false, the operation uses `q` as it is. See "Self-exclusion" in /llms-full.txt */
                 facetSelfExclude?: boolean;
                 /** @description Number of hits to return, from 1 to 100 */
                 limit?: number;
@@ -2152,13 +2154,13 @@ export interface operations {
             /**
              * @description Bad Request. The slug that ends `type` is one of:
              *
-             *     - `unexpected-token`: The condition does not parse, is longer than 4096 characters, or is blank where a condition is required, or a keyword has a wildcard. Fix the condition at the column that `detail` gives. Quote a value that has a colon or a space. See "Grammar" in /llms-full.txt.
+             *     - `unexpected-token`: The condition does not parse, is longer than 4096 characters, or is blank where a condition is required, or a keyword has a wildcard. Parse, select, and keyword also return this slug if the condition that they return would be longer than 4096 characters. Fix the condition at the column that `detail` gives. Quote a value that has a colon or a space. See "Grammar" in /llms-full.txt.
              *     - `unknown-field`: A condition, a clause, or a parameter (`field`, `row`, `col`) names a field that the dataset does not have. Use a field that `dslFields` of `GET /api/dataset` lists.
-             *     - `invalid-date-format`: A date is not a calendar date in the form `YYYY-MM-DD`. Write the date as `YYYY-MM-DD`, such as `2020-12-31`. See "Fields" in /llms-full.txt.
-             *     - `invalid-operator-for-field`: The form of a value does not fit the field, such as a range on a field other than `date_published`. Use `field:value` for the field, or `date_published:[a TO b]` for a range. See "Fields" in /llms-full.txt.
+             *     - `invalid-date-format`: A value of `date_published` in the form `YYYY-MM-DD` is not a calendar date, such as `2020-13-45`, or a bound of a range is not a date in that form. Write the date as `YYYY-MM-DD`, such as `2020-12-31`. See "Fields" in /llms-full.txt.
+             *     - `invalid-operator-for-field`: The form of a value does not fit the field, such as a range or a date on a field other than `date_published`, a value with a wildcard, or a value of `date_published` that is neither a date in the form `YYYY-MM-DD` nor a range (`2020-1-1`, a quoted date, or `""`). Use `field:value` for the field, `date_published:YYYY-MM-DD` for a date, or `date_published:[a TO b]` for a range. See "Fields" in /llms-full.txt.
              *     - `invalid-value`: A value is not allowed for the field: a status that is not a status group, an assay that the dataset does not have, a term value that is not a term ID, an organism that is not a number, a keyword without a letter or a digit, or keywords over their limits. Use the values that `detail` lists. Find a term ID with `GET /api/terms`. See "Fields" and "Keywords" in /llms-full.txt.
              *     - `nest-depth-exceeded`: Groups nest deeper than 5 levels, or the condition has more than 512 nodes. Flatten the groups or split the condition. See "Limits" in /llms-full.txt.
-             *     - `missing-value`: A clause has an empty value. Give the clause a value. See "Fields" in /llms-full.txt.
+             *     - `missing-value`: A clause on a field other than `date_published` has an empty value. Give the clause a value. See "Fields" in /llms-full.txt.
              *     - `invalid-dimension`: A field exists but cannot be the dimension of the operation, or the two dimensions of a cross-tabulation are the same field. Choose from the fields that `detail` lists.
              */
             400: {
@@ -2211,11 +2213,11 @@ export interface operations {
                 field: string;
                 /** @description ID of the term, such as `MONDO:0007254` */
                 termId: string;
-                /** @description Condition in the condition language: `field:value`, `field:"phrase"`, `field:[a TO b]`, keywords without a field, `AND`, `OR`, `NOT`, and parentheses. Omitted or empty means the whole population. The value of an annotation term field is a term ID, which `GET /api/terms` finds, and it matches the term and its descendants. The value of `<field>_status` is the group `mapped`, `unmapped`, or `no_value`. The value of `library_strategy` is a target assay of `GET /api/dataset`. A keyword matches the searchable text of a BioSample, or the entry that has the accession that it spells. See "Condition DSL" in /llms-full.txt */
+                /** @description The condition, in the condition language: `field:value`, `field:"phrase"`, `field:[a TO b]`, keywords without a field, `AND`, `OR`, `NOT`, and parentheses. If `q` is omitted or empty, the condition is the whole population. The value of an annotation term field is a term ID. `GET /api/terms` finds term IDs. A term ID matches the term and its descendants. The value of `<field>_status` is a status group: `mapped`, `unmapped`, or `no_value`. The value of `library_strategy` is a target assay of `GET /api/dataset`. A keyword matches the searchable text of a BioSample. A keyword in the form of an accession matches the entries that have the accession instead. See "Condition DSL" in /llms-full.txt */
                 q?: string | null;
                 /** @description Counting unit. `biosample` counts distinct BioSamples, `sra-experiment` distinct SRA Experiments, and `bioproject` distinct BioProjects. See "Counting" in /llms-full.txt */
                 unit?: components["schemas"]["Unit"];
-                /** @description If true, compute without the top-level conjuncts of `q` that are only on the dimensions of this operation, as the screens of the UI do. The description of the operation names its dimensions. If false, compute from `q` itself. See "Self-exclusion" in /llms-full.txt */
+                /** @description If true, the operation removes from `q` each top-level conjunct whose clauses are all on the dimensions of the operation, as the UI does. The top-level conjuncts are the operands of the `AND` at the root of `q`, or `q` itself if the root is not `AND`. A conjunct that has a keyword stays. The description of the operation names its dimensions. If false, the operation uses `q` as it is. See "Self-exclusion" in /llms-full.txt */
                 facetSelfExclude?: boolean;
             };
             header?: never;
@@ -2236,13 +2238,13 @@ export interface operations {
             /**
              * @description Bad Request. The slug that ends `type` is one of:
              *
-             *     - `unexpected-token`: The condition does not parse, is longer than 4096 characters, or is blank where a condition is required, or a keyword has a wildcard. Fix the condition at the column that `detail` gives. Quote a value that has a colon or a space. See "Grammar" in /llms-full.txt.
+             *     - `unexpected-token`: The condition does not parse, is longer than 4096 characters, or is blank where a condition is required, or a keyword has a wildcard. Parse, select, and keyword also return this slug if the condition that they return would be longer than 4096 characters. Fix the condition at the column that `detail` gives. Quote a value that has a colon or a space. See "Grammar" in /llms-full.txt.
              *     - `unknown-field`: A condition, a clause, or a parameter (`field`, `row`, `col`) names a field that the dataset does not have. Use a field that `dslFields` of `GET /api/dataset` lists.
-             *     - `invalid-date-format`: A date is not a calendar date in the form `YYYY-MM-DD`. Write the date as `YYYY-MM-DD`, such as `2020-12-31`. See "Fields" in /llms-full.txt.
-             *     - `invalid-operator-for-field`: The form of a value does not fit the field, such as a range on a field other than `date_published`. Use `field:value` for the field, or `date_published:[a TO b]` for a range. See "Fields" in /llms-full.txt.
+             *     - `invalid-date-format`: A value of `date_published` in the form `YYYY-MM-DD` is not a calendar date, such as `2020-13-45`, or a bound of a range is not a date in that form. Write the date as `YYYY-MM-DD`, such as `2020-12-31`. See "Fields" in /llms-full.txt.
+             *     - `invalid-operator-for-field`: The form of a value does not fit the field, such as a range or a date on a field other than `date_published`, a value with a wildcard, or a value of `date_published` that is neither a date in the form `YYYY-MM-DD` nor a range (`2020-1-1`, a quoted date, or `""`). Use `field:value` for the field, `date_published:YYYY-MM-DD` for a date, or `date_published:[a TO b]` for a range. See "Fields" in /llms-full.txt.
              *     - `invalid-value`: A value is not allowed for the field: a status that is not a status group, an assay that the dataset does not have, a term value that is not a term ID, an organism that is not a number, a keyword without a letter or a digit, or keywords over their limits. Use the values that `detail` lists. Find a term ID with `GET /api/terms`. See "Fields" and "Keywords" in /llms-full.txt.
              *     - `nest-depth-exceeded`: Groups nest deeper than 5 levels, or the condition has more than 512 nodes. Flatten the groups or split the condition. See "Limits" in /llms-full.txt.
-             *     - `missing-value`: A clause has an empty value. Give the clause a value. See "Fields" in /llms-full.txt.
+             *     - `missing-value`: A clause on a field other than `date_published` has an empty value. Give the clause a value. See "Fields" in /llms-full.txt.
              *     - `invalid-dimension`: A field exists but cannot be the dimension of the operation, or the two dimensions of a cross-tabulation are the same field. Choose from the fields that `detail` lists.
              */
             400: {
@@ -2350,7 +2352,7 @@ export interface operations {
     exportAccessions: {
         parameters: {
             query?: {
-                /** @description Condition in the condition language: `field:value`, `field:"phrase"`, `field:[a TO b]`, keywords without a field, `AND`, `OR`, `NOT`, and parentheses. Omitted or empty means the whole population. The value of an annotation term field is a term ID, which `GET /api/terms` finds, and it matches the term and its descendants. The value of `<field>_status` is the group `mapped`, `unmapped`, or `no_value`. The value of `library_strategy` is a target assay of `GET /api/dataset`. A keyword matches the searchable text of a BioSample, or the entry that has the accession that it spells. See "Condition DSL" in /llms-full.txt */
+                /** @description The condition, in the condition language: `field:value`, `field:"phrase"`, `field:[a TO b]`, keywords without a field, `AND`, `OR`, `NOT`, and parentheses. If `q` is omitted or empty, the condition is the whole population. The value of an annotation term field is a term ID. `GET /api/terms` finds term IDs. A term ID matches the term and its descendants. The value of `<field>_status` is a status group: `mapped`, `unmapped`, or `no_value`. The value of `library_strategy` is a target assay of `GET /api/dataset`. A keyword matches the searchable text of a BioSample. A keyword in the form of an accession matches the entries that have the accession instead. See "Condition DSL" in /llms-full.txt */
                 q?: string | null;
             };
             header?: never;
@@ -2376,13 +2378,13 @@ export interface operations {
             /**
              * @description Bad Request. The slug that ends `type` is one of:
              *
-             *     - `unexpected-token`: The condition does not parse, is longer than 4096 characters, or is blank where a condition is required, or a keyword has a wildcard. Fix the condition at the column that `detail` gives. Quote a value that has a colon or a space. See "Grammar" in /llms-full.txt.
+             *     - `unexpected-token`: The condition does not parse, is longer than 4096 characters, or is blank where a condition is required, or a keyword has a wildcard. Parse, select, and keyword also return this slug if the condition that they return would be longer than 4096 characters. Fix the condition at the column that `detail` gives. Quote a value that has a colon or a space. See "Grammar" in /llms-full.txt.
              *     - `unknown-field`: A condition, a clause, or a parameter (`field`, `row`, `col`) names a field that the dataset does not have. Use a field that `dslFields` of `GET /api/dataset` lists.
-             *     - `invalid-date-format`: A date is not a calendar date in the form `YYYY-MM-DD`. Write the date as `YYYY-MM-DD`, such as `2020-12-31`. See "Fields" in /llms-full.txt.
-             *     - `invalid-operator-for-field`: The form of a value does not fit the field, such as a range on a field other than `date_published`. Use `field:value` for the field, or `date_published:[a TO b]` for a range. See "Fields" in /llms-full.txt.
+             *     - `invalid-date-format`: A value of `date_published` in the form `YYYY-MM-DD` is not a calendar date, such as `2020-13-45`, or a bound of a range is not a date in that form. Write the date as `YYYY-MM-DD`, such as `2020-12-31`. See "Fields" in /llms-full.txt.
+             *     - `invalid-operator-for-field`: The form of a value does not fit the field, such as a range or a date on a field other than `date_published`, a value with a wildcard, or a value of `date_published` that is neither a date in the form `YYYY-MM-DD` nor a range (`2020-1-1`, a quoted date, or `""`). Use `field:value` for the field, `date_published:YYYY-MM-DD` for a date, or `date_published:[a TO b]` for a range. See "Fields" in /llms-full.txt.
              *     - `invalid-value`: A value is not allowed for the field: a status that is not a status group, an assay that the dataset does not have, a term value that is not a term ID, an organism that is not a number, a keyword without a letter or a digit, or keywords over their limits. Use the values that `detail` lists. Find a term ID with `GET /api/terms`. See "Fields" and "Keywords" in /llms-full.txt.
              *     - `nest-depth-exceeded`: Groups nest deeper than 5 levels, or the condition has more than 512 nodes. Flatten the groups or split the condition. See "Limits" in /llms-full.txt.
-             *     - `missing-value`: A clause has an empty value. Give the clause a value. See "Fields" in /llms-full.txt.
+             *     - `missing-value`: A clause on a field other than `date_published` has an empty value. Give the clause a value. See "Fields" in /llms-full.txt.
              */
             400: {
                 headers: {
@@ -2439,7 +2441,7 @@ export interface operations {
     exportEntries: {
         parameters: {
             query?: {
-                /** @description Condition in the condition language: `field:value`, `field:"phrase"`, `field:[a TO b]`, keywords without a field, `AND`, `OR`, `NOT`, and parentheses. Omitted or empty means the whole population. The value of an annotation term field is a term ID, which `GET /api/terms` finds, and it matches the term and its descendants. The value of `<field>_status` is the group `mapped`, `unmapped`, or `no_value`. The value of `library_strategy` is a target assay of `GET /api/dataset`. A keyword matches the searchable text of a BioSample, or the entry that has the accession that it spells. See "Condition DSL" in /llms-full.txt */
+                /** @description The condition, in the condition language: `field:value`, `field:"phrase"`, `field:[a TO b]`, keywords without a field, `AND`, `OR`, `NOT`, and parentheses. If `q` is omitted or empty, the condition is the whole population. The value of an annotation term field is a term ID. `GET /api/terms` finds term IDs. A term ID matches the term and its descendants. The value of `<field>_status` is a status group: `mapped`, `unmapped`, or `no_value`. The value of `library_strategy` is a target assay of `GET /api/dataset`. A keyword matches the searchable text of a BioSample. A keyword in the form of an accession matches the entries that have the accession instead. See "Condition DSL" in /llms-full.txt */
                 q?: string | null;
                 /** @description File format of the entries */
                 format?: "tsv" | "ndjson";
@@ -2468,13 +2470,13 @@ export interface operations {
             /**
              * @description Bad Request. The slug that ends `type` is one of:
              *
-             *     - `unexpected-token`: The condition does not parse, is longer than 4096 characters, or is blank where a condition is required, or a keyword has a wildcard. Fix the condition at the column that `detail` gives. Quote a value that has a colon or a space. See "Grammar" in /llms-full.txt.
+             *     - `unexpected-token`: The condition does not parse, is longer than 4096 characters, or is blank where a condition is required, or a keyword has a wildcard. Parse, select, and keyword also return this slug if the condition that they return would be longer than 4096 characters. Fix the condition at the column that `detail` gives. Quote a value that has a colon or a space. See "Grammar" in /llms-full.txt.
              *     - `unknown-field`: A condition, a clause, or a parameter (`field`, `row`, `col`) names a field that the dataset does not have. Use a field that `dslFields` of `GET /api/dataset` lists.
-             *     - `invalid-date-format`: A date is not a calendar date in the form `YYYY-MM-DD`. Write the date as `YYYY-MM-DD`, such as `2020-12-31`. See "Fields" in /llms-full.txt.
-             *     - `invalid-operator-for-field`: The form of a value does not fit the field, such as a range on a field other than `date_published`. Use `field:value` for the field, or `date_published:[a TO b]` for a range. See "Fields" in /llms-full.txt.
+             *     - `invalid-date-format`: A value of `date_published` in the form `YYYY-MM-DD` is not a calendar date, such as `2020-13-45`, or a bound of a range is not a date in that form. Write the date as `YYYY-MM-DD`, such as `2020-12-31`. See "Fields" in /llms-full.txt.
+             *     - `invalid-operator-for-field`: The form of a value does not fit the field, such as a range or a date on a field other than `date_published`, a value with a wildcard, or a value of `date_published` that is neither a date in the form `YYYY-MM-DD` nor a range (`2020-1-1`, a quoted date, or `""`). Use `field:value` for the field, `date_published:YYYY-MM-DD` for a date, or `date_published:[a TO b]` for a range. See "Fields" in /llms-full.txt.
              *     - `invalid-value`: A value is not allowed for the field: a status that is not a status group, an assay that the dataset does not have, a term value that is not a term ID, an organism that is not a number, a keyword without a letter or a digit, or keywords over their limits. Use the values that `detail` lists. Find a term ID with `GET /api/terms`. See "Fields" and "Keywords" in /llms-full.txt.
              *     - `nest-depth-exceeded`: Groups nest deeper than 5 levels, or the condition has more than 512 nodes. Flatten the groups or split the condition. See "Limits" in /llms-full.txt.
-             *     - `missing-value`: A clause has an empty value. Give the clause a value. See "Fields" in /llms-full.txt.
+             *     - `missing-value`: A clause on a field other than `date_published` has an empty value. Give the clause a value. See "Fields" in /llms-full.txt.
              */
             400: {
                 headers: {

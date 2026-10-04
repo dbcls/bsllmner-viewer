@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from bsllmner_viewer.dsl.ast import BoolOp, FieldClause
 from bsllmner_viewer.dsl.errors import DslError, ErrorType
 from bsllmner_viewer.dsl.fields import FieldSet
 from bsllmner_viewer.dsl.parser import parse
@@ -26,7 +27,7 @@ FIELDS = FieldSet(("disease", "tissue"))
         'NOT disease:"MONDO:1" AND (tissue:"UBERON:1" OR tissue_status:no_value)',
     ],
 )
-def test_validate_accepts_documented_field_examples(dsl: str) -> None:
+def test_validate_accepts_a_condition_on_each_kind_of_field_and_keywords(dsl: str) -> None:
     validate(parse(dsl), FIELDS)
 
 
@@ -168,3 +169,38 @@ def test_validate_rejects_a_term_value_that_is_not_a_prefixed_id_and_points_to_t
 @pytest.mark.parametrize("value", ['"UBERON:0000955"', '"NCBIGene:7157"', '"CVCL:R965"', '"MONDO:9999999"'])
 def test_validate_accepts_a_well_formed_term_id_even_when_it_is_unknown(value: str) -> None:
     validate(parse(f"tissue:{value}"), FIELDS)
+
+
+def test_validate_accepts_512_nodes_and_rejects_513_with_the_default_limit() -> None:
+    def tree(clauses: int) -> BoolOp:
+        return BoolOp("OR", tuple(FieldClause("disease", "phrase", f"MONDO:{i}") for i in range(clauses)))
+
+    validate(tree(511), FIELDS)
+    with pytest.raises(DslError) as info:
+        validate(tree(512), FIELDS)
+    assert info.value.type is ErrorType.nest_depth_exceeded
+    assert "513" in info.value.detail
+    assert "512" in info.value.detail
+
+
+_OTHER_FIELDS = FieldSet(("disease", "tissue"))
+_NON_DATE_FIELDS = [name for name in _OTHER_FIELDS.names() if name != "date_published"]
+
+
+def test_validate_checks_one_field_of_every_kind_but_date() -> None:
+    kinds = {_OTHER_FIELDS.get(name).kind for name in _NON_DATE_FIELDS}  # type: ignore[union-attr]
+    assert kinds == {"term", "status", "assay", "organism", "bioproject"}
+
+
+@pytest.mark.parametrize("field", _NON_DATE_FIELDS)
+def test_validate_rejects_a_range_on_every_field_other_than_date_published(field: str) -> None:
+    with pytest.raises(DslError) as info:
+        validate(parse(f"{field}:[1 TO 2]"), _OTHER_FIELDS)
+    assert info.value.type is ErrorType.invalid_operator_for_field
+
+
+@pytest.mark.parametrize("field", _NON_DATE_FIELDS)
+def test_validate_rejects_an_empty_value_on_every_field_other_than_date_published(field: str) -> None:
+    with pytest.raises(DslError) as info:
+        validate(parse(f'{field}:""'), _OTHER_FIELDS)
+    assert info.value.type is ErrorType.missing_value

@@ -29,6 +29,7 @@ test.describe("llms.txt and llms-full.txt", () => {
       expect(response.status(), path).toBe(200)
       expect(response.headers()["content-type"], path).toContain("text/markdown")
     }
+    expect(await (await request.get("/llms.txt")).text()).toMatch(/^# \S+/)
     const full = await (await request.get("/llms-full.txt")).text()
     expect(full).toContain("\n# API\n")
     expect(full).toContain("\n# Data Model\n")

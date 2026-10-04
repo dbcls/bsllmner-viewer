@@ -17,10 +17,10 @@ const clicked = (link: HTMLElement, init: MouseEventInit = {}): boolean => {
   return prevented
 }
 
-const renderTabs = (onTab = vi.fn()) => {
+const renderTabs = (onTab = vi.fn(), state: Partial<typeof DEFAULTS> = {}) => {
   render(
     <MemoryRouter>
-      <Tabs state={{ ...DEFAULTS, q: "a:b" }} onTab={onTab} />
+      <Tabs state={{ ...DEFAULTS, q: "a:b", ...state }} onTab={onTab} />
     </MemoryRouter>,
   )
   return onTab
@@ -34,11 +34,22 @@ describe("Tabs", () => {
     expect(prevented).toBe(true)
   })
 
-  it("leaves a click with Ctrl to the browser", () => {
+  it.each([{ ctrlKey: true }, { metaKey: true }, { shiftKey: true }, { altKey: true }, { button: 1 }])("leaves a click with %o to the browser", (init) => {
     const onTab = renderTabs()
-    const prevented = clicked(screen.getByRole("link", { name: "Heatmap" }), { ctrlKey: true })
+    const prevented = clicked(screen.getByRole("link", { name: "Heatmap" }), init)
     expect(onTab).not.toHaveBeenCalled()
     expect(prevented).toBe(false)
+  })
+
+  it("starts the view of every tab at the first page", () => {
+    renderTabs(vi.fn(), { page: 3 })
+    expect(screen.getByRole("link", { name: "Heatmap" }).getAttribute("href")).toBe("/entries?q=a%3Ab&tab=heatmap")
+  })
+
+  it("marks the tab of the current view, and only that tab, as the current page", () => {
+    renderTabs(vi.fn(), { tab: "heatmap" })
+    const current = screen.getAllByRole("link").filter((link) => link.getAttribute("aria-current") === "page")
+    expect(current.map((link) => link.textContent)).toEqual(["Heatmap"])
   })
 
   it("keeps the condition and the tab in the href for a new tab", () => {

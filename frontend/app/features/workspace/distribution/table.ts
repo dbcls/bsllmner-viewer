@@ -5,7 +5,7 @@ export const WITHOUT_TERM_LABEL = "No term"
 
 /**
  * The rows of the TSV of a distribution: the elements as the api counts them, then the part without a term when the
- * field has one, then the total. The two rows after the elements have no value, as they are not values of the field.
+ * field has one, then the total. The rows after the elements have no value, as they are not values of the field.
  */
 export const distributionRows = (
   elements: readonly { value: string; label: string; count: number }[],

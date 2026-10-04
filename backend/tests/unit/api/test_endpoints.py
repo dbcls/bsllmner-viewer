@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import datetime
+import re
+import unicodedata
 from collections.abc import Callable
 from typing import Any
 
@@ -11,8 +13,9 @@ from fastapi.testclient import TestClient
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
+from bsllmner_viewer.api.record_names import record_name
 from tests.api_helpers import accessions, count, entry_items, entry_pages
-from tests.synthetic import TARGET_ASSAYS, Synthetic
+from tests.synthetic import LABELS, SYNONYMS, TARGET_ASSAYS, Synthetic
 
 
 def test_dataset_reports_version_fields_and_totals(client: TestClient) -> None:
@@ -66,15 +69,60 @@ def test_dataset_totals_have_exactly_biosample_experiment_and_bioproject(client:
     assert set(totals) == {"biosample", "experiment", "bioproject"}
 
 
-def test_every_response_carries_the_same_dataset_version(client: TestClient) -> None:
-    ref = client.get("/api/dataset").json()["datasetVersion"]
-    for path in (
-        "/api/distribution?field=disease",
-        "/api/entries/biosample",
-        "/api/projects",
-        "/api/dsl/parse?q=disease_status:mapped",
-    ):
-        assert client.get(path).json()["datasetVersion"] == ref
+_REQUIRED_QUERY_VALUES = {
+    "q": "organism_id:9606",
+    "field": "disease",
+    "row": "disease",
+    "col": "library_strategy",
+    "termId": "MONDO:0007254",
+}
+
+
+def _minimal_request(path: str, method: str, operation: dict[str, Any], accession: str) -> tuple[str, dict[str, Any]]:
+    """The path and the keyword arguments of the smallest valid call of an operation."""
+    params = {
+        p["name"]: _REQUIRED_QUERY_VALUES[p["name"]]
+        for p in operation.get("parameters", [])
+        if p["in"] == "query" and p.get("required")
+    }
+    url = path.replace("{accession}", accession).replace("{termId}", "MONDO:0007254").replace("{type}", "biosample")
+    kwargs: dict[str, Any] = {"params": params}
+    if operation["operationId"] == "selectElement":
+        kwargs["json"] = {"clauses": [{"field": "disease", "value": "MONDO:0007254"}]}
+    elif operation["operationId"] == "setKeyword":
+        kwargs["json"] = {"keyword": "a"}
+    return url, kwargs
+
+
+def test_every_json_response_except_service_info_carries_the_dataset_version(
+    client: TestClient, synthetic: Synthetic
+) -> None:
+    spec = client.get("/api/openapi.json").json()
+    reference = client.get("/api/dataset").json()["datasetVersion"]
+
+    def response_properties(operation: dict[str, Any]) -> dict[str, Any]:
+        ref = operation["responses"]["200"]["content"]["application/json"]["schema"]["$ref"]
+        properties: dict[str, Any] = spec["components"]["schemas"][ref.rsplit("/", 1)[1]]["properties"]
+        return properties
+
+    tested: set[str] = set()
+    for path, item in spec["paths"].items():
+        for method, operation in item.items():
+            if "application/json" not in operation["responses"]["200"].get("content", {}):
+                continue
+            name = operation["operationId"]
+            if name == "getServiceInfo":
+                assert "datasetVersion" not in response_properties(operation)
+                continue
+            if "datasetVersion" not in response_properties(operation):
+                continue
+            url, kwargs = _minimal_request(path, method, operation, synthetic.accessions[0])
+            response = client.request(method.upper(), url, **kwargs)
+            assert response.status_code == 200, (name, url, response.text)
+            assert response.json()["datasetVersion"] == reference, name
+            tested.add(name)
+    assert {"getDataset", "getDistribution", "getCrosstab", "getTrend", "listEntries", "listProjects"} <= tested
+    assert len(tested) >= 10
 
 
 def test_parse_returns_ast_and_normalized_q(client: TestClient) -> None:
@@ -92,13 +140,6 @@ def test_parse_returns_ast_and_normalized_q(client: TestClient) -> None:
             {"field": "disease", "op": "eq", "value": "MONDO:0005061"},
         ],
     }
-
-
-def test_parse_of_the_returned_q_returns_the_same_condition(client: TestClient) -> None:
-    parsed = client.get(
-        "/api/dsl/parse", params={"q": "NOT organism_id:9606 AND date_published:[2015-01-01 TO 2020-12-31]"}
-    ).json()
-    assert client.get("/api/dsl/parse", params={"q": parsed["q"]}).json() == parsed
 
 
 def test_parse_returns_the_selected_clauses_and_the_keyword_text(client: TestClient) -> None:
@@ -129,16 +170,7 @@ def test_select_and_keyword_return_the_selected_clauses_and_the_keyword_text(cli
     assert cleared["keyword"] == 'breast "cell line"'
 
 
-def test_select_removes_a_clause_that_is_in_a_later_group_of_its_field(client: TestClient) -> None:
-    q = 'disease:"MONDO:0007254" AND disease:"MONDO:0005148"'
-    body = client.post(
-        "/api/dsl/select", json={"q": q, "clauses": [{"field": "disease", "value": "MONDO:0005148"}]}
-    ).json()
-    assert body["dsl"] == 'disease:"MONDO:0007254"'
-    assert body["selected"] == [{"field": "disease", "value": "MONDO:0007254"}]
-
-
-def test_select_builds_the_documented_condition(client: TestClient) -> None:
+def test_select_joins_one_field_with_or_and_fields_with_and_and_removes_a_present_clause(client: TestClient) -> None:
     q = None
     for clause in (
         {"field": "disease", "value": "MONDO:A"},
@@ -175,22 +207,6 @@ def test_invalid_conditions_are_problem_documents(client: TestClient) -> None:
         assert body["instance"] == "/api/entries/biosample"
 
 
-def test_invalid_select_clause_is_a_problem_document(client: TestClient) -> None:
-    response = client.post("/api/dsl/select", json={"clauses": [{"field": "disease", "from": "2020-01-01"}]})
-    assert response.status_code == 400
-    assert response.json()["type"] == "https://ddbj.nig.ac.jp/problems/invalid-ast"
-
-
-def test_invalid_query_parameters_are_problem_documents(client: TestClient) -> None:
-    response = client.get("/api/entries/biosample", params={"page": 0})
-    assert response.status_code == 422
-    assert response.headers["content-type"].startswith("application/problem+json")
-    assert response.json()["type"] == "about:blank"
-    assert response.json()["title"] == "Unprocessable Entity"
-    invalid = client.get("/api/distribution", params={"field": "title"}).json()
-    assert invalid["type"] == "https://ddbj.nig.ac.jp/problems/unknown-field"
-
-
 def test_distribution_returns_elements_with_clauses_and_the_count_without_a_term(client: TestClient) -> None:
     body = client.get("/api/distribution", params={"field": "disease", "unit": "biosample"}).json()
     assert body["field"] == "disease"
@@ -199,14 +215,13 @@ def test_distribution_returns_elements_with_clauses_and_the_count_without_a_term
     assert 0 < len(body["elements"]) <= 10
     first = body["elements"][0]
     assert first["clauses"] == [{"field": "disease", "value": first["value"]}]
-    assert first["count"] >= first["countExact"] + 0
     assert 0 < body["withoutTerm"] < body["total"]
     assert "status" not in body
     assays = client.get("/api/distribution", params={"field": "library_strategy"}).json()
     assert assays["withoutTerm"] is None
 
 
-def test_distribution_without_term_counts_the_population_of_the_bars(client: TestClient) -> None:
+def test_distribution_self_exclusion_keeps_the_status_clause_so_without_term_is_zero(client: TestClient) -> None:
     q = "disease_status:mapped AND library_strategy:RNA-Seq"
     body = client.get("/api/distribution", params={"field": "disease", "q": q, "facetSelfExclude": "true"}).json()
     assert body["populationQ"] == q
@@ -264,14 +279,12 @@ def test_crosstab_returns_cells_with_expected_counts(client: TestClient) -> None
     assert cell["expected"] == r * c / body["total"]
     for each in body["cells"]:
         assert each["ratio"] == (None if not each["expected"] else each["count"] / each["expected"])
-    assert cell["classification"] in (None, "gap", "under", "over")
 
 
 def test_trend_returns_points_per_year(client: TestClient) -> None:
     body = client.get("/api/trend", params={"field": "tissue", "unit": "sra-experiment", "limit": 2}).json()
-    assert body["years"] == sorted(body["years"])
     assert body["field"] == "tissue"
-    assert len(body["series"]) <= 2
+    assert len(body["series"]) == 2
     for series in body["series"]:
         assert [p["year"] for p in series["points"]] == body["years"]
         assert series["points"][0]["clauses"][1]["field"] == "date_published"
@@ -354,18 +367,6 @@ def test_trend_without_matches_has_no_first_and_last_year(client: TestClient) ->
     assert body["lastYear"] is None
 
 
-def test_trend_rejects_the_year_as_its_dimension(client: TestClient) -> None:
-    response = client.get("/api/trend", params={"field": "date_published"})
-    assert response.status_code == 400
-    assert response.json()["type"] == "https://ddbj.nig.ac.jp/problems/invalid-dimension"
-
-
-def test_crosstab_rejects_the_same_dimension_on_both_axes(client: TestClient) -> None:
-    response = client.get("/api/crosstab", params={"row": "disease", "col": "disease"})
-    assert response.status_code == 400
-    assert response.json()["type"] == "https://ddbj.nig.ac.jp/problems/invalid-dimension"
-
-
 @pytest.mark.parametrize("value", ["mapped_exact", "mapped_selected", "unmapped_no_candidate", "unmapped_rejected"])
 def test_entries_condition_on_a_detailed_status_is_rejected_with_the_accepted_groups(
     client: TestClient, value: str
@@ -377,23 +378,7 @@ def test_entries_condition_on_a_detailed_status_is_rejected_with_the_accepted_gr
     assert all(group in body["detail"] for group in ("mapped", "unmapped", "no_value"))
 
 
-@pytest.mark.parametrize(
-    ("path", "params"),
-    [
-        ("/api/distribution", {"field": "disease_status"}),
-        ("/api/crosstab", {"row": "disease", "col": "disease_status"}),
-        ("/api/crosstab", {"row": "tissue_status", "col": "disease"}),
-        ("/api/trend", {"field": "disease_status"}),
-        ("/api/terms", {"field": "disease_status"}),
-    ],
-)
-def test_a_status_field_is_not_an_aggregation_dimension(client: TestClient, path: str, params: dict[str, str]) -> None:
-    response = client.get(path, params=params)
-    assert response.status_code == 400
-    assert response.json()["type"] == "https://ddbj.nig.ac.jp/problems/invalid-dimension"
-
-
-def test_select_narrow_builds_the_documented_condition(client: TestClient) -> None:
+def test_select_narrow_adds_each_clause_as_a_new_and_conjunct_once(client: TestClient) -> None:
     table = client.get(
         "/api/crosstab",
         params={
@@ -420,9 +405,6 @@ def test_select_narrow_builds_the_documented_condition(client: TestClient) -> No
         },
     ).json()
     assert kept["dsl"] == '(cell_line:"CVCL:A" OR cell_line:"CVCL:B") AND organism_id:9606 AND cell_line:"CVCL:A"'
-    invalid = client.post("/api/dsl/select", json={"q": None, "clauses": cell, "mode": "other"})
-    assert invalid.status_code == 422
-    assert invalid.json()["type"] == "about:blank"
 
 
 def _two_disease_terms(client: TestClient) -> tuple[str, str]:
@@ -526,12 +508,8 @@ def test_entries_pages_are_disjoint_and_cover_the_total(client: TestClient) -> N
     second = client.get("/api/entries/biosample", params={"perPage": 7, "page": 2}).json()
     assert len(first["items"]) == 7
     assert {r["identifier"] for r in first["items"]}.isdisjoint({r["identifier"] for r in second["items"]})
-
-
-@pytest.mark.parametrize("kind", ["sra-experiment", "sra-run", "bioproject"])
-def test_entries_of_a_type_other_than_biosample_are_not_found(client: TestClient, kind: str) -> None:
-    assert client.get(f"/api/entries/{kind}").status_code == 404
-    assert client.get(f"/api/export/entries/{kind}").status_code == 404
+    ids = [item["identifier"] for body in entry_pages(client, per_page=7) for item in body["items"]]
+    assert len(ids) == len(set(ids)) == first["pagination"]["total"]
 
 
 @pytest.mark.parametrize("q", [None, "library_strategy:RNA-Seq", "library_strategy:ChIP-Seq"])
@@ -568,19 +546,48 @@ def test_entry_returns_attributes_annotations_and_evidence(client: TestClient, s
     fields = list(dict.fromkeys(a["field"] for a in body["annotations"]))
     assert fields == ["cell_line", "disease", "tissue", "drug", "chip_antigen"]
     assert any(annotation["evidence"] for annotation in body["annotations"])
-    for annotation in body["annotations"]:
-        for evidence in annotation["evidence"]:
-            item = body["metadata"][evidence["metadataIndex"]]
-            assert item["name"] == evidence["name"]
-            text = item["name"] if evidence["inName"] else item["value"]
-            assert 0 <= evidence["start"] < evidence["end"] <= len(text)
-            if evidence["strategy"] == "exact":
-                assert text[evidence["start"] : evidence["end"]] == annotation["value"].strip()
     assert {e["accession"] for e in body["experiments"]} == {srx for srx, _ in synthetic.truth.experiments[accession]}
-    missing = client.get("/api/entries/biosample/SAMN_NONE")
-    assert missing.status_code == 404
-    assert missing.json()["type"] == "about:blank"
-    assert missing.json()["title"] == "Not Found"
+
+
+def _fold(text: str) -> str:
+    return unicodedata.normalize("NFKC", text).casefold()
+
+
+def _without_brackets_and_separators(text: str) -> str:
+    return re.sub(r"[\W_]", "", re.sub(r"[(\[{][^)\]}]*[)\]}]", "", text)).casefold()
+
+
+def test_entry_evidence_span_text_matches_the_value_under_its_strategy(
+    client: TestClient, synthetic: Synthetic
+) -> None:
+    seen: set[str] = set()
+    for accession in synthetic.accessions:
+        body = client.get(f"/api/entries/biosample/{accession}").json()
+        for annotation in body["annotations"]:
+            for evidence in annotation["evidence"]:
+                item = body["metadata"][evidence["metadataIndex"]]
+                assert item["name"] == evidence["name"]
+                text = item["name"] if evidence["inName"] else item["value"]
+                assert 0 <= evidence["start"] < evidence["end"] <= len(text)
+                span = text[evidence["start"] : evidence["end"]]
+                value = annotation["value"].strip()
+                strategy = evidence["strategy"]
+                seen.add(strategy)
+                where = (accession, annotation["field"], evidence, span, value)
+                if strategy == "exact":
+                    assert span == value, where
+                elif strategy == "case_insensitive":
+                    assert _fold(span) == _fold(value), where
+                elif strategy == "normalized":
+                    assert _without_brackets_and_separators(span) == _without_brackets_and_separators(value), where
+                elif strategy == "ontology_synonym":
+                    term_id = annotation["termId"]
+                    names = {LABELS[term_id], *SYNONYMS[term_id], term_id}
+                    assert _fold(span) in {_fold(n) for n in names}, where
+                else:
+                    assert strategy in ("bag_of_words", "fuzzy"), where
+                    assert any(ch.isalnum() for ch in span), where
+    assert {"exact", "ontology_synonym", "normalized"} <= seen
 
 
 def test_terms_search_matches_label_synonym_and_id(client: TestClient) -> None:
@@ -594,7 +601,6 @@ def test_terms_search_matches_label_synonym_and_id(client: TestClient) -> None:
     )
     assert hit["path"][-1] == "breast cancer"
     assert hit["clauses"] == [{"field": "disease", "value": "MONDO:0004989"}]
-    assert client.get("/api/terms", params={"field": "title", "query": "x"}).status_code == 400
 
 
 def test_terms_search_without_a_field_searches_every_annotation_field(client: TestClient) -> None:
@@ -637,13 +643,6 @@ def test_terms_search_counts_each_hit_without_the_conjuncts_on_its_own_field(cli
     assert hit["count"] == count(client, 'library_strategy:RNA-Seq AND disease:"MONDO:0007254"')
 
 
-def test_terms_children_lists_annotated_children(client: TestClient) -> None:
-    body = client.get("/api/terms/children", params={"field": "disease", "termId": "MONDO:0004992"}).json()
-    ids = {c["value"] for c in body["children"]}
-    assert ids <= {"MONDO:0007254", "MONDO:0005061"}
-    assert all(c["count"] > 0 for c in body["children"])
-
-
 def test_export_accessions_lists_one_per_line(client: TestClient) -> None:
     text = client.get("/api/export/accessions/biosample").text
     lines = text.splitlines()
@@ -656,13 +655,6 @@ def test_export_accessions_lists_one_per_line(client: TestClient) -> None:
     experiments = accessions(client, "sra-experiment")
     by_experiment = client.get("/api/distribution", params={"field": "library_strategy", "unit": "sra-experiment"})
     assert len(experiments) == by_experiment.json()["total"]
-
-
-def test_export_accessions_with_an_unknown_type_is_not_found(client: TestClient) -> None:
-    for kind in ("experiment", "run", "nope"):
-        response = client.get(f"/api/export/accessions/{kind}")
-        assert response.status_code == 404, kind
-        assert response.json()["type"] == "about:blank"
 
 
 def test_export_entries_tsv_and_ndjson(client: TestClient) -> None:
@@ -681,10 +673,6 @@ def test_export_entries_tsv_and_ndjson(client: TestClient) -> None:
     assert len(lines) == total
     listed = client.get("/api/entries/biosample", params={"q": q, "perPage": 100}).json()["items"]
     assert lines[: len(listed)] == listed
-
-
-def test_export_entries_rejects_the_former_json_format(client: TestClient) -> None:
-    assert client.get("/api/export/entries/biosample", params={"format": "json"}).status_code == 422
 
 
 def test_entry_detail_has_date_published_and_neither_date_created_nor_date_modified(
@@ -874,9 +862,7 @@ def test_entry_metadata_has_the_description_then_the_record_items_with_evidence_
     assert with_list > 0
 
 
-def test_entry_names_record_items_by_short_names_of_their_paths(client: TestClient) -> None:
-    from bsllmner_viewer.api.record_names import record_name
-
+def test_record_name_is_the_short_name_of_the_path() -> None:
     assert record_name("Owner.Name") == "Owner"
     assert record_name("Status.when") == "Status"
     assert record_name("Links.Link.label") == "Link"

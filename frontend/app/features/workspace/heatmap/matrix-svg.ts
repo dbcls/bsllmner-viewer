@@ -1,4 +1,4 @@
-import { RATIO_STEPS, token } from "~/lib/color"
+import { COUNT_SCALE_STOPS, RATIO_STEPS, token } from "~/lib/color"
 import { escapeXml } from "~/lib/export"
 import { cut, FIGURE_MARGIN, FIGURE_SANS, HEADING_HEIGHT, headingSvg, textAttrs, textSize, textWidth } from "~/lib/figure-style"
 import { formatCount } from "~/lib/format"
@@ -23,9 +23,6 @@ type MatrixLabel = { value: string; label: string; id?: string; total: number; d
 /** How far the label of a row moves right for each level of depth, in px, as on the page. */
 export const ROW_INDENT = 18
 
-/** The tokens of the colors of the count scale, from 0 to the largest count. */
-export const COUNT_SCALE_TOKENS = ["--color-brand-soft", "--color-brand-light", "--color-brand", "--color-brand-deeper"]
-
 /** What the legend explains: the scale of the colors of the cells. The gap is always explained. */
 export type MatrixLegend = { kind: "count"; max: string } | { kind: "ratio" }
 
@@ -44,7 +41,7 @@ export type MatrixExport = {
 
 const cellKey = (row: string, col: string): string => `${row}\t${col}`
 
-/** The advance of a character of a term ID: IBM Plex Mono, 0.6em. */
+/** The width of a term ID in px. The ID uses a monospace font. */
 const idWidth = (id: string): number => textWidth(id, textSize("termId"), true)
 
 const CELL_HEIGHT = 32
@@ -64,7 +61,10 @@ const LABEL_BASE_WITH_ID = 24
 const LABEL_BASE = 12
 /** Space above the column labels, for the first line and the corner. */
 const COLUMN_HEADER_TOP = 28
-/** The widest area that the row labels take at the left of the cells, counting both margins. */
+/**
+ * The widest area that the row labels take at the left of the cells, counting both margins, before the indent of the
+ * deepest row is added.
+ */
 const MAX_ROW_AREA = 400
 /** Space between a row label and its term ID. */
 const ID_GAP = 4
@@ -133,7 +133,7 @@ const cornerWidth = (corner: { row: string; col: string }): number =>
 
 /**
  * The room for the labels of the rows at the left of the cells: as wide as the longest row label with its indent and
- * term ID, or the names of the axes, up to `MAX_ROW_AREA`.
+ * term ID, or the names of the axes, up to `MAX_ROW_AREA` plus the indent of the deepest row.
  */
 const leftOf = (rows: MatrixLabel[], corner: { row: string; col: string }): number =>
   Math.min(MAX_ROW_AREA + maxDepth(rows) * ROW_INDENT, Math.ceil(Math.max(0, ...rows.map(rowWidth), cornerWidth(corner))) + 2 * LABEL_MARGIN)
@@ -171,7 +171,7 @@ const legendItems = (legend: MatrixLegend): LegendItem[] => {
         {
           width: textWidth("0", textSize("meta")) + 2 * SWATCH_TEXT_GAP + COUNT_BAR_WIDTH + textWidth(legend.max, textSize("meta")),
           draw: (x, y) => {
-            const stops = COUNT_SCALE_TOKENS.map((name, index) => `<stop offset="${index / (COUNT_SCALE_TOKENS.length - 1)}" stop-color="${token(name)}"/>`).join("")
+            const stops = COUNT_SCALE_STOPS.map((stop) => `<stop offset="${stop.at}" stop-color="${token(stop.token)}"/>`).join("")
             const barX = x + textWidth("0", textSize("meta")) + SWATCH_TEXT_GAP
             return (
               `<defs><linearGradient id="count-scale">${stops}</linearGradient></defs>${legendText(x, y, "0")}` +
@@ -196,7 +196,7 @@ const HEADING_GAP = 24
 
 const legendWidth = (legend: MatrixLegend): number => legendItems(legend).reduce((sum, item, index) => sum + item.width + (index > 0 ? LEGEND_ITEM_GAP : 0), 0)
 
-/** The width that the heading line needs: the name, a space, and what the cells count, with the margins. */
+/** The width that the heading line needs: the name, the gap after it, and what the cells count, with the margins. */
 const headingWidth = (title: string, meta: string): number =>
   Math.ceil(textWidth(title, textSize("heading")) + textWidth(meta, textSize("meta"))) + 2 * LABEL_MARGIN + HEADING_GAP
 

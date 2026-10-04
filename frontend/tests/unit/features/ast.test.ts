@@ -85,6 +85,13 @@ describe("describeAst", () => {
     expect(describeAst({ op: "NOT", rules: [] }, labels)).toBe("NOT")
     expect(describeAst(keyword("tumor"), labels)).toBe("Keyword: tumor")
   })
+
+  it("does not parenthesize a group nested under the same operator", () => {
+    const nestedOr: AstNode = { op: "OR", rules: [leaf("disease", "MONDO:1"), { op: "OR", rules: [leaf("cell_line", "CVCL:1"), keyword("x")] }] }
+    expect(describeAst(nestedOr, labels)).toBe("Disease: breast cancer OR Cell line: MCF-7 OR Keyword: x")
+    const nestedAnd: AstNode = { op: "AND", rules: [{ op: "AND", rules: [leaf("disease", "MONDO:1"), keyword("x")] }, keyword("y")] }
+    expect(describeAst(nestedAnd, labels)).toBe("Disease: breast cancer AND Keyword: x AND Keyword: y")
+  })
 })
 
 describe("clausesOfField", () => {

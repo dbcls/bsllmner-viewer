@@ -1,4 +1,7 @@
-"""Every operation answers an unknown query parameter with 422, and answers only with the statuses that it declares."""
+"""Every operation answers an unknown query parameter with 422.
+
+Every operation answers with a status that the OpenAPI document declares for the operation, and never with 500.
+"""
 
 from __future__ import annotations
 
@@ -30,6 +33,18 @@ def get_operations(client: TestClient) -> list[tuple[str, dict[str, Any]]]:
     return [(path, op) for method, path, op in _operations(client) if method == "GET"]
 
 
+@pytest.fixture(scope="module")
+def operations(client: TestClient) -> list[tuple[str, str, dict[str, Any]]]:
+    return _operations(client)
+
+
+# A valid body of each POST operation, so that only the query parameter is wrong.
+_POST_BODIES: dict[str, dict[str, Any]] = {
+    "/api/dsl/select": {"clauses": [{"field": "disease", "value": "MONDO:0000001"}]},
+    "/api/dsl/keyword": {"keyword": "liver"},
+}
+
+
 @settings(max_examples=150)
 @given(
     st.data(),
@@ -37,13 +52,20 @@ def get_operations(client: TestClient) -> list[tuple[str, dict[str, Any]]]:
     SEGMENT,
 )
 def test_an_undeclared_query_parameter_is_unprocessable_and_named_in_the_detail(
-    client: TestClient, get_operations: list[tuple[str, dict[str, Any]]], data: st.DataObject, name: str, segment: str
+    client: TestClient,
+    operations: list[tuple[str, str, dict[str, Any]]],
+    data: st.DataObject,
+    name: str,
+    segment: str,
 ) -> None:
-    path, operation = data.draw(st.sampled_from(get_operations))
+    method, path, operation = data.draw(st.sampled_from(operations))
     declared = {p["name"] for p in operation.get("parameters", []) if p["in"] == "query"}
     unknown = name if name not in declared else name + "_x"
     values = {"type": "biosample", "accession": segment, "termId": segment}
-    response = client.get(_fill(path, values), params={unknown: "1"})
+    if method == "GET":
+        response = client.get(_fill(path, values), params={unknown: "1"})
+    else:
+        response = client.request(method, path, params={unknown: "1"}, json=_POST_BODIES[path])
     assert response.status_code == 422, (path, unknown)
     assert response.json()["type"] == "about:blank"
     assert unknown in response.json()["detail"]
@@ -61,7 +83,7 @@ _VALUES = st.one_of(
 
 @settings(max_examples=200)
 @given(st.data(), SEGMENT)
-def test_a_get_operation_answers_only_with_a_declared_status(
+def test_a_get_operation_answers_with_a_declared_status_other_than_500(
     client: TestClient, get_operations: list[tuple[str, dict[str, Any]]], data: st.DataObject, segment: str
 ) -> None:
     path, operation = data.draw(st.sampled_from(get_operations))
@@ -72,7 +94,10 @@ def test_a_get_operation_answers_only_with_a_declared_status(
     path_values["termId"] = segment
     response = client.get(_fill(path, path_values), params=params)
     declared = {int(code) for code in operation["responses"]}
+    assert response.status_code != 500, (path, params, response.text)
     assert response.status_code in declared, (path, params, response.status_code, response.text)
+    if response.status_code in (400, 422):
+        assert response.headers["content-type"].startswith("application/problem+json")
 
 
 _JSON = st.recursive(
@@ -106,10 +131,13 @@ _CLAUSE = st.fixed_dictionaries(
         ),
     ),
 )
-def test_a_post_operation_answers_only_with_a_declared_status(client: TestClient, path: str, body: Any) -> None:
+def test_a_post_operation_answers_with_a_declared_status_other_than_500(
+    client: TestClient, path: str, body: Any
+) -> None:
     spec = client.get("/api/openapi.json").json()
     declared = {int(code) for code in spec["paths"][path]["post"]["responses"]}
     response = client.post(path, json=body)
+    assert response.status_code != 500, (path, body, response.text)
     assert response.status_code in declared, (path, body, response.status_code, response.text)
     if response.status_code >= 400:
         assert response.headers["content-type"].startswith("application/problem+json")

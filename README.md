@@ -4,7 +4,7 @@ bsllmner-viewer is a web application and HTTP API for querying, aggregating, and
 
 ## Overview
 
-bsllmner-mk2 extracts biological entities (cell line, cell type, tissue, disease, drug, genetic perturbations, ChIP antigen) from free-text BioSample attributes with an LLM and maps each extracted value to an ontology term. bsllmner-viewer ingests those results, links each BioSample to its SRA experiments and BioProjects, and serves the combined data through a query API and a browser UI.
+bsllmner-mk2 extracts biological entities (cell line, cell type, tissue, disease, drug, genetic perturbations, ChIP antigen) from free-text BioSample attributes with an LLM and maps each extracted value to an ontology term. bsllmner-viewer ingests those results, links each BioSample to its SRA Experiments and BioProjects, and serves the combined data through a query API and a browser UI.
 
 - Structured queries over ontology terms, with descendant expansion over the ontology DAG, combined with assay, organism, publication date, and BioProject conditions
 - Aggregations of the matches as distributions, cross-tabulations, and yearly trends, counted by BioSample, SRA Experiment, or BioProject
@@ -20,14 +20,14 @@ bsllmner-mk2 extracts biological entities (cell line, cell type, tissue, disease
 
 ## Documentation
 
-- [docs/architecture.md](docs/architecture.md) — Components, their responsibilities, and invariants that span them
-- [docs/data-model.md](docs/data-model.md) — Datasets, population, entities, annotation status, and counting semantics
-- [docs/build.md](docs/build.md) — Build inputs, validation, operations, and dataset version information
-- [docs/provenance.md](docs/provenance.md) — Provenance tracing: how build links each extracted value to evidence in the original metadata
-- [docs/api.md](docs/api.md) — API conventions, condition DSL, entries, aggregation semantics, correspondence between API queries and UI views, and compatibility policy
-- [docs/development.md](docs/development.md) — Running the containers, tests, and checks
-- [docs/testing.md](docs/testing.md) — Kinds of tests, what is tested, test doubles, and the end-to-end policy
-- [docs/operations.md](docs/operations.md) — Building, updating, publishing, and deploying a dataset, health monitoring, and crawler settings
+- [docs/architecture.md](docs/architecture.md): Components, their responsibilities, and invariants that span them
+- [docs/data-model.md](docs/data-model.md): Datasets, population, entities, annotation status, term hierarchy, condition evaluation, and counting semantics
+- [docs/build.md](docs/build.md): Build inputs, validation, reading of annotations, the run that each BioSample comes from, operations, verification and publication, and dataset version information
+- [docs/provenance.md](docs/provenance.md): Provenance tracing, that is, how build links each extracted value to evidence in the original metadata
+- [docs/api.md](docs/api.md): API conventions, errors, limits, caching, condition DSL, entries, terms, aggregation semantics, how API queries map to UI views and URLs, and compatibility policy
+- [docs/development.md](docs/development.md): Running the development containers, tests, and checks, and code conventions
+- [docs/testing.md](docs/testing.md): Kinds of tests, what is tested, test doubles, and the end-to-end policy
+- [docs/operations.md](docs/operations.md): Building, updating, and publishing a dataset, deploying the application, limits of the api workers and the web server, logs, health monitoring, and crawler settings
 
 ## Provenance tracing
 

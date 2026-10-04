@@ -8,7 +8,7 @@ build reads three kinds of input: a manifest, runs, and reference data.
 
 ### Manifest
 
-A manifest is the YAML file that defines a dataset and that every build operation reads. It contains:
+A manifest is the YAML file that defines a dataset and that every build operation reads. A manifest contains:
 
 - the dataset name,
 - the target assays, as a list of SRA `library_strategy` values,
@@ -27,34 +27,40 @@ A run is one execution of `bsllmner2_select` of bsllmner-mk2.
 | Input | BioSample JSONL given to the execution: one NCBI BioSample entry per line as exported from BioSample XML (`Ids`, `Description`, `Attributes`, `submission_date`, `publication_date`, `last_update`), either wrapped as `{"BioSample": {...}, "accession": ...}` or with the same members at the top level next to `accession` |
 | Select configuration | The select configuration JSON given to the execution, mapping each field to an ontology file |
 
-From an input entry, build takes the organism (`Description.Organism`), the title, the publication date (`publication_date`), the description (`Description.Comment.Paragraph`, `Description.SampleName`, and `Description.Synonym`), the attributes (`Attributes.Attribute`), and the other members of the entry as its record, without the contacts of the owner (`Owner.Contacts`). A paragraph is a string or a list of strings, and a synonym is an object or a list of objects that holds the synonym as `content`. Of the record, build keeps each string value that evidence points to, together with its path in the entry, such as `Owner.Name`. build finds this evidence while it ingests the run ([provenance.md](provenance.md#when-build-finds-evidence)).
+From an input entry, build takes the organism (`Description.Organism`), the title, the publication date (`publication_date`), the description (`Description.Comment.Paragraph`, `Description.SampleName`, and `Description.Synonym`), the attributes (`Attributes.Attribute`), and the other members of the entry as its record, without the contacts of the owner (`Owner.Contacts`). A paragraph is a string or a list of strings, and a synonym is an object or a list of objects that holds the synonym as `content`. Of the record, build keeps each value that evidence points to, together with its path in the entry, such as `Owner.Name`. build finds this evidence while it ingests the run ([provenance.md](provenance.md#when-build-finds-evidence)).
 
-The store keeps every attribute of an input entry that has a value. A number is stored as its text, and an attribute without `content` or with a null `content` has no value. The derived BioSample leaves out some attributes that record how the BioSample was submitted and archived, such as `INSDC status`, `gap_accession`, and `GEO Accession`. The candidates are the attribute names that bsllmner-mk2 lists in its `filter_keys.json`, and the build package holds a copy of them. Derivation leaves out a candidate only if no evidence of any BioSample points to an attribute of that name ([provenance.md](provenance.md)). Leaving the attributes out therefore removes no evidence. A candidate that evidence points to in one BioSample stays in every BioSample. The api does not return the attributes that are left out, and keywords do not match their values.
+The store keeps every attribute of an input entry that has a value. A number is stored as its text, and an attribute without `content` or with a null `content` has no value. Derivation removes from every BioSample some attributes that record how the BioSample was submitted and archived, such as `INSDC status`, `gap_accession`, and `GEO Accession`. The candidates are the attribute names that bsllmner-mk2 lists in its `filter_keys.json`, and the build package holds a copy of them. Derivation removes a candidate only if no evidence of any BioSample points to an attribute of that name ([provenance.md](provenance.md)). Removing these attributes therefore removes no evidence. A candidate that evidence points to in one BioSample stays in every BioSample. The api does not return the removed attributes, and keywords do not match their values.
 
 The publication date is the only date that build takes, because it is the only date that means the same for every BioSample. Every entry has `publication_date`, whether NCBI, EBI, or DDBJ registered the BioSample. `submission_date` is absent from DDBJ entries (`SAMD`), and in EBI entries (`SAME`) it is usually later than the publication date. build stores the date in UTC, as the DDBJ Search API does.
 
-build treats a publication date as unknown when it cannot be the day on which the BioSample became public. A date after the day on which the run started (`run_metadata.start_time`) is a planned release date, because the run analyzed the BioSample after it had become public. A date before 2005-01-01 is a placeholder, such as 2000-01-01, because the sequencing assays of a dataset produced no data that early. A BioSample with an unknown date does not match a clause on the date, so it matches the negation of the clause. It is not counted in trends. The DDBJ Search API keeps such dates, so a condition on the date can select different BioSamples in the two APIs.
+build treats a publication date as unknown when it cannot be the day on which the BioSample became public. A date after the day on which the run started (`run_metadata.start_time`) is a planned release date, because the run analyzed the BioSample after it had become public. A date before 2005-01-01 is a placeholder, such as 2000-01-01, because the sequencing assays of a dataset produced no data that early. A BioSample with an unknown date does not match a clause on the date, so it matches the negation of the clause. Such a BioSample is not counted in trends. The DDBJ Search API keeps such dates, so a condition on the date can select different BioSamples in the two APIs.
 
 ### Reference data
 
 | Source | Used for |
 |---|---|
-| Ontology files (OWL in RDF/XML, or OBO), listed per ontology in the manifest | Term labels, synonyms, and parent–child relations. Build reads is-a (`is_a`, `rdfs:subClassOf`) and part-of (`part_of`, `BFO:0000050`) as parent relations, follows part-of only between terms with the same prefix, skips conditional (`gci_relation`, `gci_filler`) lines, and reads no other relation. Every file of an ontology adds terms and relations. If two files define the same term, then the label comes from the earlier file. The files are in the order of the ontologies in the manifest, and then in the order of the files of each ontology |
-| SRA experiment JSONL (ddbj-search-converter) | `library_strategy` of experiments |
+| Ontology files (OWL in RDF/XML, or OBO), listed per ontology in the manifest | Term labels, synonyms, and parent–child relations. Build reads is-a (`is_a`, `rdfs:subClassOf`) and part-of (`part_of`, `BFO:0000050`) as parent relations, follows part-of only between terms with the same prefix, skips conditional (`gci_relation`, `gci_filler`) lines and obsolete terms, and reads no other relation. Every file of an ontology adds terms and relations. If two files define the same term, then the label comes from the earlier file. The files are in the order of the ontologies in the manifest, and then in the order of the files of each ontology |
+| SRA Experiment JSONL (ddbj-search-converter) | `library_strategy` of experiments |
 | DBLink DuckDB file (ddbj-search-converter, table `dbxref`) | BioSample–SRA Experiment, SRA Experiment–SRA Run, and BioSample–BioProject relations |
 | BioProject JSONL (ddbj-search-converter) | BioProject titles |
-| ChIP-Atlas experiment list | Experiments processed by ChIP-Atlas and their genome assemblies, for external links |
+| ChIP-Atlas experiment list | SRA Experiments that ChIP-Atlas processed, and their genome assemblies, for external links |
+
+Build reads the terms of an ontology file whose IDs are CURIEs (`PREFIX:local`). Build turns an OBO address into a CURIE, such as `http://purl.obolibrary.org/obo/CL_0000000` into `CL:0000000`. A term that the file names by an address without a prefix is not read, and a parent of that form is not read either. For example, MONDO cites a gene as `http://identifiers.org/hgnc/5032`, and build does not read that gene.
+
+Build reads the reference data after the runs. Build stops if a file of the reference data cannot be read, or if the SRA Experiment data gives an experiment of the dataset more than one library strategy. The error names the file or the experiment. If the SRA Experiment data has the same row twice, then the two rows count as one.
 
 The ontology files used by the runs themselves (the subsets referenced by the select configurations) define the terms an annotation can carry but do not contain the term hierarchy. The manifest therefore lists, for each ontology, those subsets together with a complete release of the ontology that carries the parent–child relations.
 
 ## Validation
 
-Build operations validate their inputs before ingesting anything and stop on the first violation. The error names the file, and it names the line when the file has lines. Later stages assume that the following hold.
+Build operations validate their inputs before ingesting anything and stop on the first violation. The error names the file, the run, or the field that breaks the rule, and the error names the line when the file has lines. Later stages assume that the following hold.
 
 - Every run in the dataset has the same `run_metadata.model`.
 - Every run has `run_metadata.status` equal to `completed`.
 - Ontology names are unique.
-- No run is ingested twice. Run names are unique, two runs do not have the same result file, and an append operation rejects a run that is already in the store.
+- Every path of the reference data in the manifest exists.
+- No run is ingested twice. Run names are unique, and two runs do not have the same result file.
+- A field is multi-valued (`"value_type": "array"` in the select configuration) in every run that has the field, or in none of them.
 - An `accession` occurs once in the result of a run.
 - Every non-empty line of an input file is a JSON object with an `accession`.
 - The `taxonomy_id` of an input entry is absent, null, empty, or an integer from 1 to 2147483647. The integer is a JSON number or a string of ASCII digits.
@@ -86,22 +92,24 @@ The store keeps the annotations of exactly one run per BioSample: of the runs th
 
 ## Operations
 
-Every operation leaves its input store unchanged and writes a new store file. If a build stops with an error, then it removes the file that it was writing. If verification finds a problem, then the build still writes the store and records the problems in it. If the build process is killed, then `<out>.partial` remains, and the next build with the same output path removes it. Append and refresh accept only a store that has the current schema version. If the store has another schema version, then they stop and ask for a full build.
+Every operation leaves its input store unchanged and writes a new store file. If a build stops with an error, then it removes the file that it was writing. If verification finds a problem, then the build still writes the store and records the problems in it. If the build process is killed, then `<out>.partial` remains, and the next build with the same output path removes it. Append and refresh accept only a store that has the current schema version. If the store has another schema version, then append and refresh stop and ask for a full build.
 
 | Operation | Input | Effect |
 |---|---|---|
 | Full build | Manifest | Ingests all runs and reference data, and derives query-ready data |
-| Append | Store with the current schema version, manifest with additional runs added to the end of the list of runs | Ingests the runs not yet in the store, reads the reference data of the manifest, applies the BioSample selection over all runs, and re-derives query-ready data |
-| Reference refresh | Store with the current schema version, manifest with updated reference data or target assays | Replaces reference data and re-derives query-ready data, without re-ingesting runs |
+| Append | Store with the current schema version, manifest that lists the runs of the store first, in the same order, and at least one additional run after them | Ingests the runs not yet in the store, reads the reference data of the manifest, applies the BioSample selection over all runs, and re-derives query-ready data |
+| Reference refresh | Store with the current schema version, manifest that lists exactly the runs of the store, in the same order, with updated reference data or target assays | Replaces reference data and re-derives query-ready data, without re-ingesting runs |
 
 Derived data comprises everything computable from runs and reference data: the evidence that build finds with the names of terms, the attributes that each BioSample shows, the transitive closure of the term hierarchy, the population, the searchable text of BioSamples, auxiliary data for aggregation, and the counts of the whole population that the api returns from its dataset endpoint (see [api.md](api.md#counts-of-the-whole-population)). Every operation recomputes derived data from scratch rather than patching it.
 
-A full build of runs `R1..Rn` and a full build of `R1..Rk` followed by an append of `Rk+1..Rn` produce stores with identical contents.
+A full build of runs `R1..Rn` and a full build of `R1..Rk` followed by an append of `Rk+1..Rn` produce stores with identical contents, except for the time at which the store was created and the times at which the runs were ingested.
 
 ## Verification and publication
 
 Before publication, build verifies the new store:
 
+- every table of the store schema exists,
+- no BioSample is stored twice,
 - the population is not empty, and
 - the BioSample–BioProject relations and the SRA Experiment–SRA Run relations are not empty.
 

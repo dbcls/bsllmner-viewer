@@ -1,20 +1,10 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react"
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
+import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { FrozenTd, FrozenTh, TableScroller } from "~/ui/table-scroller"
 
 afterEach(() => {
   vi.restoreAllMocks()
-})
-
-beforeEach(() => {
-  vi.stubGlobal(
-    "ResizeObserver",
-    class {
-      observe = vi.fn()
-      disconnect = vi.fn()
-    },
-  )
 })
 
 const renderTable = () => {
@@ -46,7 +36,7 @@ const renderTable = () => {
   }
   const shade = () => view.container.querySelector("[data-scroll-shade]")
   const edges = () => [screen.getByRole("columnheader", { name: "BioSample" }), screen.getByRole("cell", { name: "SAMD00000001" })].map((cell) => cell.className.includes("shadow-"))
-  return { scrollTo, shade, edges }
+  return { scroller, scrollTo, shade, edges }
 }
 
 describe("TableScroller", () => {
@@ -76,6 +66,42 @@ describe("TableScroller", () => {
     expect(header).toContain("bg-surface-subtle")
     expect(body).toContain("sticky")
     expect(body).toContain("group-hover:bg-brand-soft")
+  })
+})
+
+describe("TableScroller edges", () => {
+  it("measures again when the observer reports a new size of the box", () => {
+    let report: () => void = vi.fn()
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(callback: () => void) {
+          report = callback
+        }
+        observe = vi.fn()
+        disconnect = vi.fn()
+      },
+    )
+    const { scroller, scrollTo, shade } = renderTable()
+    scrollTo(0)
+    expect(shade()).not.toBeNull()
+    expect(scroller).toHaveAttribute("tabindex", "0")
+    Object.defineProperty(scroller, "scrollWidth", { configurable: true, value: 400 })
+    act(() => report())
+    expect(shade()).toBeNull()
+    expect(scroller).not.toHaveAttribute("tabindex")
+  })
+
+  it("draws the frozen edge only after more than 1 pixel and drops the shade within 1 pixel of the far end", () => {
+    const { scrollTo, shade, edges } = renderTable()
+    scrollTo(1)
+    expect(edges()).toEqual([false, false])
+    scrollTo(2)
+    expect(edges()).toEqual([true, true])
+    scrollTo(598)
+    expect(shade()).not.toBeNull()
+    scrollTo(599)
+    expect(shade()).toBeNull()
   })
 })
 

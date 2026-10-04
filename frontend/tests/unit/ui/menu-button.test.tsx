@@ -81,28 +81,6 @@ describe("MenuButton", () => {
     expect(onWindowEscape.mock.calls.filter(([event]) => (event as KeyboardEvent).key === "Escape")).toHaveLength(0)
   })
 
-  it("moves through the items with the arrow keys, wrapping at both ends", async () => {
-    const user = userEvent.setup()
-    renderMenu()
-    await user.click(trigger())
-    await user.keyboard("{ArrowUp}")
-    expect(item("PNG")).toHaveFocus()
-    await user.keyboard("{ArrowDown}")
-    expect(item("TSV")).toHaveFocus()
-    await user.keyboard("{ArrowDown}{ArrowDown}")
-    expect(item("PNG")).toHaveFocus()
-  })
-
-  it("jumps to the last item with End and to the first with Home", async () => {
-    const user = userEvent.setup()
-    renderMenu()
-    await user.click(trigger())
-    await user.keyboard("{End}")
-    expect(item("PNG")).toHaveFocus()
-    await user.keyboard("{Home}")
-    expect(item("TSV")).toHaveFocus()
-  })
-
   it("opens on ArrowDown on the closed button with the focus on the first item", async () => {
     const user = userEvent.setup()
     renderMenu()

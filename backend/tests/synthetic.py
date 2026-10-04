@@ -84,7 +84,8 @@ def term_tier(term_id: str, query: str) -> int:
 # after `exact` (`Hep G2` for `HepG2`).
 SYNONYM_OF = {term_id: synonyms[0] for terms in ONTOLOGIES.values() for term_id, _, synonyms, _ in terms if synonyms}
 
-# Leaf-ish terms the generator annotates with, per field.
+# The terms that the generator annotates with, per field. The generator does not annotate with the top terms
+# `disease`, `anatomical structure`, and `drug`.
 ANNOTATED: dict[str, list[tuple[str, str]]] = {
     "cell_line": [(t, label) for t, label, _, _ in ONTOLOGIES["cellosaurus"]],
     "disease": [(t, label) for t, label, _, _ in ONTOLOGIES["mondo"] if t != "MONDO:0000001"],
@@ -97,11 +98,25 @@ TARGET_ASSAYS = ["RNA-Seq", "ChIP-Seq", "ATAC-seq"]
 ORGANISMS = [(9606, "Homo sapiens"), (10090, "Mus musculus")]
 # Names that a few BioSamples give instead, which sort before the names that most BioSamples give.
 ORGANISM_VARIANTS = {9606: "9606", 10090: "Mouse"}
+# Attribute values with letters outside ASCII. Pairs differ only in such a letter, so a keyword tells them apart only
+# if the letter is part of a word.
+NON_ASCII_VALUES = (
+    "\u03b2-catenin",
+    "\u03b1-catenin",
+    "IFN-\u03b3",
+    "IFN-\u03b1",
+    "M\u00fcller glia",
+    "Muller glia",
+    "\u809d\u81d3 \u304c\u3093",
+)
 STATUS_KINDS = ("mapped_exact", "mapped_selected", "unmapped_no_candidate", "unmapped_rejected", "not_stated")
 
 
 RUN_START = datetime.datetime(2026, 1, 1)
-"""The start time (UTC) of every generated run. A later publication date is not the day a BioSample became public."""
+"""The start time (UTC) of every generated run.
+
+The build treats a publication date after the UTC day of this time as unknown.
+"""
 
 PUBLICATION_BOUNDARIES = (
     datetime.datetime(2005, 1, 1),
@@ -122,6 +137,8 @@ class Truth:
     published_input: dict[tuple[str, str], datetime.date | None] = field(default_factory=dict)
     experiments: dict[str, list[tuple[str, str]]] = field(default_factory=dict)
     bioprojects: dict[str, list[str]] = field(default_factory=dict)
+    organisms: dict[tuple[str, str], tuple[int, str]] = field(default_factory=dict)
+    """(run, accession) to the taxonomy ID and the name that the input entry writes."""
 
 
 @dataclass(slots=True)
@@ -246,6 +263,7 @@ def _write_run(root: Path, name: str, members: list[str], rng: random.Random, tr
             published_local = datetime.datetime(2010, 1, 1) + datetime.timedelta(days=rng.randrange(5000))
         submitted = published_local + datetime.timedelta(days=rng.randrange(-30, 400))
         truth.modified[(name, accession)] = modified
+        truth.organisms[(name, accession)] = (organism[0], organism_name)
         has_published = rng.random() >= 0.05
         # The publication date is written at local midnight (+09:00), so its UTC date is the previous day.
         published_utc = (published_local - datetime.timedelta(hours=9)).date() if has_published else None
@@ -257,9 +275,11 @@ def _write_run(root: Path, name: str, members: list[str], rng: random.Random, tr
         )
         attributes = [
             {"attribute_name": "sample_name", "content": f"sample {accession}"},
-            # An attribute that records how the BioSample was archived, which the derived BioSample leaves out.
+            # An attribute that records how the BioSample was archived, which the derived BioSample omits.
             {"attribute_name": "GEO Accession", "content": f"GSM{accession[4:]}"},
         ]
+        if number % 3 == 2:
+            attributes.append({"attribute_name": "target", "content": NON_ASCII_VALUES[number % len(NON_ASCII_VALUES)]})
         title = f"{name} sample of {accession}"
         failed = rng.random() < 0.03
         extracted: dict[str, object] | None = None if failed else {}
@@ -336,8 +356,10 @@ def _write_run(root: Path, name: str, members: list[str], rng: random.Random, tr
                 "ambiguous_fields": {},
             }
         )
-        # In every fifth BioSample, only the name of the owner holds the last mention, so that its evidence is in the
-        # record. A contact always holds a mention and is never kept.
+        # `mentions` holds, for each field with a value, the text that the BioSample writes for its first value.
+        # In every fifth BioSample, the last mention is only in the owner name, because the attributes that hold it
+        # are removed. The evidence of the last mention is then in the record. The contact name holds the first
+        # mention, but the record does not keep the contacts.
         only_in_record = mentions[-1] if number % 5 == 0 and mentions else None
         if only_in_record is not None:
             attributes = [a for a in attributes if only_in_record not in a["content"]]

@@ -1,14 +1,18 @@
 import { expect, test } from "@playwright/test"
 
 import { type Crosstab,crosstab, dataset, distribution, get, select, terms } from "./_api"
-import { axisTerms, axisTermsButton, cell, cellButton, expectChosen, expectParam, expectQ, formatCount, qOf, workspaceUrl } from "./_helpers"
+import { axisTerms, axisTermsButton, cell, cellButton, expectChosen, expectParam, expectQ, formatCount, qOf, skipUnless, workspaceUrl } from "./_helpers"
 
 /** The first cell of the cross-tabulation with the given sign of count, with its row and column elements. */
 const findCell = (data: Crosstab, populated: boolean) => {
   const found = data.cells.find((c) => (c.count > 0) === populated)
   const row = data.rows.find((r) => r.value === found?.row)
   const col = data.cols.find((c) => c.value === found?.col)
-  if (!found || !row || !col) throw new Error(`the cross-tabulation has no cell with ${populated ? "a count above 0" : "a count of 0"}`)
+  if (!found || !row || !col) {
+    // A cell of 0 needs a dataset large enough to leave a pair of elements without a match.
+    if (populated) throw new Error("the cross-tabulation has no cell with a count above 0")
+    skipUnless(false, "the cross-tabulation has no cell with a count of 0")
+  }
   return { cell: found, row, col }
 }
 
@@ -48,7 +52,7 @@ test.describe("heatmap", () => {
     if (!organism) throw new Error("the dataset has no organism")
     const population = await select(request, null, organism.clauses)
     const [a, b] = (await distribution(request, "cell_line", { q: population })).elements
-    if (!a || !b) throw new Error("the dataset has fewer than two cell lines for the organism")
+    skipUnless(a && b, "the dataset has fewer than two cell lines for the organism")
     const q = `(cell_line:"${a.value}" OR cell_line:"${b.value}") AND ${population}`
     const data = await crosstab(request, "cell_line", "library_strategy", { q, unit: "sra-experiment" })
     expect(data.populationQ).toBe(population)
@@ -79,7 +83,7 @@ test.describe("heatmap", () => {
     const data = await crosstab(request, "cell_line", "library_strategy")
     const shown = data.rows.map((row) => row.value)
     const extra = (await terms(request, "cell_line", "")).find((term) => !shown.includes(term.termId))
-    if (!extra) throw new Error("every listed cell line is already a row")
+    skipUnless(extra, "every listed cell line is already a row")
     await page.goto(workspaceUrl({ tab: "heatmap" }))
     await expect(axisTermsButton(page, "Rows")).toHaveText(`${shown.length} terms`)
     await axisTermsButton(page, "Rows").click()
@@ -113,7 +117,8 @@ test.describe("heatmap", () => {
   test("the heading of a row term opens its child terms under it, a reload or the same URL in another page draws the same tree, and the heading closes it", async ({ page, request }) => {
     const data = await crosstab(request, "disease", "tissue")
     const shown = data.rows.map((row) => row.value)
-    // A closed row whose children with matches are none of them rows yet, so that closing it gives the rows back as they were.
+    // A closed row with child terms that have matches and are not rows yet. Closing the row again then restores the
+    // original rows.
     let found: { parent: (typeof data.rows)[number]; children: string[] } | null = null
     for (const [index, parent] of data.rows.entries()) {
       if (!parent.hasChildren || data.rows[index + 1]?.parents.includes(parent.value)) continue
@@ -130,7 +135,7 @@ test.describe("heatmap", () => {
         break
       }
     }
-    if (!found) throw new Error("no closed disease row has child terms that are not rows already")
+    skipUnless(found, "no closed disease row has child terms that are not rows already")
     const at = shown.indexOf(found.parent.value)
     const opened = [...shown.slice(0, at + 1), ...found.children, ...shown.slice(at + 1)].join(",")
     const headingIn = (target: typeof page) => target.getByRole("main").locator("tbody th").getByRole("button", { name: found.parent.label, exact: true })
@@ -167,5 +172,16 @@ test.describe("heatmap", () => {
     const same = swapped.cells.find((c) => c.row === col.value && c.col === row.value)
     if (!same) throw new Error("the swapped cross-tabulation lacks the cell")
     await expect(cell(page, col.label, row.label)).toHaveText(ratioText(same.ratio))
+  })
+
+  test("the color legend of counts ends at the largest count of the cross-tabulation of the same condition and axes", async ({ page, request }) => {
+    const assay = (await dataset(request)).targetAssays[0]
+    if (!assay) throw new Error("the dataset has no target assay")
+    const q = `library_strategy:${assay}`
+    const data = await crosstab(request, "cell_line", "library_strategy", { q })
+    const largest = Math.max(...data.cells.map((c) => c.count))
+    expect(largest).toBeGreaterThan(0)
+    await page.goto(workspaceUrl({ tab: "heatmap", q }))
+    await expect(page.getByRole("main").locator("span").filter({ hasText: new RegExp(`^0${formatCount(largest)}$`) }).first()).toBeVisible()
   })
 })

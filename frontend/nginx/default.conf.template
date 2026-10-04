@@ -20,8 +20,8 @@ map $uri $csp {
     default     "default-src 'self'; script-src 'self' $csp_script_hashes; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
 }
 
-# One add_header set at the server level, because a location with its own add_header drops the inherited ones.
-# A 404 under /assets/ is not cached for long.
+# Every add_header is set at the server level, because a location with its own add_header drops the inherited ones.
+# A 404 under /assets/ gets no-cache.
 map "$status:$uri" $cache_control_v {
     ~^(200|206|304):/assets/ "public, max-age=31536000, immutable";
     ~^[0-9]+:/api            "";
@@ -85,8 +85,8 @@ map $http_x_forwarded_proto $forwarded_proto {
     default $http_x_forwarded_proto;
 }
 
-# The combined format, followed by the seconds of the request and of the api, and the request ID of the response, which
-# the warnings and errors in the log of the api name.
+# The combined format, followed by the seconds of the request, the seconds of the api, and the request ID of the
+# response. The warnings and errors in the log of the api name the same request ID.
 log_format timed '$remote_addr - $remote_user [$time_local] "$request" $status $body_bytes_sent '
                  '"$http_referer" "$http_user_agent" '
                  'request_time=$request_time upstream_time=$upstream_response_time request_id=$sent_http_x_request_id';
@@ -106,7 +106,7 @@ server {
     set $api_upstream http://api:8000;
 
     gzip on;
-    # Level 6 makes the scripts of the first page about 15% smaller than the default level 1, at little more CPU.
+    # Level 6 makes the scripts of the first page about 15% smaller than the default level 1, and uses little more CPU.
     gzip_comp_level 6;
     gzip_vary on;
     gzip_proxied any;
@@ -126,8 +126,9 @@ server {
     add_header Access-Control-Allow-Origin $cors_origin always;
     add_header Access-Control-Expose-Headers $cors_expose always;
 
-    # The gateway and the container networks are private addresses. Their X-Real-IP is the address of the client.
-    # For a peer outside these ranges, the address of the peer is the address of the client.
+    # The gateway and the container networks use private addresses. For a peer in these ranges, the X-Real-IP header
+    # of the request is the address of the client. For a peer outside these ranges, the address of the peer is the
+    # address of the client.
     set_real_ip_from 10.0.0.0/8;
     set_real_ip_from 172.16.0.0/12;
     set_real_ip_from 192.168.0.0/16;

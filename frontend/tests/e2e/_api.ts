@@ -35,7 +35,12 @@ export type Term = { field: string; termId: string; label: string | null; count:
 
 export type Project = { identifier: string; biosampleCount: number; clauses: Clause[] }
 
-export type Dataset = { targetAssays: string[]; fields: { name: string }[] }
+export type Dataset = {
+  targetAssays: string[]
+  fields: { name: string }[]
+  totals: { biosample: number }
+  organisms: { identifier: string; name: string; biosampleCount: number }[]
+}
 
 type Params = Record<string, string | number | boolean | null | undefined>
 
@@ -103,6 +108,29 @@ export const trend = (
 export const terms = async (request: APIRequestContext, field: string, text: string): Promise<Term[]> =>
   (await get<{ terms: Term[] }>(request, "/api/terms", { field, query: text, facetSelfExclude: true, limit: 30 })).terms
 
+/** The share of the dataset's BioSamples that an organism needs to be listed in the condition panel (`ORGANISM_MIN_SHARE` of the panel). */
+const ORGANISM_MIN_SHARE = 0.01
+
+/** The organisms that the condition panel lists, in descending order of their BioSamples. */
+export const listedOrganisms = (data: Dataset): Dataset["organisms"] =>
+  data.organisms.filter((organism) => organism.biosampleCount >= data.totals.biosample * ORGANISM_MIN_SHARE).sort((a, b) => b.biosampleCount - a.biosampleCount)
+
+/** The counts of named elements of a field, with or without self-exclusion, in BioSamples. */
+export const countsOfElements = async (request: APIRequestContext, field: string, elements: string[], q: string, selfExclude: boolean): Promise<Map<string, number>> => {
+  const result = await get<Distribution>(request, "/api/distribution", { field, q, unit: "biosample", facetSelfExclude: selfExclude, elements: elements.join(",") })
+  return new Map(elements.map((element) => [element, result.elements.find((e) => e.value === element)?.count ?? 0]))
+}
+
+/** The term search of every field, in BioSamples. The term picker requests it with self-exclusion. */
+export const termSearch = async (request: APIRequestContext, text: string, q: string | null, selfExclude = true): Promise<Term[]> =>
+  (await get<{ terms: Term[] }>(request, "/api/terms", { query: text, q, facetSelfExclude: selfExclude, limit: 30 })).terms
+
+/** The canonical form of a condition, and the status of the parse. */
+export const parse = async (request: APIRequestContext, q: string): Promise<{ status: number; q: string | null }> => {
+  const response = await request.get(`/api/dsl/parse?${query({ q })}`)
+  return { status: response.status(), q: response.ok() ? ((await response.json()) as { q: string | null }).q : null }
+}
+
 /** The condition that the api derives from selecting clauses, as the UI derives it. */
 export const select = async (
   request: APIRequestContext,
@@ -120,8 +148,9 @@ export const countOf = async (request: APIRequestContext, q: string, unit: Unit 
   (await distribution(request, "library_strategy", { q, unit, selfExclude: false, limit: 1 })).total
 
 /**
- * BioProjects with 2 to 20 BioSamples, for tests that need a small population. Many BioProjects have a single BioSample,
- * so a binary search finds the first page of the ascending BioSample order that reaches 2 BioSamples.
+ * BioProjects with 2 to 20 BioSamples, for tests that need a small population, or none in a small dataset. Many
+ * BioProjects have a single BioSample, so a binary search finds the first page of the ascending BioSample order that
+ * reaches 2 BioSamples.
  */
 export const smallProjects = async (request: APIRequestContext): Promise<Project[]> => {
   const perPage = 100
@@ -135,9 +164,7 @@ export const smallProjects = async (request: APIRequestContext): Promise<Project
     if (((await pageOf(middle)).at(-1)?.biosampleCount ?? 0) >= 2) high = middle
     else low = middle + 1
   }
-  const small = (await pageOf(low)).filter((project) => project.biosampleCount >= 2 && project.biosampleCount <= 20)
-  if (small.length === 0) throw new Error("no BioProject with 2 to 20 BioSamples")
-  return small
+  return (await pageOf(low)).filter((project) => project.biosampleCount >= 2 && project.biosampleCount <= 20)
 }
 
 type EntryItem = { identifier: string; title: string | null; bioprojects: string[] }

@@ -56,13 +56,14 @@ type FieldChipProps = {
 }
 
 /**
- * A condition on a field, in two segments: the field on a tint and the value on white. In a column of these chips, the
- * field names start at one x, so that a reader sees which fields have a condition. The chip keeps to one line, and a
- * value longer than the chip ends in an ellipsis, so that every condition in the column is as tall as the others.
+ * A condition on a field, in two segments: the field name on a soft background and the value on the surface color. In a
+ * column of these chips, the field names start at the same left position, so that a reader can see which fields have a
+ * condition. The chip keeps to one line, and a value longer than the chip ends in an ellipsis, so that every condition
+ * in the column is as tall as the others.
  *
  * The whole chip is the button that removes the condition, so that a press anywhere on it removes it. The labels are
- * trimmed to the height of their capitals (`text-trim-cap`), so that the capitals and the × sit in the middle of the
- * chip; the labels keep room above and below for the descenders, which their overflow would otherwise clip.
+ * trimmed to the height of their capitals (`text-trim-cap`), so that the capitals and the remove icon sit in the middle
+ * of the chip; the labels keep room above and below for the descenders, which their overflow would otherwise clip.
  */
 export const FieldChip = ({ field, value, onRemove }: FieldChipProps) => (
   <button

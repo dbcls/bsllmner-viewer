@@ -46,6 +46,26 @@ describe("Pager", () => {
   })
 })
 
+describe("Pager edges", () => {
+  it("enables the next page on the page before the last and shows the short last page up to the total", () => {
+    const { rerender } = render(<Pager page={2} perPage={25} total={60} onChange={vi.fn()} />)
+    expect(screen.getByText("26–50 / 60")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Next page" })).toBeEnabled()
+    rerender(<Pager page={3} perPage={25} total={60} onChange={vi.fn()} />)
+    expect(screen.getByText("51–60 / 60")).toBeInTheDocument()
+  })
+
+  it("shows a dash, disables both steps, and is not busy when the list could not be loaded", () => {
+    const { rerender } = render(<Pager page={2} perPage={25} total={60} onChange={vi.fn()} failed />)
+    expect(screen.getByText("–")).toBeInTheDocument()
+    expect(screen.queryByText(/60/)).toBeNull()
+    expect(screen.getByRole("button", { name: "Previous page" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "Next page" })).toBeDisabled()
+    rerender(<Pager page={2} perPage={25} total={undefined} onChange={vi.fn()} failed />)
+    expect(screen.getByRole("navigation", { name: "Pages" })).not.toHaveAttribute("aria-busy")
+  })
+})
+
 describe("Pager landmark name", () => {
   it("is named Pages by default and takes another name when two pagers share a page", () => {
     render(

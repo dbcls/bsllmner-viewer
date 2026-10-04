@@ -16,8 +16,8 @@ type TermPopoverProps = {
 }
 
 /**
- * A term of an annotation, its label in the brand color and its ID after it, that opens the panel of its details: a
- * click on either opens and pins it, and the pointer resting on the ID opens it too.
+ * A term of an annotation: its label in the brand color, followed by its ID. A click on the label or the ID opens the
+ * panel of the details and pins the panel. The pointer resting on the ID also opens the panel.
  */
 export const TermPopover = ({ label, termId, clauses }: TermPopoverProps) => (
   <Popover

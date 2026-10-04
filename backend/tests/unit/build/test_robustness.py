@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import json
+import os
+import re
 import shutil
 import subprocess
 import sys
+import threading
+import time
 import unicodedata
 from collections.abc import Callable, Iterator
 from pathlib import Path
@@ -14,17 +18,17 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from bsllmner_viewer.api.store import Store
-from bsllmner_viewer.build import ingest
 from bsllmner_viewer.build.cli import main
 from bsllmner_viewer.build.errors import BuildError
 from bsllmner_viewer.build.evidence import CASE_INSENSITIVE, Text, trace
-from bsllmner_viewer.build.ingest import build_full, build_refresh
+from bsllmner_viewer.build.ingest import build_append, build_full, build_refresh
 from bsllmner_viewer.build.inputs import MAX_TAXONOMY_ID, parse_input_doc, read_input
 from bsllmner_viewer.build.manifest import load_manifest
 from bsllmner_viewer.build.reference import read_bioprojects, read_experiments
 from bsllmner_viewer.build.selectresult import load_select_result, read_entry, read_run_metadata
 from bsllmner_viewer.store.schema import SCHEMA_VERSION
-from tests.synthetic import Synthetic, generate
+from bsllmner_viewer.store.version import read_version
+from tests.synthetic import FIELDS, Synthetic, generate
 
 
 @pytest.fixture
@@ -45,12 +49,34 @@ def _files(directory: Path) -> list[str]:
     return sorted(p.name for p in directory.iterdir())
 
 
+def _with_target_assays(synthetic: Synthetic, assays: str) -> None:
+    text = synthetic.manifest.read_text()
+    synthetic.manifest.write_text(re.sub(r"^target_assays: .*$", f"target_assays: [{assays}]", text, flags=re.M))
+
+
+def _store_with_failing_verification(synthetic: Synthetic, tmp_path: Path) -> Path:
+    _with_target_assays(synthetic, "NoSuchAssay")
+    out = tmp_path / "failing" / "store.duckdb"
+    assert not build_full(load_manifest(synthetic.manifest), out, workers=1).ok
+    return out
+
+
 # The schema version of the input store of refresh and append.
 
 
+def _run_operation(operation: str, synthetic: Synthetic, store: Path, out: Path) -> None:
+    manifest = load_manifest(synthetic.manifest)
+    if operation == "build_refresh":
+        build_refresh(manifest, store, out)
+        return
+    extra = synthetic.manifest_with_runs([*synthetic.run_names, "run_new"], synthetic.root / "append.yaml")
+    build_append(load_manifest(extra), store, out, workers=1)
+
+
+@pytest.mark.parametrize("operation", ["build_append", "build_refresh"])
 @pytest.mark.parametrize("version", [SCHEMA_VERSION - 1, SCHEMA_VERSION + 1, "x"])
-def test_refresh_rejects_a_store_of_another_schema_version_and_leaves_no_file(
-    synthetic: Synthetic, store_path: Path, tmp_path: Path, version: object
+def test_append_and_refresh_reject_a_store_of_another_schema_version_and_leave_no_file(
+    synthetic: Synthetic, store_path: Path, tmp_path: Path, version: object, operation: str
 ) -> None:
     old = tmp_path / "old.duckdb"
     shutil.copy(store_path, old)
@@ -59,21 +85,24 @@ def test_refresh_rejects_a_store_of_another_schema_version_and_leaves_no_file(
     con.close()
     out = tmp_path / "out" / "new.duckdb"
     with pytest.raises(BuildError, match="full build"):
-        build_refresh(load_manifest(synthetic.manifest), old, out)
+        _run_operation(operation, synthetic, old, out)
     assert not out.exists()
     assert _files(out.parent) == []
 
 
-def test_refresh_rejects_a_store_without_a_schema_version(
-    synthetic: Synthetic, store_path: Path, tmp_path: Path
+@pytest.mark.parametrize("operation", ["build_append", "build_refresh"])
+def test_append_and_refresh_reject_a_store_without_a_schema_version(
+    synthetic: Synthetic, store_path: Path, tmp_path: Path, operation: str
 ) -> None:
     old = tmp_path / "old.duckdb"
     shutil.copy(store_path, old)
     con = duckdb.connect(str(old))
     con.execute("DELETE FROM store_meta WHERE key = 'schema_version'")
     con.close()
+    out = tmp_path / "new.duckdb"
     with pytest.raises(BuildError, match="full build"):
-        build_refresh(load_manifest(synthetic.manifest), old, tmp_path / "new.duckdb")
+        _run_operation(operation, synthetic, old, out)
+    assert not out.exists()
 
 
 # A failed build leaves nothing at the output path.
@@ -87,13 +116,65 @@ def test_build_full_with_an_entry_missing_from_the_input_leaves_no_file(tiny: Sy
     assert _files(out.parent) == []
 
 
-def test_build_full_with_a_missing_reference_file_after_ingestion_leaves_no_file(
+@pytest.mark.parametrize("missing", ["reference/dblink.duckdb", "reference/sra", "ontology/mondo.obo"])
+def test_cli_full_with_a_missing_reference_file_reports_it_as_an_error(
+    tiny: Synthetic, tmp_path: Path, capsys: pytest.CaptureFixture[str], missing: str
+) -> None:
+    target = tiny.root / missing
+    if target.is_dir():
+        shutil.rmtree(target)
+    else:
+        target.unlink()
+    out = tmp_path / "out" / "store.duckdb"
+    assert main(["full", "--manifest", str(tiny.manifest), "--out", str(out)]) == 1
+    err = capsys.readouterr().err
+    assert err.startswith("error: "), err
+    assert "Traceback" not in err
+    assert str(target) in err
+    assert not out.parent.exists() or _files(out.parent) == []
+
+
+def test_build_full_with_a_missing_reference_file_stops_before_it_reads_any_run(
     tiny: Synthetic, tmp_path: Path
 ) -> None:
     (tiny.root / "reference" / "dblink.duckdb").unlink()
+    for result in (tiny.root / "results").iterdir():
+        result.write_text("not json")
     out = tmp_path / "out" / "store.duckdb"
-    with pytest.raises(duckdb.Error):
+    with pytest.raises(BuildError, match=re.escape("dblink.duckdb")):
         build_full(load_manifest(tiny.manifest), out, workers=1)
+    assert not out.parent.exists()
+
+
+def _damage(tiny: Synthetic, damage: str) -> Path:
+    if damage == "owl_syntax":
+        path = tiny.root / "ontology" / "mondo.owl"
+        path.write_text("<rdf:RDF><unclosed>")
+        tiny.manifest.write_text(tiny.manifest.read_text().replace("ontology/mondo.obo", "ontology/mondo.owl"))
+    elif damage == "obo_encoding":
+        path = tiny.root / "ontology" / "mondo.obo"
+        path.write_bytes(b"[Term]\nid: MONDO:1\nname: \xff\xfe\n")
+    elif damage == "dblink_not_duckdb":
+        path = tiny.root / "reference" / "dblink.duckdb"
+        path.write_text("not a database")
+    else:
+        path = tiny.root / "reference" / "dblink.duckdb"
+        path.unlink()
+        duckdb.connect(str(path)).close()
+    return path
+
+
+@pytest.mark.parametrize("damage", ["owl_syntax", "obo_encoding", "dblink_not_duckdb", "dblink_without_dbxref"])
+def test_cli_full_with_reference_data_that_cannot_be_read_names_the_file_in_the_error(
+    tiny: Synthetic, tmp_path: Path, capsys: pytest.CaptureFixture[str], damage: str
+) -> None:
+    path = _damage(tiny, damage)
+    out = tmp_path / "out" / "store.duckdb"
+    assert main(["full", "--manifest", str(tiny.manifest), "--out", str(out)]) == 1
+    err = capsys.readouterr().err
+    assert err.startswith("error: "), err
+    assert "Traceback" not in err
+    assert str(path) in err
     assert _files(out.parent) == []
 
 
@@ -103,12 +184,126 @@ def test_build_full_when_it_succeeds_leaves_only_the_output(tiny: Synthetic, tmp
     assert _files(out.parent) == ["store.duckdb"]
 
 
+def _experiment_rows(synthetic: Synthetic) -> tuple[Path, list[dict[str, object]]]:
+    path = synthetic.root / "reference" / "sra" / "ncbi_experiment_0001.jsonl"
+    return path, [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+
+
+def test_build_full_with_two_library_strategies_for_one_experiment_stops_and_names_it(
+    tiny: Synthetic, tmp_path: Path
+) -> None:
+    path, rows = _experiment_rows(tiny)
+    first = rows[0]
+    other = next(a for a in ("RNA-Seq", "ChIP-Seq", "ATAC-seq") if [a] != first["libraryStrategy"])
+    with path.open("a") as f:
+        f.write(json.dumps({**first, "libraryStrategy": [other]}) + "\n")
+    out = tmp_path / "out" / "store.duckdb"
+    with pytest.raises(BuildError, match=str(first["identifier"])):
+        build_full(load_manifest(tiny.manifest), out, workers=1)
+    assert _files(out.parent) == []
+
+
+def test_build_full_with_the_same_experiment_row_twice_stores_the_experiment_once(
+    tiny: Synthetic, tmp_path: Path
+) -> None:
+    path, rows = _experiment_rows(tiny)
+    with path.open("a") as f:
+        f.write(json.dumps(rows[0]) + "\n")
+    out = tmp_path / "store.duckdb"
+    assert build_full(load_manifest(tiny.manifest), out, workers=1).ok
+    con = duckdb.connect(str(out), read_only=True)
+    try:
+        assert con.execute(
+            "SELECT count(*), any_value(library_strategy) FROM experiment WHERE accession = ?", [rows[0]["identifier"]]
+        ).fetchone() == (1, rows[0]["libraryStrategy"][0])  # type: ignore[index]
+    finally:
+        con.close()
+
+
 def test_build_full_with_a_stale_partial_file_removes_it(tiny: Synthetic, tmp_path: Path) -> None:
     out = tmp_path / "out" / "store.duckdb"
     out.parent.mkdir()
     (out.parent / "store.duckdb.partial").write_bytes(b"not a store")
     assert build_full(load_manifest(tiny.manifest), out, workers=1).ok
     assert _files(out.parent) == ["store.duckdb"]
+
+
+def test_build_full_with_a_failing_verification_writes_the_store_and_records_the_problems(
+    tiny: Synthetic, tmp_path: Path
+) -> None:
+    _with_target_assays(tiny, "NoSuchAssay")
+    out = tmp_path / "out" / "store.duckdb"
+    result = build_full(load_manifest(tiny.manifest), out, workers=1)
+    assert not result.ok
+    assert result.problems == ("the population is empty",)
+    assert _files(out.parent) == ["store.duckdb"]
+    con = duckdb.connect(str(out), read_only=True)
+    try:
+        recorded = json.loads(con.execute("SELECT value FROM store_meta WHERE key = 'verification'").fetchone()[0])  # type: ignore[index]
+    finally:
+        con.close()
+    assert recorded["ok"] is False
+    assert recorded["problems"] == ["the population is empty"]
+
+
+def _use_select_config(synthetic: Synthetic, run: str, fields: dict[str, dict[str, object]]) -> None:
+    config = synthetic.root / "config" / f"select-config-{run}.json"
+    config.write_text(json.dumps({"fields": fields}))
+    text = synthetic.manifest.read_text()
+    head, marker, tail = text.partition(f"  - name: {run}\n")
+    tail = tail.replace("config/select-config.json", f"config/select-config-{run}.json", 1)
+    synthetic.manifest.write_text(head + marker + tail)
+
+
+def _fields_with_drug_as(value_type: str) -> dict[str, dict[str, object]]:
+    fields = {name: dict(spec) for name, spec in FIELDS.items()}
+    fields["drug"]["value_type"] = value_type
+    return fields
+
+
+def test_build_rejects_a_field_that_is_single_valued_in_one_run_and_multi_valued_in_another(
+    tiny: Synthetic, tmp_path: Path
+) -> None:
+    _use_select_config(tiny, "run2", _fields_with_drug_as("string"))
+    out = tmp_path / "out" / "store.duckdb"
+    with pytest.raises(BuildError, match=r"'drug' is single-valued in one run and multi-valued in another"):
+        build_full(load_manifest(tiny.manifest), out, workers=1)
+    assert _files(out.parent) == []
+
+    first = tmp_path / "first" / "store.duckdb"
+    only_run1 = tiny.manifest_with_runs(["run1"], tiny.root / "run1.yaml")
+    assert build_full(load_manifest(only_run1), first, workers=1).ok
+    appended = tmp_path / "appended" / "store.duckdb"
+    with pytest.raises(BuildError, match="single-valued in one run and multi-valued in another"):
+        build_append(load_manifest(tiny.manifest), first, appended, workers=1)
+    assert _files(appended.parent) == []
+
+
+def test_build_accepts_a_run_whose_select_config_lacks_a_field_of_another_run(tiny: Synthetic, tmp_path: Path) -> None:
+    _use_select_config(tiny, "run2", {k: v for k, v in FIELDS.items() if k != "drug"})
+    assert build_full(load_manifest(tiny.manifest), tmp_path / "store.duckdb", workers=1).ok
+
+
+def test_build_reports_a_duplicate_accession_before_it_reads_the_reference_data(
+    tiny: Synthetic, tmp_path: Path
+) -> None:
+    result = tiny.root / "results" / "select_run1.json"
+    data = json.loads(result.read_text())
+    data["entries"].append(data["entries"][0])
+    result.write_text(json.dumps(data))
+    (tiny.root / "reference" / "dblink.duckdb").write_text("not a database")
+    with pytest.raises(BuildError, match="occurs more than once"):
+        build_full(load_manifest(tiny.manifest), tmp_path / "out" / "store.duckdb", workers=1)
+
+
+def test_build_names_the_first_of_two_runs_with_an_invalid_status(tiny: Synthetic, tmp_path: Path) -> None:
+    for run in ("run1", "run2"):
+        result = tiny.root / "results" / f"select_{run}.json"
+        data = json.loads(result.read_text())
+        data["run_metadata"]["status"] = "interrupted"
+        result.write_text(json.dumps(data))
+    with pytest.raises(BuildError, match="run run1 has status 'interrupted'"):
+        build_full(load_manifest(tiny.manifest), tmp_path / "store.duckdb", workers=1)
 
 
 # The label of a term comes from the first file of the manifest that defines it.
@@ -254,8 +449,10 @@ def test_build_checks_the_status_of_the_runs_before_converting_any_run(tiny: Syn
     data = json.loads(result.read_text())
     data["run_metadata"]["status"] = "interrupted"
     result.write_text(json.dumps(data))
+    out = tmp_path / "out" / "store.duckdb"
     with pytest.raises(BuildError, match="run run2 has status 'interrupted'"):
-        build_full(load_manifest(tiny.manifest), tmp_path / "store.duckdb", workers=1)
+        build_full(load_manifest(tiny.manifest), out, workers=1)
+    assert _files(out.parent) == []
 
 
 def test_build_checks_the_model_of_the_runs_before_converting_any_run(tiny: Synthetic, tmp_path: Path) -> None:
@@ -264,8 +461,10 @@ def test_build_checks_the_model_of_the_runs_before_converting_any_run(tiny: Synt
     data = json.loads(result.read_text())
     data["run_metadata"]["model"] = "other"
     result.write_text(json.dumps(data))
+    out = tmp_path / "out" / "store.duckdb"
     with pytest.raises(BuildError, match="different models"):
-        build_full(load_manifest(tiny.manifest), tmp_path / "store.duckdb", workers=1)
+        build_full(load_manifest(tiny.manifest), out, workers=1)
+    assert _files(out.parent) == []
 
 
 def test_read_run_metadata_equals_the_metadata_of_the_parsed_result(tiny: Synthetic) -> None:
@@ -280,16 +479,21 @@ def test_read_run_metadata_reads_a_result_whose_run_metadata_comes_first(tiny: S
     assert read_run_metadata(path) == load_select_result(path)[0]
 
 
-def test_read_run_metadata_rejects_an_invalid_run_metadata(tiny: Synthetic) -> None:
+@pytest.mark.parametrize("damage", ["delete", "number"])
+@pytest.mark.parametrize("member", ["run_name", "model", "status"])
+def test_read_run_metadata_rejects_a_missing_or_mistyped_member(tiny: Synthetic, member: str, damage: str) -> None:
     path = tiny.root / "results" / "select_run1.json"
     data = json.loads(path.read_text())
-    del data["run_metadata"]["model"]
+    if damage == "delete":
+        del data["run_metadata"][member]
+    else:
+        data["run_metadata"][member] = 5
     path.write_text(json.dumps(data))
     with pytest.raises(BuildError, match=r"select_run1\.json: invalid run_metadata"):
         read_run_metadata(path)
 
 
-@pytest.mark.parametrize("damage", ["duplicate_ontology", "bad_input_line", "missing_accession", "bad_metadata"])
+@pytest.mark.parametrize("damage", ["duplicate_ontology", "bad_input_line", "entry_missing_from_input", "bad_metadata"])
 def test_cli_reports_an_invalid_manifest_or_input_as_an_error_and_leaves_no_store(
     tiny: Synthetic, tmp_path: Path, capsys: pytest.CaptureFixture[str], damage: str
 ) -> None:
@@ -298,7 +502,7 @@ def test_cli_reports_an_invalid_manifest_or_input_as_an_error_and_leaves_no_stor
     elif damage == "bad_input_line":
         with (tiny.root / "inputs" / "run1.jsonl").open("a") as f:
             f.write("{broken\n")
-    elif damage == "missing_accession":
+    elif damage == "entry_missing_from_input":
         _drop_first_input_entry(tiny)
     else:
         result = tiny.root / "results" / "select_run1.json"
@@ -310,6 +514,96 @@ def test_cli_reports_an_invalid_manifest_or_input_as_an_error_and_leaves_no_stor
     err = capsys.readouterr().err
     assert code == 1
     assert err.startswith("error:")
+    assert "Traceback" not in err
+    assert not out.parent.exists() or _files(out.parent) == []
+
+
+# verify reports the missing tables of an empty DuckDB file as problems of the store, so only info has that case.
+@pytest.mark.parametrize(
+    ("command", "store"),
+    [
+        ("verify", "missing"),
+        ("verify", "not_duckdb"),
+        ("info", "missing"),
+        ("info", "not_duckdb"),
+        ("info", "empty_duckdb"),
+    ],
+)
+def test_cli_verify_and_info_report_a_store_that_they_cannot_read_as_an_error(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], command: str, store: str
+) -> None:
+    path = tmp_path / f"{store}.duckdb"
+    if store == "not_duckdb":
+        path.write_text("not a store")
+    elif store == "empty_duckdb":
+        duckdb.connect(str(path)).close()
+    assert main([command, "--store", str(path)]) == 1
+    err = capsys.readouterr().err
+    assert err.startswith("error: "), err
+    assert "Traceback" not in err
+    assert str(path) in err
+
+
+@pytest.mark.parametrize("command", ["full", "append", "refresh", "verify"])
+def test_cli_with_a_failing_verification_exits_with_status_1_prints_the_json_and_keeps_the_store(
+    tiny: Synthetic, tmp_path: Path, capsys: pytest.CaptureFixture[str], command: str
+) -> None:
+    out = tmp_path / "out" / "store.duckdb"
+    if command == "verify":
+        store = _store_with_failing_verification(tiny, tmp_path)
+        argv = ["verify", "--store", str(store)]
+        expected = store
+    else:
+        only_run1 = tiny.manifest_with_runs(["run1"], tiny.root / "run1.yaml")
+        first = tmp_path / "first.duckdb"
+        assert build_full(load_manifest(only_run1), first, workers=1).ok
+        if command == "refresh":
+            first = tmp_path / "all.duckdb"
+            assert build_full(load_manifest(tiny.manifest), first, workers=1).ok
+        _with_target_assays(tiny, "NoSuchAssay")
+        manifest = ["--manifest", str(tiny.manifest), "--out", str(out)]
+        argv = {
+            "full": ["full", *manifest, "--workers", "1"],
+            "append": ["append", *manifest, "--store", str(first), "--workers", "1"],
+            "refresh": ["refresh", *manifest, "--store", str(first)],
+        }[command]
+        expected = out
+    assert main(argv) == 1
+    report = json.loads(capsys.readouterr().out)
+    assert report["ok"] is False
+    assert "the population is empty" in report["problems"]
+    assert expected.exists()
+
+
+def test_cli_info_prints_the_version_of_the_store_as_json(
+    tiny: Synthetic, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    store = tmp_path / "store.duckdb"
+    assert build_full(load_manifest(tiny.manifest), store, workers=1).ok
+    assert main(["info", "--store", str(store)]) == 0
+    printed = json.loads(capsys.readouterr().out)
+    con = duckdb.connect(str(store), read_only=True)
+    try:
+        expected = read_version(con).model_dump()
+    finally:
+        con.close()
+    assert printed == json.loads(json.dumps(expected))
+    assert printed["name"] == "synthetic"
+    assert [r["name"] for r in printed["runs"]] == tiny.run_names
+
+
+@pytest.mark.parametrize("missing", ["manifest", "store"])
+@pytest.mark.parametrize("command", ["append", "refresh"])
+def test_cli_append_and_refresh_report_a_missing_manifest_or_store_as_an_error_and_leave_no_store(
+    tiny: Synthetic, store_path: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], command: str, missing: str
+) -> None:
+    out = tmp_path / "out" / "store.duckdb"
+    manifest = tmp_path / "no-manifest.yaml" if missing == "manifest" else tiny.manifest
+    store = tmp_path / "no-store.duckdb" if missing == "store" else store_path
+    code = main([command, "--manifest", str(manifest), "--store", str(store), "--out", str(out)])
+    err = capsys.readouterr().err
+    assert code == 1
+    assert err.startswith("error:"), err
     assert "Traceback" not in err
     assert not out.parent.exists() or _files(out.parent) == []
 
@@ -360,18 +654,46 @@ def test_build_full_while_another_build_writes_the_same_output_stops_and_keeps_i
 
 
 def test_build_full_when_the_output_appears_during_the_build_does_not_replace_it(
-    tiny: Synthetic, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tiny: Synthetic, tmp_path: Path
 ) -> None:
+    # The build reads the ChIP-Atlas file last. A FIFO at its path holds the build until the output exists.
     out = tmp_path / "out" / "store.duckdb"
-    original = ingest._load_reference
+    chip_atlas = tiny.root / "reference" / "experimentList.tab"
+    content = chip_atlas.read_bytes()
+    chip_atlas.unlink()
+    os.mkfifo(chip_atlas)
+    errors: list[BaseException] = []
 
-    def create_output(con: duckdb.DuckDBPyConnection, manifest: object) -> None:
-        out.write_bytes(b"another store")
-        original(con, manifest)  # type: ignore[arg-type]
+    def build() -> None:
+        try:
+            build_full(load_manifest(tiny.manifest), out, workers=1)
+        except BaseException as e:
+            errors.append(e)
 
-    monkeypatch.setattr(ingest, "_load_reference", create_output)
-    with pytest.raises(BuildError, match="already exists"):
-        build_full(load_manifest(tiny.manifest), out, workers=1)
+    thread = threading.Thread(target=build)
+    thread.start()
+    deadline = time.monotonic() + 30
+    partial = out.parent / "store.duckdb.partial"
+    while not partial.exists() and thread.is_alive() and time.monotonic() < deadline:
+        time.sleep(0.02)
+    assert partial.exists()
+    out.write_bytes(b"another store")
+    fd = -1
+    while fd < 0 and thread.is_alive() and time.monotonic() < deadline:
+        try:
+            fd = os.open(chip_atlas, os.O_WRONLY | os.O_NONBLOCK)
+        except OSError:
+            time.sleep(0.02)
+    assert fd >= 0
+    try:
+        os.write(fd, content)
+    finally:
+        os.close(fd)
+    thread.join(timeout=30)
+    assert not thread.is_alive()
+    assert len(errors) == 1
+    assert isinstance(errors[0], BuildError)
+    assert "already exists" in str(errors[0])
     assert out.read_bytes() == b"another store"
     assert _files(out.parent) == ["store.duckdb"]
 

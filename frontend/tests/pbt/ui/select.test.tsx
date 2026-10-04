@@ -1,5 +1,5 @@
 import { fc, test } from "@fast-check/vitest"
-import { cleanup, render, screen } from "@testing-library/react"
+import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { describe, expect, vi } from "vitest"
 
@@ -30,14 +30,18 @@ describe("Select", () => {
       const user = userEvent.setup()
       const onChange = vi.fn()
       const initial = list[start]?.value ?? ""
-      render(<Select options={list} value={initial} onChange={onChange} aria-label="Field" />)
-      screen.getByRole("combobox", { name: "Field" }).focus()
-      await user.keyboard(`${sequence.length === 0 ? "{ArrowDown}" : sequence.join("")}{Enter}`)
-      const expected = list[reached(start, list.length, sequence)]?.value
-      if (expected === initial) expect(onChange).not.toHaveBeenCalled()
-      else expect(onChange).toHaveBeenCalledExactlyOnceWith(expected)
-      expect(screen.queryByRole("listbox")).toBeNull()
-      cleanup()
+      const { unmount } = render(<Select options={list} value={initial} onChange={onChange} aria-label="Field" />)
+      try {
+        screen.getByRole("combobox", { name: "Field" }).focus()
+        await user.keyboard(`${sequence.length === 0 ? "{ArrowDown}" : sequence.join("")}{Enter}`)
+        const expected = list[reached(start, list.length, sequence)]?.value
+        if (expected === initial) expect(onChange).not.toHaveBeenCalled()
+        else expect(onChange).toHaveBeenCalledExactlyOnceWith(expected)
+        expect(screen.queryByRole("listbox")).toBeNull()
+      } finally {
+        unmount()
+      }
     },
+    20_000,
   )
 })

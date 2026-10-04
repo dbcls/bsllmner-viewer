@@ -1,4 +1,4 @@
-"""Where a term element sits in the ontology: its parents in the list and its child terms, as in docs/api.md."""
+"""Where a term element sits in the ontology: its parents in the list and its child terms."""
 
 from __future__ import annotations
 
@@ -93,3 +93,33 @@ def test_distribution_term_elements_have_children_exactly_when_the_children_endp
         params = {"field": field, "termId": element["value"], "q": q, "unit": unit, "facetSelfExclude": flag}
         children = client.get("/api/terms/children", params=params).json()["children"]
         assert element["hasChildren"] == bool(children), element["value"]
+
+
+@st.composite
+def named_terms(draw: st.DrawFn) -> tuple[str, list[str]]:
+    """A term field and 2 to 4 of its terms in any order."""
+    field = draw(st.sampled_from(sorted(ONTOLOGY_OF)))
+    terms = draw(st.lists(st.sampled_from(_terms_of(field)), min_size=2, max_size=4, unique=True))
+    return field, terms
+
+
+@settings(max_examples=30)
+@given(conditions, named_terms(), st.sampled_from(UNITS), st.booleans())
+def test_named_elements_keep_the_order_of_the_request(
+    client: TestClient, ast: Node | None, named: tuple[str, list[str]], unit: str, excl: bool
+) -> None:
+    field, terms = named
+    names = ",".join(terms)
+    common = {"q": condition_q(ast) or "", "unit": unit, "facetSelfExclude": str(excl).lower()}
+    distribution = client.get("/api/distribution", params={**common, "field": field, "elements": names}).json()
+    assert [e["value"] for e in distribution["elements"]] == terms
+    by_row = client.get(
+        "/api/crosstab", params={**common, "row": field, "col": "library_strategy", "rowElements": names}
+    ).json()
+    assert [e["value"] for e in by_row["rows"]] == terms
+    by_col = client.get(
+        "/api/crosstab", params={**common, "row": "library_strategy", "col": field, "colElements": names}
+    ).json()
+    assert [e["value"] for e in by_col["cols"]] == terms
+    trend = client.get("/api/trend", params={**common, "field": field, "elements": names}).json()
+    assert [s["value"] for s in trend["series"]] == terms

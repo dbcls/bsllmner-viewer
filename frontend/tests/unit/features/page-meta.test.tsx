@@ -1,8 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react"
 import { renderToString } from "react-dom/server"
-import type * as Router from "react-router"
-import { MemoryRouter } from "react-router"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { createMemoryRouter, MemoryRouter, RouterProvider } from "react-router"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import type * as Client from "~/lib/api/client"
 import { SITE_DESCRIPTION } from "~/lib/site"
@@ -10,10 +9,6 @@ import { SITE_DESCRIPTION } from "~/lib/site"
 import { renderWithQuery } from "../query"
 
 type Mode = "ok" | "pending" | 404 | 500
-
-const routeError = vi.hoisted(() => ({ value: undefined as unknown }))
-
-vi.mock("react-router", async (importOriginal) => ({ ...(await importOriginal<typeof Router>()), useRouteError: () => routeError.value }))
 
 const net = vi.hoisted(() => ({ entry: "ok" as Mode }))
 
@@ -33,7 +28,7 @@ vi.mock("~/lib/api/client", async (importOriginal) => {
       const organism = { identifier: "9606", name: "Homo sapiens" }
       return ok({ identifier: init?.params.path.accession, type: "biosample", title: "a sample", organism, datePublished: null, run: "run", metadata: [], annotations: [annotation], experiments: [], bioprojects: [] })
     }
-    // Whatever else is asked for stays on its way: the tests look at the head of the document only.
+    // Every other request never answers. The tests check only the head of the document.
     return new Promise(() => undefined)
   }
   const POST = () => new Promise(() => undefined)
@@ -44,8 +39,6 @@ import { LandingPage } from "~/features/landing/landing-page"
 import { SamplePage } from "~/features/sample/sample-page"
 import { WorkspacePage } from "~/features/workspace/workspace-page"
 import { ErrorBoundary, HydrateFallback } from "~/root"
-
-vi.stubGlobal("ResizeObserver", class { observe = vi.fn(); unobserve = vi.fn(); disconnect = vi.fn() })
 
 beforeEach(() => {
   net.entry = "ok"
@@ -183,23 +176,25 @@ describe("the BioSample page", () => {
 })
 
 describe("the error page of the route", () => {
-  const renderBoundary = (error: unknown) => {
-    routeError.value = error
-    render(
-      <MemoryRouter>
-        <ErrorBoundary />
-      </MemoryRouter>,
-    )
+  const Throw = () => {
+    throw new Error("boom")
+  }
+  const renderAt = (url: string) => {
+    const router = createMemoryRouter([{ path: "/", ErrorBoundary, children: [{ path: "boom", element: <Throw /> }] }], { initialEntries: [url] })
+    render(<RouterProvider router={router} />)
   }
 
+  afterEach(() => vi.restoreAllMocks())
+
   it("is titled Not Found and kept out of search results when the page does not exist", async () => {
-    renderBoundary({ status: 404, statusText: "Not Found", internal: false, data: "" })
+    renderAt("/no-such-page")
     await waitFor(() => expect(titles()).toEqual(["Not Found | bsllmner-viewer"]))
     expect(robots()).toBe("noindex")
   })
 
   it("is titled Error and kept out of search results for any other failure", async () => {
-    renderBoundary(new Error("boom"))
+    vi.spyOn(console, "error").mockImplementation(() => undefined)
+    renderAt("/boom")
     await waitFor(() => expect(titles()).toEqual(["Error | bsllmner-viewer"]))
     expect(robots()).toBe("noindex")
   })

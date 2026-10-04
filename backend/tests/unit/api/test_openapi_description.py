@@ -1,7 +1,11 @@
-"""The OpenAPI document describes every operation, parameter, and error slug, and points to the rules of the docs."""
+"""The OpenAPI document describes every operation, parameter, and error slug.
+
+The headings that the descriptions cite exist in the docs.
+"""
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 from typing import Any
@@ -13,6 +17,9 @@ from bsllmner_viewer.api.problems import AGGREGATION_SLUGS, BUSY_SLUGS, DSL_SLUG
 
 # The docs directory is `docs/` of the repository, or `/docs` in the container where `/app` is `backend/`.
 DOCS = Path(__file__).resolve().parents[4] / "docs"
+# The OpenAPI document that the frontend generates its API types from.
+OPENAPI_FILE = Path(__file__).resolve().parents[3] / "openapi.json"
+EXPORT_COMMAND = "docker compose run --rm --no-deps -T api uv run python scripts/export_openapi.py"
 HTTP_METHODS = ("get", "post", "put", "patch", "delete")
 SLUG_LINE = re.compile(r"^- `([a-z-]+)`: ", re.MULTILINE)
 CITED_HEADINGS = re.compile(r'((?:"[^"]+"(?:,| and)? ?)+) in /llms-full\.txt')
@@ -45,6 +52,23 @@ def _descriptions(node: Any) -> list[str]:
         for item in node:
             found.extend(_descriptions(item))
     return found
+
+
+class TestOpenApiFile:
+    def test_the_openapi_file_is_the_document_that_the_api_serves(self, document: dict[str, Any]) -> None:
+        assert OPENAPI_FILE.is_file(), f"backend/openapi.json is missing. Write it with: {EXPORT_COMMAND}"
+        written = json.loads(OPENAPI_FILE.read_text(encoding="utf-8"))
+        assert written == document, f"backend/openapi.json differs from the api. Write it again with: {EXPORT_COMMAND}"
+
+
+class TestEnumSchemas:
+    def test_entry_type_and_accession_type_schemas_list_the_documented_names(self, document: dict[str, Any]) -> None:
+        schemas = document["components"]["schemas"]
+        entry = schemas["EntryType"]
+        accession = schemas["AccessionType"]
+        assert (entry.get("enum") or [entry.get("const")]) == ["biosample"]
+        assert set(accession["enum"]) == {"biosample", "sra-experiment", "sra-run", "bioproject"}
+        assert len(accession["enum"]) == 4
 
 
 class TestOperations:
@@ -130,7 +154,9 @@ class TestInfo:
         assert "](/llms-full.txt)" in description
 
     def test_the_description_names_the_caching_rules_that_the_responses_follow(self, document: dict[str, Any]) -> None:
-        assert "`If-None-Match`" in document["info"]["description"]
+        description = document["info"]["description"]
+        assert "`ETag`" in description
+        assert "`If-None-Match`" in description
 
 
 class TestStatusIsNotADimension:

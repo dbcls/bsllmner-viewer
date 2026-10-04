@@ -130,7 +130,7 @@ def search_terms(
     operation_id="listTermChildren",
     responses=error_responses(bad_request=(*DSL_SLUGS, "invalid-dimension"), not_found=True, busy=True),
     response_model=TermChildrenResponse,
-    summary="Child terms of a term annotated in a field",
+    summary="List the child terms of a term annotated in a field",
     description=(
         "Lists the direct child terms of `termId` that have a count above 0 in the population, in `unit`, in the "
         "order of their direct counts in the whole dataset. `count` of a child includes its descendants. The "
@@ -181,7 +181,7 @@ def term_children(
     operation_id="getTerm",
     responses=error_responses(not_found=True),
     response_model=TermResponse,
-    summary="A term with its synonyms, parents, ontology, and page",
+    summary="Get a term with its synonyms, parents, ontology, and page",
     description=(
         "Returns one term of the dataset: its label, synonyms, direct parent terms, ontology, and the address of its "
         "page. `parents` is empty for a root of an ontology and for a term of an ontology without hierarchy. "

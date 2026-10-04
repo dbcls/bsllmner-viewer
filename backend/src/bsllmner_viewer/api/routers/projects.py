@@ -21,12 +21,13 @@ router = APIRouter(tags=["Projects"])
     operation_id="listProjects",
     responses=error_responses(bad_request=DSL_SLUGS, busy=True),
     response_model=ProjectsResponse,
-    summary="BioProjects of the matching BioSamples",
+    summary="List the BioProjects of the BioSamples that match a condition",
     description=(
         "Lists the BioProjects of the BioSamples in the population. The population is `q`. With `facetSelfExclude`, "
         "it is `q` without the conjuncts on `bioproject`. `biosampleCount`, `experimentCount`, and `assays` of a "
         "BioProject count only the BioSamples and SRA Experiments of the population, not the whole BioProject. "
-        '`pagination.total` is the number of BioProjects. See "Aggregations" in /llms-full.txt.'
+        "`pagination.total` is the number of BioProjects. The Projects view of the UI uses this operation. "
+        'See "Aggregations" in /llms-full.txt.'
     ),
 )
 def get_projects(

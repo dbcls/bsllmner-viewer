@@ -31,9 +31,9 @@ import { PageChange, ShellFallback, ShellLayout } from "~/shell"
 import { Button, Card, PageHeading, PageMeta } from "~/ui"
 
 /**
- * The faces that every page draws first: the text and the numbers (Public Sans 400 and IBM Plex Mono 400) and the header
- * (Public Sans 600 and the IBM Plex Mono 500 of the wordmark). The page asks for them with its HTML, instead of after the
- * JavaScript draws the page and its fallback text has been shown.
+ * The font files that every page needs first: body text and numbers (Public Sans 400, IBM Plex Mono 400) and the header
+ * (Public Sans 600, IBM Plex Mono 500 for the wordmark). The HTML requests them, so that the browser does not wait for
+ * the JavaScript to render the page before it loads the fonts.
  */
 export const links: LinksFunction = () =>
   [publicSans400, publicSans600, plexMono400, plexMono500].map((href) => ({ rel: "preload", href, as: "font", type: "font/woff2", crossOrigin: "anonymous" }))

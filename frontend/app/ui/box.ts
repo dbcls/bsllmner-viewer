@@ -11,6 +11,7 @@ export const BOX_SIZE: Record<BoxSize, string> = {
 
 /**
  * The focus of every box (Select, TextInput, TextArea): the edge turns brand and a brand-tint halo appears, in place of
- * the double ring of a button. The box draws its own unfocused edge, so that an open Select can draw its edge brand.
+ * the double ring of a button. The box draws its own unfocused edge, so that an open Select can draw its edge in the
+ * brand color.
  */
 export const BOX_FOCUS = "focus-visible:border-brand focus-visible:shadow-box-focus focus-visible:outline-none"

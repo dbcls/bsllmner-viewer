@@ -77,20 +77,9 @@ class TestLimitsInTheDocs:
         assert f"{MAX_NODES} nodes" in SLUG_INFO["nest-depth-exceeded"].cause
         assert f"limit of {MAX_ELEMENTS}" in SLUG_INFO["too-many-elements"].cause
 
-    def test_a_slug_that_a_rule_of_the_docs_causes_is_named_in_the_docs(self, api_md: str) -> None:
-        for slug in ("invalid-date-format", "invalid-operator-for-field", "missing-value", "nest-depth-exceeded"):
-            assert f"slug `{slug}`" in api_md, slug
-
-    def test_every_heading_that_a_slug_description_cites_exists_in_the_docs(self) -> None:
-        headings = _headings(API_MD, DATA_MODEL_MD)
-        cited = {
-            name
-            for info in SLUG_INFO.values()
-            for group in re.findall(r"((?:\"[^\"]+\"(?:,| and)? ?)+) in /llms-full\.txt", info.remedy)
-            for name in re.findall(r'"([^"]+)"', group)
-        }
-        assert cited
-        assert cited <= headings, cited - headings
+    def test_api_md_names_the_slug_of_each_rule_that_it_states(self, api_md: str) -> None:
+        stated = set(re.findall(r"slug `([^`]+)`", api_md))
+        assert stated == set(SLUG_INFO) - {"invalid-ast"}
 
 
 def _operation_path(path: str, document: dict[str, Any]) -> str | None:

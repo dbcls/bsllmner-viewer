@@ -42,10 +42,11 @@ Tests do not share state and do not depend on the order in which they run.
 
 ## End-to-end tests
 
-End-to-end tests run against a deployed staging site with its real dataset, after a deployment and before the deployment is promoted. They do not run during development or in CI, because they take minutes and need a deployed site.
+End-to-end tests run against a deployed staging site with its real dataset, after a deployment and before the deployment is promoted. The end-to-end tests do not run during development or in CI, because they take minutes and need a deployed site.
 
 - The site has no operations that change data, so the tests only read.
 - The tests do not contain terms, accessions, or counts that depend on the dataset. Each test takes them at run time from the API of the same site, or from the top of a list on a page, and compares what the page shows with what the API returns. A rebuild of the dataset therefore does not break the tests.
-- What a deployment is meant to be (whether it is kept out of search engines, and which commit it runs) is given by the person who runs the tests, in environment variables. The scenarios that check it skip if it is not given. A wrongly deployed site responds in the same way as a correctly deployed one, so the expectation cannot come from the site.
+- If the dataset lacks something that every dataset has, such as a disease term, then the test fails. If the dataset is too small for the scenario, such as a list that fits on one page or a condition with few years, then the test skips.
+- What a deployment is meant to be (whether it is kept out of search engines, and which commit it runs) is given by the person who runs the tests, in environment variables. The scenarios that check it skip if it is not given. A wrongly deployed site responds in the same way as a correctly deployed one, so the expectation cannot come from the site. Without these variables, the address is not taken as a deployment, so the scenarios of the web server of a deployment also skip.
 - The tests keep the load small: few workers, and conditions that match few entries for lists and exports. The site serves real users and the full dataset.
-- The tests do not run against production. Their requests would mix with the access logs of real users.
+- The tests do not run against production. The requests of the tests would mix with the access logs of real users.

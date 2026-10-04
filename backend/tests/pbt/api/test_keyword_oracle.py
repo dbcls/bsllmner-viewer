@@ -1,4 +1,4 @@
-"""Keywords against the synthetic store, compared with an oracle written from the rules of docs/api.md.
+"""Keywords against the synthetic store, compared with an oracle that implements the matching rules of keywords.
 
 The oracle reads the raw values of the BioSamples and the accessions of the population. It does not use the
 searchable-text table or any code of `bsllmner_viewer.dsl.keyword`.
@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import re
+import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass
 
@@ -25,7 +26,8 @@ Predicate = Callable[[str, str], bool]
 
 SYMBOL_WORDS = [
     "MCF-7", "MCF7", "mcf-7", "K-562", "K562", "k-562", "IL-4", "IL4", "CD4+", "T-cell", "HepG2", "Hep-G2", "H3K27ac",
-    "H3K27", "BRD4-38", "brd4", "+", "a-", "-a", "7+", "+7", "k.562",
+    "H3K27", "BRD4-38", "brd4", "+", "a-", "-a", "7+", "+7", "k.562", "\u03b2-catenin", "\u03b1-catenin", "catenin",
+    "IFN-\u03b3", "IFN\u03b3", "M\u00fcller", "Muller", "\u809d\u81d3",
 ]  # fmt: skip
 RESERVED = {"AND", "OR", "NOT"}
 
@@ -71,16 +73,39 @@ def corpus(store_con: duckdb.DuckDBPyConnection) -> Corpus:
     return Corpus(values, rows, runs, projects)
 
 
+def _is_word_character(character: str) -> bool:
+    category = unicodedata.category(character)
+    return category[0] in ("L", "M") or category == "Nd"
+
+
+def _is_letter_or_digit(character: str) -> bool:
+    category = unicodedata.category(character)
+    return category[0] == "L" or category == "Nd"
+
+
+def _lower(value: str) -> str:
+    return unicodedata.normalize(
+        "NFC", unicodedata.normalize("NFC", value).replace("\u0130", "i").lower().replace("\u03c2", "\u03c3")
+    )
+
+
 def tokens(value: str) -> list[str]:
-    return re.findall(r"[a-z0-9]+", value.lower())
+    """The runs of letters, digits, and combining marks that have a letter or a digit, in lower case."""
+    runs: list[str] = []
+    current = ""
+    for character in _lower(value):
+        if _is_word_character(character):
+            current += character
+        elif current:
+            runs.append(current)
+            current = ""
+    runs = [*runs, current] if current else runs
+    return [run for run in runs if any(_is_letter_or_digit(c) for c in run)]
 
 
 def joined_forms(value: str) -> list[str]:
-    forms = []
-    for chunk in value.lower().split():
-        for found in re.finditer(r"[a-z0-9]+(?:[^a-z0-9]+[a-z0-9]+)+", chunk):
-            forms.append("".join(tokens(found.group())))
-    return forms
+    """The words of each run without white space whose words are joined by other characters, written together."""
+    return ["".join(words) for words in (tokens(chunk) for chunk in value.split()) if len(words) > 1]
 
 
 def _in_sequence(needle: list[str], sequences: list[list[str]]) -> bool:
@@ -89,7 +114,7 @@ def _in_sequence(needle: list[str], sequences: list[list[str]]) -> bool:
 
 
 def atom(corpus: Corpus, value: str, *, phrase: bool) -> Predicate:
-    """The documented rules of one keyword, as a predicate over a row (BioSample, experiment)."""
+    """The matching rules of one keyword, as a predicate over a row (BioSample, experiment)."""
     sequences = {b: [tokens(v) for v in vs] for b, vs in corpus.values.items()}
     wordsets = {
         b: {w for seq in seqs for w in seq} | {f for v in corpus.values[b] for f in joined_forms(v)}
@@ -105,7 +130,7 @@ def atom(corpus: Corpus, value: str, *, phrase: bool) -> Predicate:
         parts = tokens(word)
         if not parts:
             continue
-        upper = word.upper()
+        upper = word.upper() if word.isascii() else ""
         if re.fullmatch(r"SAM(N|D|EA)[0-9]+", upper):
             checks.append(("biosample", upper))
         elif re.fullmatch(r"[SDE]RX[0-9]+", upper):
@@ -116,7 +141,7 @@ def atom(corpus: Corpus, value: str, *, phrase: bool) -> Predicate:
             checks.append(("bioproject", upper))
         elif len(parts) > 1:
             checks.append(("parts", parts))
-        elif index == last and re.search(r"[^A-Za-z0-9]", word) is None and len(parts[0]) > 1:
+        elif index == last and all(_is_word_character(c) for c in _lower(word)) and len(parts[0]) > 1:
             checks.append(("start", parts[0]))
         else:
             checks.append(("whole", parts[0]))
@@ -172,7 +197,7 @@ def atoms(draw: st.DrawFn, corpus: Corpus) -> Atom:
         size = draw(st.integers(1, 4))
         words = sequence[start : start + size]
         if draw(st.booleans()):
-            # the same words in another order or with a gap, which must not match as a phrase
+            # The same words, possibly in another order. The oracle decides whether they match as a phrase.
             words = draw(st.permutations(words))
         phrase = " ".join(words)
         return Atom(_quote(phrase), phrase, True)
@@ -198,7 +223,7 @@ def atoms(draw: st.DrawFn, corpus: Corpus) -> Atom:
     return Atom(text, text, False)
 
 
-def _evaluate(corpus: Corpus, q: str, row_predicate: Predicate) -> dict[str, set[str]]:
+def _evaluate(corpus: Corpus, row_predicate: Predicate) -> dict[str, set[str]]:
     matching = [(b, e) for b, e in corpus.rows if row_predicate(b, e)]
     return {
         "biosample": {b for b, _ in matching},
@@ -229,14 +254,14 @@ def _combine(corpus: Corpus, form: str, a: Atom, b: Atom) -> tuple[str, Predicat
 
 @settings(max_examples=120)
 @given(data=st.data())
-def test_keyword_condition_matches_the_entries_the_documented_rules_select(
+def test_keyword_condition_matches_the_entries_that_the_oracle_selects(
     client: TestClient, corpus: Corpus, data: st.DataObject
 ) -> None:
     form = data.draw(st.sampled_from(["single", "single", "not", "and", "or", "and_not", "not_or"]))
     a = data.draw(atoms(corpus))
     b = data.draw(atoms(corpus))
     q, predicate = _combine(corpus, form, a, b)
-    expected = _evaluate(corpus, q, predicate)
+    expected = _evaluate(corpus, predicate)
     assert _fetch(client, q) == expected, q
 
 
@@ -246,128 +271,70 @@ def test_keyword_counts_of_biosamples_and_experiments_equal_the_number_of_matchi
     client: TestClient, corpus: Corpus, data: st.DataObject
 ) -> None:
     a = data.draw(atoms(corpus))
-    expected = _evaluate(corpus, a.text, atom(corpus, a.value, phrase=a.phrase))
+    expected = _evaluate(corpus, atom(corpus, a.value, phrase=a.phrase))
     assert count(client, a.text) == len(expected["biosample"]), a.text
     assert count(client, a.text, "sra-experiment") == len(expected["sra-experiment"]), a.text
 
 
 @pytest.mark.parametrize(
-    "q",
+    ("q", "matches"),
     [
-        "MCF-7",
-        "MCF7",
-        "mcf-7",
-        "mcf",
-        "mc",
-        "m",
-        "mcf-",
-        "K562",
-        "k-562",
-        "K56",
-        "IL-4",
-        "CD4+",
-        "HepG2",
-        "H3K27",
-        "breast disorder",
-        '"breast disorder"',
-        '"disorder breast"',
-        "disorder breast",
-        '"mcf 7"',
-        '"mcf 7 treated"',
-        "treated",
-        "treate",
-        "treated samn01000000",
-        "SAMN01000000",
-        "samn01000000",
-        "SAMN0100000",
-        "SRX0000001",
-        "srx0000001",
-        "SRX000000",
-        "SRR00000010",
-        "srr00000010",
-        "PRJNA000009",
-        "prjna000009",
-        "PRJNA00000",
-        "SAMN01000000 SRX0000001",
-        "SAMN01000000 SRX0000002",
-        "SAMN01000001 SRX0000001",
-        "sample of",
-        "samn0100000",
-        "sample 1",
-        "homo sapiens",
-        '"homo sapiens"',
-        "sapiens homo",
-        '"sapiens sample"',
-        "cell line",
-        "lung 51",
-        '"lung 51"',
-        "51 lung",
-        "a",
-        "7",
+        ("MCF-7", True),
+        ("MCF7", True),
+        ("mcf-7", True),
+        ("mcf", True),
+        ("mc", True),
+        ("m", False),
+        ("mcf-", True),
+        ("K562", True),
+        ("k-562", True),
+        ("K56", True),
+        ("IL-4", False),
+        ("CD4+", False),
+        ("HepG2", True),
+        ("H3K27", False),
+        ("breast disorder", True),
+        ('"breast disorder"', True),
+        ('"disorder breast"', False),
+        ("disorder breast", True),
+        ('"mcf 7"', True),
+        ('"mcf 7 treated"', True),
+        ("treated", True),
+        ("treate", True),
+        ("treated samn01000000", True),
+        ("SAMN01000000", True),
+        ("samn01000000", True),
+        ("SAMN0100000", False),
+        ("SRX0000001", True),
+        ("srx0000001", True),
+        ("SRX000000", False),
+        ("SRR00000010", True),
+        ("srr00000010", True),
+        ("PRJNA000009", True),
+        ("prjna000009", True),
+        ("PRJNA00000", False),
+        ("SAMN01000000 SRX0000001", True),
+        ("SAMN01000000 SRX0000002", False),
+        ("SAMN01000001 SRX0000001", False),
+        ("sample of", True),
+        ("samn0100000", False),
+        ("sample 1", True),
+        ("homo sapiens", True),
+        ('"homo sapiens"', True),
+        ("sapiens homo", True),
+        ('"sapiens sample"', False),
+        ("cell line", False),
+        ("lung 51", True),
+        ('"lung 51"', True),
+        ("51 lung", True),
+        ("a", False),
+        ("7", True),
     ],
 )
-def test_keyword_documented_examples_match_the_oracle(client: TestClient, corpus: Corpus, q: str) -> None:
-    phrase = q.startswith('"')
-    expected = _evaluate(corpus, q, atom(corpus, q.strip('"'), phrase=phrase))
-    assert _fetch(client, q) == expected, q
-
-
-@pytest.mark.parametrize(
-    ("q", "left", "right"),
-    [
-        ("NOT mcf7", "mcf7", None),
-        ("mcf7 AND NOT liver", "mcf7", "liver"),
-        ("liver OR lung", "liver", "lung"),
-    ],
-)
-def test_keyword_boolean_examples_match_the_oracle(
-    client: TestClient, corpus: Corpus, q: str, left: str, right: str | None
+def test_keyword_examples_match_the_entries_that_the_oracle_selects(
+    client: TestClient, corpus: Corpus, q: str, matches: bool
 ) -> None:
-    pa = atom(corpus, left, phrase=False)
-    pb = atom(corpus, right, phrase=False) if right else pa
-
-    def predicate(b: str, e: str) -> bool:
-        if q.startswith("NOT"):
-            return not pa(b, e)
-        if " AND NOT " in q:
-            return pa(b, e) and not pb(b, e)
-        return pa(b, e) or pb(b, e)
-
-    assert _fetch(client, q) == _evaluate(corpus, q, predicate), q
-
-
-def test_oracle_corpus_has_the_words_the_examples_rely_on(corpus: Corpus) -> None:
-    words = {t for vs in corpus.values.values() for v in vs for t in tokens(v)}
-    forms = {f for vs in corpus.values.values() for v in vs for f in joined_forms(v)}
-    assert {"mcf", "7", "treated", "breast", "disorder", "sapiens"} <= words
-    assert {"mcf7", "k562"} <= forms
-    assert corpus.rows
-    assert all(corpus.accessions()[kind] for kind in ("biosample", "experiment", "run", "bioproject"))
-
-
-@pytest.mark.parametrize(
-    "q",
-    [
-        "MCF7",
-        "mcf-7",
-        "K562",
-        "mcf",
-        "mcf-",
-        "7 lung",
-        "breast disorder",
-        '"breast disorder"',
-        "SRX0000001",
-        "PRJNA000009",
-        "SRR00000010",
-    ],
-)
-def test_oracle_finds_matches_for_the_words_that_occur_in_the_data(corpus: Corpus, q: str) -> None:
-    expected = _evaluate(corpus, q, atom(corpus, q.strip('"'), phrase=q.startswith('"')))
-    assert expected["biosample"]
-    assert expected["sra-experiment"]
-
-
-@pytest.mark.parametrize("q", ["SAMN0100000", "SRX000000", "PRJNA00000", '"sapiens sample"', '"disorder breast"'])
-def test_oracle_finds_no_match_where_the_rules_forbid_one(corpus: Corpus, q: str) -> None:
-    expected = _evaluate(corpus, q, atom(corpus, q.strip('"'), phrase=q.startswith('"')))
-    assert expected["biosample"] == set()
+    phrase = q.startswith('"')
+    expected = _evaluate(corpus, atom(corpus, q.strip('"'), phrase=phrase))
+    assert bool(expected["biosample"]) == matches, q
+    assert _fetch(client, q) == expected, q

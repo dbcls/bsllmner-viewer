@@ -3,7 +3,7 @@ import { describe, expect } from "vitest"
 
 import { matchParts } from "~/ui/term-row"
 
-const chars = fc.constantFrom(..."aAbB .-(")
+const chars = fc.constantFrom(..."aAbB .-()*+?^$|[]{}\\")
 const texts = fc.string({ unit: chars, maxLength: 16 })
 const queries = fc.string({ unit: chars, maxLength: 4 })
 

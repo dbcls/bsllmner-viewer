@@ -51,8 +51,8 @@ export const useCondition = (q: string | null, update: (patch: Patch) => void, l
   const keywordText = parsed.data?.keyword ?? ""
 
   /**
-   * Move to a changed condition, with its parse already known from the response that changed it, unless the condition
-   * moved on from `startedQ`. Whether the condition was written is returned.
+   * Caches the parse of the changed condition from the response. Then writes the changed condition to the URL, unless the
+   * q in the URL is no longer `startedQ`. Returns whether the condition was written.
    */
   const apply = useCallback(
     (result: ConditionResponse, startedQ: string | null): boolean => {
@@ -83,7 +83,10 @@ export const useCondition = (q: string | null, update: (patch: Patch) => void, l
     [queryClient],
   )
 
-  /** Take the clauses off the condition. Whether the condition was written is returned. A clause that the condition no longer has stays off; nothing is added. */
+  /**
+   * Removes the clauses from the condition. Returns whether the condition was written. A clause that the condition does
+   * not have is skipped, so the operation never adds a clause.
+   */
   const remove = useCallback(
     (clauses: Clause[]) =>
       serial(() =>
@@ -97,7 +100,7 @@ export const useCondition = (q: string | null, update: (patch: Patch) => void, l
     [currentQ, serial, guarded, selectedOf, select, apply],
   )
 
-  /** Take every clause of a field off the condition. */
+  /** Removes every clause of a field from the condition. */
   const removeField = useCallback(
     (field: string) =>
       serial(() =>
@@ -135,10 +138,11 @@ export const useCondition = (q: string | null, update: (patch: Patch) => void, l
   )
 
   /**
-   * Narrow the condition to what an element counts: its clauses are added by AND to the population. If the condition already has the element's clauses,
-   * widen it back to the population instead, so that selecting the element again undoes the selection. The population
-   * belongs to the table of the element, which was drawn for `tableQ`, so the operation is dropped when the condition
-   * is not `tableQ` when the element is pressed or when the operation starts.
+   * Narrows the condition to what an element counts. The api adds the clauses of the element to `populationQ` with AND,
+   * and the result becomes the condition. If the condition already has the clauses of the element, `populationQ` becomes
+   * the condition instead, so that selecting the element again undoes the selection. `populationQ` is the
+   * population of the table of the element. The table was drawn for `tableQ`. If the condition is not `tableQ` when the
+   * user presses the element or when the operation starts, the operation does nothing.
    */
   const toggleNarrow = useCallback(
     (populationQ: string | null, clauses: Clause[], tableQ: string | null) => {

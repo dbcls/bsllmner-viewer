@@ -1,6 +1,9 @@
 import { type RefObject, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 
-/** The edge of the control that an open panel lines up with: the list of a Select starts at the left edge of the Select, and a menu ends at the right edge of its button. */
+/**
+ * The edge of the control that an open panel is aligned to. `left` starts the panel at the left edge of the control.
+ * `right` ends it at the right edge.
+ */
 type PanelAlign = "left" | "right"
 
 /**
@@ -24,9 +27,9 @@ export const PANEL_GAP = 4
 
 /**
  * The position of a panel of the given height for a control at `box`: under the control, unless the panel does not fit
- * under it and there is more room above. With equal room, the panel goes under. A panel lined up with the left edge of
- * its control that would cross the right edge of the viewport is lined up with the right edge of the control instead,
- * when it fits there; a width of 0 means that the width is not known yet.
+ * under it and there is more room above. With equal room, the panel goes under. A panel aligned to the left edge of
+ * its control that would cross the right edge of the viewport is aligned to the right edge of the control instead,
+ * when it fits there. A width of 0 means that the width is not known yet.
  */
 export const panelPositionIn = (
   box: Box,
@@ -46,7 +49,7 @@ export const panelPositionIn = (
 
 /**
  * The position of a panel for a control on screen. A panel whose height is not known yet (0) opens under its control;
- * once it is drawn, its height decides again. The width of the viewport leaves out the scroll bar, so that a panel
+ * once it is drawn, its height decides again. The width of the viewport omits the scroll bar, so that a panel
  * aligned to the right edge does not slide under the scroll bar.
  */
 export const panelPosition = (anchor: HTMLElement, panelHeight: number, options: PanelOptions, panelWidth = 0): PanelPosition =>

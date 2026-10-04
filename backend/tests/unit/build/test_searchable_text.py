@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import json
 import random
-import re
 from collections.abc import Iterator
 
 import duckdb
 import pytest
 
 from bsllmner_viewer.build.derive import _derive_searchable_text
+from bsllmner_viewer.dsl.keyword import parts
 
 
 def test_searchable_text_has_one_row_per_biosample_of_the_population(
@@ -26,7 +26,7 @@ def test_searchable_text_is_lower_case_with_single_spaces_and_padded(store_con: 
         assert text.startswith(" "), biosample
         assert text.endswith(" "), biosample
         assert "  " not in text, biosample
-        assert re.fullmatch(r"[a-z0-9| ]+", text), biosample
+        assert all(parts(word) == [word] for word in text.replace("|", " ").split()), biosample
 
 
 def test_searchable_text_holds_title_organism_description_attribute_values_and_annotation_values(
@@ -42,9 +42,8 @@ def test_searchable_text_holds_title_organism_description_attribute_values_and_a
     assert described
     values = [title, organism, *described, *(a["value"] for a in json.loads(attributes))]
     for value in values:
-        words = " ".join(re.findall(r"[a-z0-9]+", value.lower()))
-        assert f" {words} " in text
-    assert " | ".join(re.sub(r"[^a-z0-9]+", " ", v.lower()).strip() for v in values[:2]) in text
+        assert f" {' '.join(parts(value))} " in text
+    assert " | ".join(" ".join(parts(v)) for v in values[:2]) in text
 
 
 def test_searchable_text_does_not_hold_attribute_names(store_con: duckdb.DuckDBPyConnection) -> None:
@@ -66,7 +65,7 @@ def test_searchable_text_holds_the_term_label_and_the_extracted_value_of_each_an
     for _, value, label, text in rows:
         for part in (value, label):
             if part:
-                assert " " + " ".join(re.findall(r"[a-z0-9]+", part.lower())) + " " in text
+                assert " " + " ".join(parts(part)) + " " in text
 
 
 def test_searchable_text_adds_the_joined_form_of_a_word_with_symbols(store_con: duckdb.DuckDBPyConnection) -> None:
@@ -78,6 +77,57 @@ def test_searchable_text_adds_the_joined_form_of_a_word_with_symbols(store_con: 
     for (text,) in rows:
         assert " mcf 7 " in text
         assert " mcf7 " in " " + text.split(" | ")[-1] + " "
+
+
+def test_searchable_text_does_not_hold_the_items_of_the_record(store_con: duckdb.DuckDBPyConnection) -> None:
+    rows = store_con.execute(
+        "SELECT b.accession, s.text, b.record FROM biosample b JOIN searchable_text s ON s.biosample = b.accession"
+    ).fetchall()
+    laboratories = [
+        (accession, text)
+        for accession, text, record in rows
+        if any(i["path"] == "Owner.Name" and i["value"].startswith("Laboratory of") for i in json.loads(record))
+    ]
+    assert laboratories
+    for accession, text in laboratories:
+        assert "laboratory" not in text.replace("|", " ").split(), accession
+
+
+def test_searchable_text_leaves_out_the_value_of_every_omitted_attribute(
+    store_con: duckdb.DuckDBPyConnection,
+) -> None:
+    omitted = {str(r[0]) for r in store_con.execute("SELECT name FROM omitted_attribute").fetchall()}
+    assert omitted
+    checked = 0
+    rows = store_con.execute(
+        "SELECT s.biosample, s.text, e.attributes, b.attributes, b.title, b.organism_name, b.description "
+        "FROM searchable_text s JOIN biosample b ON b.accession = s.biosample "
+        "JOIN entry e ON e.accession = b.accession AND e.run_id = b.run_id"
+    ).fetchall()
+    for accession, text, raw, kept, title, organism, description in rows:
+        others = [
+            title or "",
+            organism or "",
+            *(d["value"] for d in json.loads(description)),
+            *(a["value"] for a in json.loads(kept)),
+        ]
+        others += [
+            v or ""
+            for r in store_con.execute(
+                "SELECT extracted_value, term_label FROM annotation WHERE biosample = ?", [accession]
+            ).fetchall()
+            for v in r
+        ]
+        remaining = " | ".join(" ".join(parts(v)) for v in others)
+        for attribute in json.loads(raw):
+            if attribute["name"] not in omitted:
+                continue
+            words = " ".join(parts(attribute["value"]))
+            if not words or f" {words} " in f" {remaining} ":
+                continue
+            checked += 1
+            assert f" {words} " not in text, (accession, attribute["name"])
+    assert checked > 0
 
 
 @pytest.fixture
@@ -147,8 +197,7 @@ def test_searchable_text_of_a_biosample_with_only_a_title(con: duckdb.DuckDBPyCo
 
 def test_searchable_text_of_a_biosample_without_any_value_has_no_words(con: duckdb.DuckDBPyConnection) -> None:
     _add(con, "S1")
-    text = _texts(con).get("S1", " ")
-    assert re.sub(r"[ |]", "", text) == ""
+    assert _texts(con)["S1"].strip(" |") == ""
 
 
 def test_searchable_text_skips_a_null_value_without_dropping_the_others(con: duckdb.DuckDBPyConnection) -> None:
@@ -186,7 +235,8 @@ def test_searchable_text_treats_a_bar_inside_a_value_as_a_separator_of_words(con
         ("a-b-c", ["abc"]),
         ("HIF-1alpha, CD4+", ["hif1alpha"]),
         ("(K-562)", ["k562"]),
-        ("TNF-\u03b1", []),
+        ("TNF-\u03b1", ["tnf\u03b1"]),
+        ("\u03b2-catenin", ["\u03b2catenin"]),
         ("plain words", []),
         ("CD4+", []),
         ("a - b", []),
@@ -211,16 +261,16 @@ def test_searchable_text_keeps_a_phrase_from_spanning_two_joined_forms(con: duck
     assert " mcf7 il4 " not in text
 
 
-def test_searchable_text_is_lower_case_for_every_value(con: duckdb.DuckDBPyConnection) -> None:
-    _add(con, "S1", title="ABC Def", organism="GHI", values=["JKL"], annotations=[("MNO", "PQR")])
+def test_searchable_text_keeps_letters_and_digits_of_any_script_in_words(con: duckdb.DuckDBPyConnection) -> None:
+    _add(
+        con,
+        "S1",
+        values=["Caf\u00e9 au lait", "\u03b2-catenin", "\u809d\u81d3\u30fb\u304c\u3093", "\uff2d\uff23\uff26\uff17"],
+    )
     text = _texts(con)["S1"]
-    assert text == text.lower()
-    assert " abc def | ghi | jkl | mno | pqr " in text
-
-
-def test_searchable_text_treats_non_ascii_characters_as_separators(con: duckdb.DuckDBPyConnection) -> None:
-    _add(con, "S1", values=["café au lait"])
-    assert " caf au lait " in _texts(con)["S1"]
+    for words in ("caf\u00e9 au lait", "\u03b2 catenin", "\u809d\u81d3 \u304c\u3093", "\uff4d\uff43\uff46\uff17"):
+        assert f" {words} " in text
+    assert " \u03b1 catenin " not in text
 
 
 def test_searchable_text_of_a_biosample_with_a_null_attribute_list_still_holds_the_title(

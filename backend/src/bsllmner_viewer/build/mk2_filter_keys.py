@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-# The candidates for the attributes that the derived BioSample leaves out. They record how a BioSample was submitted
-# and archived. Derivation leaves out only the candidates under which no extracted value of the dataset occurs, so that
-# leaving them out removes no evidence.
+# The names of the attributes that the derived BioSample may omit. An attribute under one of these names records how
+# a BioSample was submitted and archived. Derivation keeps a name if evidence of any BioSample points to an attribute
+# under the name, so omitting the other names removes no evidence.
 MK2_FILTER_KEYS: frozenset[str] = frozenset(
     {
         "Alternate BioProject ID",

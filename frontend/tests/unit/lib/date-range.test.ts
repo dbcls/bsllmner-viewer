@@ -72,5 +72,7 @@ describe("rangeLabel", () => {
     expect(rangeLabel({ from: "2020-01-01", to: "2020-12-31" })).toBe("2020")
     expect(rangeLabel({ from: "2021-10-02", to: "2026-10-02" })).toBe("2021-10-02 – 2026-10-02")
     expect(rangeLabel({ from: "2021-10-02", to: "2021-10-02" })).toBe("2021-10-02")
+    expect(rangeLabel({ from: "2020-01-01", to: "2020-06-30" })).toBe("2020-01-01 – 2020-06-30")
+    expect(rangeLabel({ from: "2020-03-01", to: "2020-12-31" })).toBe("2020-03-01 – 2020-12-31")
   })
 })

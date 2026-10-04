@@ -12,6 +12,9 @@ import { FIGURE_TEXT, type FigureTextRole, TEXT_SIZE, textSize } from "~/lib/fig
 
 const app = (path: string): string => readFileSync(resolve(process.cwd(), "app", path), "utf8")
 
+/** The class names in a text, so that `inline` does not match `inline-flex`. */
+const tokens = (text: string) => text.split(/[\s"'`]+/)
+
 const WEIGHT_CLASSES: Record<string, number> = { "font-normal": 400, "font-medium": 500, "font-semibold": 600 }
 
 describe("the text of the saved figures", () => {
@@ -24,9 +27,9 @@ describe("the text of the saved figures", () => {
     const { screen } = role
     it("is set on the page with the classes of its size, weight, and family", () => {
       const source = app(screen.file)
-      expect(source.split("\n").some((line) => screen.classes.every((c) => line.includes(c))), `${screen.file}: ${screen.classes.join(" ")}`).toBe(true)
+      expect(source.split("\n").some((line) => screen.classes.every((c) => tokens(line).includes(c))), `${screen.file}: ${screen.classes.join(" ")}`).toBe(true)
       const ancestors = "ancestors" in screen ? screen.ancestors : []
-      for (const c of ancestors) expect(source, c).toContain(c)
+      for (const c of ancestors) expect(tokens(source), c).toContain(c)
       const all: readonly string[] = [...screen.classes, ...ancestors]
       const sizes = all.filter((c) => c.startsWith("text-fs-")).map((c) => c.slice("text-fs-".length))
       expect(sizes.length ? sizes : ["body"], name).toContain(role.size)

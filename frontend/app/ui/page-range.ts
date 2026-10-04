@@ -8,7 +8,7 @@ export const pageRange = (page: number, perPage: number, total: number): { from:
   return { from, to: Math.min(page * perPage, total) }
 }
 
-/** The last page, for a page after it, whose list is empty or ended before it; null when the page is within the list. */
+/** The last page of the list if the page is after it, or null if the page is within the list. An empty list has one page. */
 export const pageAfterLast = (page: number, total: number, perPage: number): number | null => {
   const last = pageCount(total, perPage)
   return page > last ? last : null

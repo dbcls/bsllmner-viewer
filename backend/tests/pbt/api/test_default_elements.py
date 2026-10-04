@@ -2,21 +2,17 @@
 
 from __future__ import annotations
 
-from itertools import pairwise
+from collections import Counter
 
 from fastapi.testclient import TestClient
 from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 
 from bsllmner_viewer.dsl.ast import Node
-from tests.api_helpers import condition_q
+from tests.api_helpers import condition_q, entry_items
 from tests.strategies import UNITS, conditions
 
 ORDERED_DIMENSIONS = ("cell_line", "disease", "tissue", "drug", "chip_antigen", "library_strategy", "organism_id")
-
-
-def _is_non_increasing(counts: list[int]) -> bool:
-    return all(a >= b for a, b in pairwise(counts))
 
 
 def _element_key(dim: str, value: str) -> int | str:
@@ -32,7 +28,7 @@ def _element_key(dim: str, value: str) -> int | str:
     st.booleans(),
     st.integers(min_value=1, max_value=12),
 )
-def test_distribution_default_elements_are_in_non_increasing_count_order(
+def test_distribution_default_elements_are_in_count_order_with_ties_in_element_order(
     client: TestClient, ast: Node | None, dim: str, unit: str, excl: bool, limit: int
 ) -> None:
     body = client.get(
@@ -59,11 +55,10 @@ def test_distribution_default_elements_are_in_non_increasing_count_order(
     st.booleans(),
     st.integers(min_value=1, max_value=12),
 )
-def test_crosstab_default_rows_and_columns_are_in_non_increasing_count_order(
+def test_crosstab_default_rows_and_columns_are_in_count_order_with_ties_in_element_order_and_the_cells_follow_them(
     client: TestClient, ast: Node | None, row: str, col: str, unit: str, excl: bool, limit: int
 ) -> None:
-    if row == col:
-        return
+    assume(row != col)
     body = client.get(
         "/api/crosstab",
         params={
@@ -75,8 +70,10 @@ def test_crosstab_default_rows_and_columns_are_in_non_increasing_count_order(
             "facetSelfExclude": str(excl).lower(),
         },
     ).json()
-    assert _is_non_increasing([e["count"] for e in body["rows"]]), body["rows"]
-    assert _is_non_increasing([e["count"] for e in body["cols"]]), body["cols"]
+    for dim, elements in ((row, body["rows"]), (col, body["cols"])):
+        values = [e["value"] for e in elements]
+        counts = {e["value"]: e["count"] for e in elements}
+        assert values == sorted(values, key=lambda v: (-counts[v], _element_key(dim, v))), elements
     assert [(c["row"], c["col"]) for c in body["cells"]] == [
         (r["value"], c["value"]) for r in body["rows"] for c in body["cols"]
     ]
@@ -90,7 +87,7 @@ def test_crosstab_default_rows_and_columns_are_in_non_increasing_count_order(
     st.booleans(),
     st.integers(min_value=1, max_value=12),
 )
-def test_trend_default_series_are_in_non_increasing_count_order(
+def test_trend_default_series_are_in_count_order_with_ties_in_element_order(
     client: TestClient, ast: Node | None, dim: str, unit: str, excl: bool, limit: int
 ) -> None:
     body = client.get(
@@ -103,9 +100,10 @@ def test_trend_default_series_are_in_non_increasing_count_order(
             "facetSelfExclude": str(excl).lower(),
         },
     ).json()
-    # A BioSample and an experiment have one publication year, so the points of a series add up to its count.
-    totals = [sum(p["count"] for p in s["points"]) for s in body["series"]]
-    assert _is_non_increasing(totals), [(s["value"], t) for s, t in zip(body["series"], totals, strict=True)]
+    # A BioSample and an SRA Experiment have one publication year, so the points of a series add up to its count.
+    totals = {s["value"]: sum(p["count"] for p in s["points"]) for s in body["series"]}
+    values = [s["value"] for s in body["series"]]
+    assert values == sorted(values, key=lambda v: (-totals[v], _element_key(dim, v))), totals
 
 
 @settings(max_examples=40)
@@ -133,3 +131,67 @@ def test_assay_and_organism_default_elements_are_the_ones_with_the_most_biosampl
         return -by_biosample[v], _element_key(dim, v)
 
     assert sorted(by_biosample, key=key)[:limit] == sorted((e["value"] for e in other["elements"]), key=key)
+
+
+def _years(client: TestClient, q: str | None) -> list[str]:
+    return sorted({item["datePublished"][:4] for item in entry_items(client, q) if item["datePublished"]})
+
+
+@settings(max_examples=25)
+@given(
+    conditions,
+    st.sampled_from(("biosample", "sra-experiment")),
+    st.booleans(),
+    st.integers(min_value=1, max_value=4),
+    st.booleans(),
+)
+def test_date_default_elements_are_every_year_with_a_match_in_ascending_order(
+    client: TestClient, ast: Node | None, unit: str, excl: bool, limit: int, as_row: bool
+) -> None:
+    params = {"unit": unit, "q": condition_q(ast) or "", "limit": limit, "facetSelfExclude": str(excl).lower()}
+    if as_row:
+        body = client.get("/api/crosstab", params={**params, "row": "date_published", "col": "library_strategy"}).json()
+        values = [e["value"] for e in body["rows"]]
+    else:
+        body = client.get("/api/distribution", params={**params, "field": "date_published"}).json()
+        values = [e["value"] for e in body["elements"]]
+    assert values == _years(client, body["populationQ"])
+
+
+def _direct_term_counts(client: TestClient, q: str | None, field: str) -> Counter[str]:
+    """The number of BioSamples of the population that the term is assigned to directly."""
+    counts: Counter[str] = Counter()
+    for item in entry_items(client, q):
+        counts.update({a["termId"] for a in item["annotations"].get(field, []) if a["termId"]})
+    return counts
+
+
+@settings(max_examples=30)
+@given(
+    conditions,
+    st.sampled_from(("cell_line", "disease", "tissue", "drug")),
+    st.sampled_from(("distribution", "crosstab", "trend")),
+    st.sampled_from(UNITS),
+    st.booleans(),
+    st.integers(min_value=1, max_value=6),
+)
+def test_default_terms_of_an_aggregation_are_the_terms_assigned_directly_to_the_most_biosamples(
+    client: TestClient, ast: Node | None, field: str, kind: str, unit: str, excl: bool, limit: int
+) -> None:
+    q = condition_q(ast) or ""
+    assume(field not in q)  # a condition that names terms of the field adds them to the default ones
+    params = {"unit": unit, "q": q, "limit": limit, "facetSelfExclude": str(excl).lower()}
+    if kind == "distribution":
+        body = client.get("/api/distribution", params={**params, "field": field}).json()
+        chosen = {e["value"] for e in body["elements"]}
+    elif kind == "crosstab":
+        body = client.get("/api/crosstab", params={**params, "row": field, "col": "library_strategy"}).json()
+        chosen = {e["value"] for e in body["rows"]}
+    else:
+        body = client.get("/api/trend", params={**params, "field": field}).json()
+        chosen = {s["value"] for s in body["series"]}
+    direct = _direct_term_counts(client, body["populationQ"], field)
+    ranked = direct.most_common()
+    if len(ranked) > limit:
+        assume(ranked[limit - 1][1] != ranked[limit][1])  # a tie at the limit has no single answer
+    assert chosen == {term for term, _ in ranked[:limit]}

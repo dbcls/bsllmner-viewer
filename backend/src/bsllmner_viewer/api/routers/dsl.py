@@ -57,11 +57,11 @@ def _condition_response(store: Store, ast: Node | None) -> ConditionResponse:
     operation_id="parseCondition",
     responses=error_responses(bad_request=DSL_SLUGS),
     response_model=ParseResponse,
-    summary="Parse a condition string into an AST",
+    summary="Parse a condition into an abstract syntax tree",
     description=(
-        "Parses `q` into the AST of the DDBJ Search API, with the display labels of its term IDs and organism IDs. "
-        "An invalid condition gets 400 with the column of the error, so this operation also checks a condition "
-        'before it is used. See "Condition DSL" in /llms-full.txt.'
+        "Parses `q` into the abstract syntax tree (AST) of the DDBJ Search API, with the display labels of its term "
+        "IDs and organism IDs. An invalid condition gets 400 with the column of the error, so this operation also "
+        'checks a condition before it is used. See "Condition DSL" in /llms-full.txt.'
     ),
 )
 def parse_dsl(
@@ -96,7 +96,7 @@ def parse_dsl(
 )
 def select_dsl(store: StoreDep, body: SelectRequest) -> ConditionResponse:
     ast = parse_condition(store, body.q)
-    clauses = [to_field_clause(c) for c in body.clauses]
+    clauses = [to_field_clause(c, store.field_set) for c in body.clauses]
     result = narrow(ast, clauses) if body.mode == "narrow" else select_element(ast, clauses)
     return _condition_response(store, result)
 
@@ -108,10 +108,11 @@ def select_dsl(store: StoreDep, body: SelectRequest) -> ConditionResponse:
     response_model=ConditionResponse,
     summary="Replace the keywords of a condition",
     description=(
-        "Replaces the keywords among the top-level AND conjuncts of `q` with the keywords of `keyword`, read as a "
-        "search box reads text: quoted parts are phrases, and the other words form one keyword. A part is quoted by "
-        "double quotes, or by a `'` at the start of a word and a `'` at the end of a word. A `'` inside a word or only "
-        "at its end, as in `Alzheimer's` or `3'`, is part of the word. `AND`, `OR`, and `NOT` are ordinary words. An "
+        "Replaces the keywords among the top-level AND conjuncts of `q` with the keywords of `keyword`. The "
+        "operation reads `keyword` as a search box reads text: quoted parts are phrases, and the other words form "
+        "one keyword. Double quotes around a part make a phrase. A single quote (`'`) at the start of a word and "
+        "another at the end of the same or a later word also make a phrase, as in `'cell line'`. Any other single "
+        "quote is part of its word, as in `Alzheimer's` or `3'`. `AND`, `OR`, and `NOT` are ordinary words. An "
         "empty `keyword` removes the keywords."
     ),
 )

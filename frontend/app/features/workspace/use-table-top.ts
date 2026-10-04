@@ -1,8 +1,8 @@
 import { useRef } from "react"
 
 /**
- * The page change of the pager under a table. If the top of the table is above the window, the window scrolls back to
- * it, where the new page starts. The pager over the table keeps the window where it is.
+ * Wraps the page change handler of the pager under a table. If the top of the table is above the window, the window
+ * scrolls to the top of the table, where the new page starts. The pager over the table does not scroll the window.
  */
 export const useTableTop = (onPage: (page: number) => void) => {
   const ref = useRef<HTMLDivElement>(null)

@@ -18,7 +18,7 @@ type TermRowContentProps = {
 type TermRowProps = TermRowContentProps & {
   selected?: boolean
   onClick: () => void
-  /** `lg` lines the row's content up with the `px-6` content of a dialog. */
+  /** `lg` aligns the row's content with the `px-6` content of a dialog. */
   padding?: RowPadding
 }
 
@@ -30,7 +30,7 @@ export type TextPart = { text: string; match: boolean }
 
 const escapeRegExp = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 
-/** The parts of a text, each occurrence of the query (compared without case) being a part of its own that is marked. */
+/** Splits the text into parts. Each occurrence of the query, compared without case, is a marked part. */
 export const matchParts = (text: string, query: string): TextPart[] => {
   const needle = query.trim()
   if (!needle) return text ? [{ text, match: false }] : []
@@ -41,8 +41,8 @@ export const matchParts = (text: string, query: string): TextPart[] => {
 }
 
 /**
- * Marks where the search matched, in the yellow that a selected annotation gives its evidence. The mark has no padding,
- * so that a match inside a word does not split the word.
+ * Marks where the search matched, with the selection color. The mark has no padding, so that a match inside a word does
+ * not split the word.
  */
 const Marked = ({ text, highlight }: { text: string; highlight: string | undefined }) => (
   <>
@@ -98,7 +98,7 @@ export const TermRow = ({ selected, onClick, padding = "sm", ...content }: TermR
   </button>
 )
 
-/** A term row before the search result arrives, as tall as a `TermRow`. */
+/** A term row while the search result loads, as tall as a `TermRow`. */
 export const TermRowSkeleton = ({ padding = "sm" }: { padding?: RowPadding }) => (
   <div aria-hidden="true" className={cn("flex items-baseline gap-2 border-b border-brand-soft py-1.5", ROW_PADDING[padding])}>
     <span className="min-w-0 flex-1">

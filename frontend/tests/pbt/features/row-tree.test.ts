@@ -48,7 +48,7 @@ describe("rowGuides", () => {
     })
   })
 
-  it("draws the tree command's lines for a parent with three children, the second with one child", () => {
+  it("draws the guide lines of a parent with three children, where the second child has one child", () => {
     expect(rowGuides([0, 1, 1, 2, 1, 0])).toEqual([
       [{ level: 0, kind: "stem" }],
       [{ level: 0, kind: "branch" }],

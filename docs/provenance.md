@@ -18,11 +18,11 @@ Of the names of the items, build searches only the names of attributes. The subm
 Evidence is best-effort in both directions:
 
 - An extracted value without evidence can still come from the original metadata. For example, the LLM can expand an abbreviation, or it can combine words from two attributes.
-- Evidence shows where the text of a value occurs. It does not show that the annotation is correct. For example, a gene that is the target of a ChIP experiment has evidence even if the LLM extracted the gene as a knockout gene.
+- Evidence shows where the text of a value occurs. Evidence does not show that the annotation is correct. For example, a gene that is the target of a ChIP experiment has evidence even if the LLM extracted the gene as a knockout gene.
 
 ## Matching strategies
 
-build tries the strategies in the order of the following table. Each strategy accepts more variation than the strategy before it.
+build tries the strategies in the order of the following table. Each strategy accepts more variation than the strategy before it. Before the search, build removes the white space at the start and the end of the extracted value.
 
 | Strategy | Accepts | Example: value, then text |
 |---|---|---|
@@ -35,7 +35,7 @@ build tries the strategies in the order of the following table. Each strategy ac
 
 The strategies use these definitions:
 
-- A unit is a character together with the combining marks and the Hangul vowel and final consonant jamo that follow it. A character that NFKC turns into one of them also continues the unit before it. For example, the half-width voiced mark U+FF9E continues the half-width kana before it. For example, the letter `é` is one unit, whether it is written as one code point (U+00E9) or as `e` and U+0301. A match never starts or ends inside a unit. The span of a match is always in the original text, and it covers whole units.
+- A unit is a character together with the combining marks and the Hangul vowel and final consonant jamo that follow it. For example, the letter `é` is one unit, whether it is written as one code point (U+00E9) or as `e` and U+0301. A character that NFKC changes to one of these marks or jamo also continues the unit before it, such as the half-width voiced mark U+FF9E after a half-width kana. A match never starts or ends inside a unit. The span of a match is always in the original text, and it covers whole units.
 - To fold a text is to apply Unicode Normalization Form KC (NFKC) to each unit, and then case folding. A composed text and a decomposed text therefore fold to the same text. For example, `Müller` matches "Müller" whichever form each of them uses.
 - A match is at word boundaries if it does not cut a run of letters and digits. If the match starts with a letter or a digit, then the character before the match is not a letter or a digit. If the match ends with a letter or a digit, then the character after the match is not a letter or a digit. A combining character counts as part of the letter before it. Word boundaries prevent a match inside a longer word. For example, `ATM` does not match "treatment", but `CD4+` matches "CD4+CD8+ T cells".
 - A word is a maximal run of letters and digits, together with the `+` and `-` signs right after it. A `+` or `-` that a letter or a digit follows joins two words and is not a sign. For example, `CD19+` and `CD19-` are different words, and "Long-Lived" and "GM+CSF" are two words each.
@@ -59,7 +59,9 @@ build folds the value and the text. Then it compares them in three forms:
 2. The same separators are removed. Brackets are removed together with their content. For example, `HEK293` matches "HEK 293".
 3. Each run of the same separators and bracket characters becomes one space. The content of the brackets stays. For example, `lung carcinoma` matches "lung (carcinoma) cell line".
 
-Slashes, periods, and other punctuation stay as they are in all three forms. If a form of the value has fewer than three characters, then that form does not match.
+In forms 1 and 2, any closing bracket closes any opening bracket, and an opening bracket without a closing bracket is removed together with the rest of the text. Slashes, periods, and other punctuation stay as they are in all three forms. If a form of the value has fewer than three characters, then that form does not match.
+
+build widens the span of a match over a bracket right next to the match. If the match has an opening bracket without its closing bracket, and a closing bracket comes right after the match, then the span also covers that closing bracket. In the same way, the span covers an opening bracket right before a match that has a closing bracket without its opening bracket. For example, the span of `lung carcinoma` in "lung (carcinoma) cell line" is "lung (carcinoma)". In "lung (carcinoma cell) line", the closing bracket is not right after the match, so the span is "lung (carcinoma".
 
 The match must be at word boundaries in the original text, with exceptions for the names of genotypes and constructs. These names often attach a gene to the words around it without a separator. The match can cut a run of letters and digits at these places:
 
@@ -68,7 +70,7 @@ The match must be at word boundaries in the original text, with exceptions for t
 - after a run that comes before the match, if the whole run is one of `sh`, `si`, `sg`, `TRE`, or `peg`, compared with letter case
 - where a lowercase letter meets an uppercase letter in the original text
 
-For example, `Whsc1` matches "Whsc1KO", `Kras` matches "KrasG12D", `BRD9` matches "shBRD9", `Neurod1` matches "Ngn3CreNeurod1OE", and `STAT3` matches "pSTAT3". A digit that meets an uppercase letter is not an exception, because identifiers continue that way. For example, `TP53` does not match "TP53BP1", which is a different gene.
+For example, `Whsc1` matches "Whsc1KO", `KRAS` matches "KRASG12D", `p53` matches "shp53", `Neurod1` matches "Ngn3CreNeurod1OE", and `STAT3` matches "pSTAT3". A digit that meets an uppercase letter is not an exception, because identifiers continue that way. For example, `TP53` does not match "TP53BP1", which is a different gene.
 
 ### bag_of_words
 
@@ -88,21 +90,21 @@ build compares two words after it folds them. Two words are similar if one of th
 
 This strategy applies only to an extracted value that has a term. build searches for the label and the synonyms of the term, with the five strategies above in the same order. For example, the drug `adriamycin` whose term is doxorubicin has its evidence in "treated with doxorubicin". For each strategy, build tries every name of the term before it tries the next strategy. An `exact` match of a synonym is therefore found before a `fuzzy` match of the label.
 
-The names are the label and the synonyms of the term in the reference ontology files ([build.md](build.md#reference-data)), and the label that the run result gives the term. If a name has fewer than five characters, then build searches for that name only with `exact`. A short name can also be an ordinary word. For example, the ChEBI synonym `NO` (nitric oxide) does not match "No dairy".
+The names are the label and the synonyms of the term in the reference ontology files ([build.md](build.md#reference-data)), and the label that the run result gives the term. If a name has fewer than five units, then build searches for that name only with `exact`. A short name can also be an ordinary word. For example, the ChEBI synonym `NO` (nitric oxide) does not match "No dairy".
 
 ## Search order
 
 build searches the original metadata in three groups:
 
-1. the description and the values of the attributes
+1. the description ([data-model.md](data-model.md#entities)) and the values of the attributes
 2. the names of the attributes
 3. the record
 
-For each strategy in order, build searches the groups in this order. It stops at the first strategy and group in which the value matches. Every match in that group with that strategy becomes evidence: each occurrence in each item. If an occurrence overlaps an earlier occurrence in the same item, then build does not use it. All evidence of one extracted value therefore has the same strategy, and all of it is in the same group.
+For each strategy in order, build searches the groups in this order. build stops at the first strategy and group in which the value matches. Every match in that group with that strategy becomes evidence: each occurrence in each item. If an occurrence overlaps an earlier occurrence in the same item, then build does not use it. All evidence of one extracted value therefore has the same strategy, and all of it is in the same group.
 
 For example, take the cell line `HeLa` of a BioSample whose `cell line` attribute is "HeLa" and whose title is "ChIP-seq of HeLa cells". Both the attribute and the title are evidence by `exact`. An ID in the record, such as "HeLa_ChIP_rep1", is not evidence, because the first group already has an `exact` match.
 
-The names of the attributes come after their values, because a name usually says what kind of value follows and only sometimes holds the value itself. For example, the tissue `brain` of a BioSample with the attribute `tissue` "brain" and the attribute `brain region` "BA46" has its evidence only in the value of `tissue`. The record comes last, because its values are identifiers, dates, and names. An extracted value occurs by chance in those values more often than in the words that describe the sample. `ontology_synonym` does not search the record, because a name of the term in an identifier is a coincidence.
+The names of the attributes come after their values, because a name usually says what kind of value follows and only sometimes holds the value itself. For example, the tissue `brain` of a BioSample with the attribute `tissue` "brain" and the attribute `brain region` "BA46" has its evidence only in the value of `tissue`. The record comes last, because its values are identifiers, dates, and names. An extracted value occurs by chance in those values more often than in the words that describe the BioSample. `ontology_synonym` does not search the record, because a name of the term in an identifier is a coincidence.
 
 ## When build finds evidence
 

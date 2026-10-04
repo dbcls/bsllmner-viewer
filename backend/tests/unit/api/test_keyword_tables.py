@@ -35,9 +35,13 @@ Q = [
     '(cancer OR liver) AND NOT disease:"' + ANNOTATED["disease"][0][0] + '"',
     'cancer AND disease:"' + ANNOTATED["disease"][0][0] + '"',
     "NOT (liver OR cancer) AND library_strategy:RNA-Seq",
-    "cancer AND SAMN00000001",
-    "SAMN00000001",
+    "cancer AND SAMN01000000",
+    "SAMN01000000",
+    "SRR00000010",
+    "cancer AND SRR00000010",
+    "PRJNA000009",
 ]
+ACCESSION_Q = ["cancer AND SAMN01000000", "SAMN01000000", "SRR00000010", "cancer AND SRR00000010", "PRJNA000009"]
 
 
 @pytest.fixture(scope="module")
@@ -91,6 +95,13 @@ def _same(store: Store, q: str | None) -> None:
 @pytest.mark.parametrize("q", Q)
 def test_keyword_tables_queries_return_what_the_inline_keyword_returns(store: Store, q: str) -> None:
     _same(store, q)
+
+
+@pytest.mark.parametrize("q", ACCESSION_Q)
+def test_keyword_tables_an_accession_word_selects_entries(store: Store, q: str) -> None:
+    with store.cursor(heavy=True) as cur:
+        assert entries.count_entries(cur, _pop(store, q)) > 0
+        assert entries.count_entries(cur, _pop(store, q, keyword_tables=False)) > 0
 
 
 @given(ast=conditions)
@@ -176,9 +187,7 @@ def test_keyword_tables_an_export_that_reads_pages_scans_once(store: Store) -> N
 
 
 @pytest.mark.parametrize("heavy", [True, False])
-def test_keyword_tables_a_cursor_is_closed_after_its_request_and_its_temp_table_goes_with_it(
-    store: Store, heavy: bool
-) -> None:
+def test_keyword_tables_a_cursor_is_closed_after_its_request(store: Store, heavy: bool) -> None:
     pop = _pop(store, "cancer")
     with store.cursor(heavy=heavy) as cur:
         name = _mark(cur, pop)

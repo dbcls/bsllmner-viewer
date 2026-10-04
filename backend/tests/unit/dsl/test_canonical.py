@@ -45,7 +45,7 @@ def test_canonical_int_checks_the_minimum_of_years() -> None:
     assert canonical_int("10000", minimum=YEAR_MIN, maximum=YEAR_MAX) is None
 
 
-@given(st.text(max_size=60))
+@given(st.one_of(st.text(max_size=60), st.integers(0, 2**32).map(str), st.text("0123456789", max_size=12)))
 def test_canonical_int_accepts_exactly_the_strings_that_round_trip_through_int(value: str) -> None:
     number = canonical_int(value, maximum=ORGANISM_ID_MAX)
     if number is None:

@@ -31,7 +31,7 @@ vi.mock("~/lib/api/client", async (importOriginal) => {
       const terms = ["T:9"].map((termId) => ({ field: "disease", termId, label: label(termId), ontology: "T", path: [], descendantCount: 0, count: 1, matchedSynonym: null, clauses: [] }))
       return ok({ field: "disease", query: "", populationQ: null, unit: "biosample", terms })
     }
-    // The first answer of a view arrives; every later one stays on its way, as on a slow network.
+    // The first answer of a view arrives. Every later request never answers, as on a slow network.
     if (net.answered.has(path)) await new Promise(() => undefined)
     net.answered.add(path)
     const element = (value: string) => ({ value, label: label(value), clauses: [{ field: "disease", value }], count: 1 })
@@ -55,13 +55,14 @@ vi.mock("~/lib/api/client", async (importOriginal) => {
 
 import { HeatmapTab } from "~/features/workspace/heatmap/heatmap-tab"
 import { TrendTab } from "~/features/workspace/trend/trend-tab"
-import type { Condition } from "~/features/workspace/use-condition"
-
-const condition = { isSelected: () => false, toggle: vi.fn(), toggleNarrow: vi.fn() } as unknown as Condition
+import { useCondition } from "~/features/workspace/use-condition"
 
 type View = typeof TrendTab | typeof HeatmapTab
 
-/** A view whose state lives here as it lives in the URL, so that every change of the view reaches the next render. */
+/**
+ * A view whose state is kept here as the page keeps it in the URL, so that every change of the view reaches the next
+ * render.
+ */
 const Harness = ({ View, initial, onUpdate, onAlert }: { View: View; initial: WorkspaceState; onUpdate: (patch: Patch) => void; onAlert: (message: string) => void }) => {
   const [state, setState] = useState(initial)
   const latest = useRef(initial)
@@ -70,7 +71,8 @@ const Harness = ({ View, initial, onUpdate, onAlert }: { View: View; initial: Wo
     latest.current = { ...latest.current, ...patch }
     setState(latest.current)
   }
-  // The pending state lives above the view, as it lives in the page, so it survives leaving the view.
+  const condition = useCondition(state.q, update, () => latest.current)
+  // The pending state is kept above the view, as the page keeps it, so the state stays when the user leaves the view.
   const [replacing, setReplacing] = useState(false)
   const [shown, setShown] = useState(true)
   return (
@@ -112,8 +114,8 @@ const holdTermSearch = () => {
   return () => act(async () => resolveGate())
 }
 
-describe("TrendTab while the trend of the new terms is on its way", () => {
-  it("adds a term after another was taken off, counting the terms that the URL names", async () => {
+describe("TrendTab while the trend of the new terms loads", () => {
+  it("adds a term after another was removed, counting the terms that the URL names", async () => {
     const user = userEvent.setup()
     const { onUpdate, onAlert } = renderView(TrendTab, { tab: "trend", trendField: "disease", trendTerms: FIVE })
     const dialog = await openTerms(user, "Lines")
@@ -123,7 +125,7 @@ describe("TrendTab while the trend of the new terms is on its way", () => {
     expect(onUpdate).toHaveBeenLastCalledWith({ trendTerms: ["T:2", "T:3", "T:4", "T:5", "T:9"] })
   })
 
-  it("keeps a term that was taken off off when another is taken off", async () => {
+  it("keeps a term removed when another is removed", async () => {
     const user = userEvent.setup()
     const { onUpdate } = renderView(TrendTab, { tab: "trend", trendField: "disease", trendTerms: FIVE })
     const dialog = await openTerms(user, "Lines")
@@ -133,14 +135,25 @@ describe("TrendTab while the trend of the new terms is on its way", () => {
   })
 })
 
-describe("HeatmapTab while the cross-tabulation of the new terms is on its way", () => {
-  it("keeps a row that was taken off off when another is taken off", async () => {
+describe("HeatmapTab while the cross-tabulation of the new terms loads", () => {
+  it("keeps a row removed when another is removed", async () => {
     const user = userEvent.setup()
     const { onUpdate } = renderView(HeatmapTab, { tab: "heatmap", row: "disease", col: "library_strategy", rowTerms: FIVE })
     const dialog = await openTerms(user, "Rows")
     await user.click(await within(dialog).findByRole("button", { name: "Remove label T:1" }))
     await user.click(within(dialog).getByRole("button", { name: "Remove label T:2" }))
     expect(onUpdate).toHaveBeenLastCalledWith({ rowTerms: ["T:3", "T:4", "T:5"] })
+  })
+})
+
+describe("TrendTab with the most lines that a trend shows", () => {
+  it("does not add a found term to a trend of 5 lines and says so", async () => {
+    const user = userEvent.setup()
+    const { onUpdate, onAlert } = renderView(TrendTab, { tab: "trend", trendField: "disease", trendTerms: FIVE })
+    const dialog = await openTerms(user, "Lines")
+    await user.click(await within(dialog).findByRole("button", { name: /label T:9/ }))
+    expect(onAlert).toHaveBeenLastCalledWith("A trend shows up to 5 terms.")
+    expect(onUpdate).not.toHaveBeenCalled()
   })
 })
 
@@ -156,7 +169,7 @@ describe("HeatmapTab with the most terms that the api takes on an axis", () => {
     expect(onUpdate).not.toHaveBeenCalled()
   })
 
-  it("takes a term off an axis of 100 terms", async () => {
+  it("removes a term from an axis of 100 terms", async () => {
     const user = userEvent.setup()
     const { onUpdate } = renderView(HeatmapTab, { tab: "heatmap", row: "disease", col: "library_strategy", rowTerms: FULL })
     const dialog = await openTerms(user, "Rows")
@@ -177,7 +190,7 @@ describe("HeatmapTab with the most terms that the api takes on an axis", () => {
   })
 })
 
-describe("an axis with its last term taken off", () => {
+describe("an axis with its last term removed", () => {
   it("shows the top terms again on the rows", async () => {
     const user = userEvent.setup()
     const { onUpdate } = renderView(HeatmapTab, { tab: "heatmap", row: "disease", col: "library_strategy", rowTerms: ["T:1"] })
@@ -194,7 +207,7 @@ describe("an axis with its last term taken off", () => {
     expect(onUpdate).toHaveBeenLastCalledWith({ trendTerms: null })
   })
 
-  it("writes the other top terms when a top term of the lines is taken off and no terms are chosen", async () => {
+  it("writes the other top terms when a top term of the lines is removed and no terms are chosen", async () => {
     const user = userEvent.setup()
     const { onUpdate } = renderView(TrendTab, { tab: "trend", trendField: "disease" })
     const dialog = await openTerms(user, "Lines")
@@ -202,7 +215,7 @@ describe("an axis with its last term taken off", () => {
     expect(onUpdate).toHaveBeenCalledExactlyOnceWith({ trendTerms: ["T:2", "T:3", "T:4", "T:5"] })
   })
 
-  it("writes the other top rows when a top row is taken off and no terms are chosen", async () => {
+  it("writes the other top rows when a top row is removed and no terms are chosen", async () => {
     const user = userEvent.setup()
     const { onUpdate } = renderView(HeatmapTab, { tab: "heatmap", row: "disease", col: "library_strategy" })
     const dialog = await openTerms(user, "Rows")
@@ -311,9 +324,19 @@ describe("Paste list when the api does not answer for some lines", () => {
   const paste = async (user: ReturnType<typeof userEvent.setup>, lines: string[], setReplacing = vi.fn()) => {
     const onUpdate = vi.fn<(patch: Patch) => void>()
     const onAlert = vi.fn<(message: string) => void>()
-    renderWithQuery(
-      <HeatmapTab state={{ ...DEFAULTS, tab: "heatmap", row: "disease", col: "library_strategy", rowTerms: FIVE }} condition={condition} update={onUpdate} latest={() => ({ ...DEFAULTS, row: "disease" })} replacing={false} setReplacing={setReplacing} onAlert={onAlert} />,
+    const latest = () => ({ ...DEFAULTS, row: "disease" })
+    const View = () => (
+      <HeatmapTab
+        state={{ ...DEFAULTS, tab: "heatmap", row: "disease", col: "library_strategy", rowTerms: FIVE }}
+        condition={useCondition(null, onUpdate, latest)}
+        update={onUpdate}
+        latest={latest}
+        replacing={false}
+        setReplacing={setReplacing}
+        onAlert={onAlert}
+      />
     )
+    renderWithQuery(<View />)
     const dialog = await openTerms(user, "Rows")
     await user.click(within(dialog).getByRole("radio", { name: "Paste list" }))
     fireEvent.change(within(dialog).getByRole("textbox", { name: "Terms, one per line" }), { target: { value: lines.join("\n") } })

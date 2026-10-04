@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { execFileSync } from "node:child_process"
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
@@ -7,7 +8,7 @@ import fc from "fast-check"
 import { afterEach, describe, expect, it } from "vitest"
 
 import { apiRequestsFor } from "~/features/workspace/view-requests"
-import { DEFAULTS, type Tab, TABS, type WorkspaceState, writeState } from "~/lib/workspace-state"
+import { DEFAULTS, readState, type Tab, TABS, type WorkspaceState, writeState } from "~/lib/workspace-state"
 
 import { buildLlmsFull, GITHUB_DOCS_URL, githubDocsUrl, headingAnchors, rewriteLinks } from "../../../scripts/llms-full.ts"
 
@@ -154,7 +155,7 @@ describe("buildLlmsFull", () => {
     expect(() => buildLlmsFull(docsWith({ "data-model.md": "# Data Model\n" }))).toThrow()
   })
 
-  it.skipIf(!existsSync(path.join(REAL_DOCS, "api.md")))("contains both real documents and no relative link", () => {
+  it("contains both real documents and no relative link", () => {
     const out = buildLlmsFull(REAL_DOCS)
     expect(out).toContain("\n# API\n")
     expect(out).toContain("\n# Data Model\n")
@@ -163,7 +164,7 @@ describe("buildLlmsFull", () => {
     }
   })
 
-  it.skipIf(!existsSync(path.join(REAL_DOCS, "api.md")))("has a heading for every anchor link of the real documents", () => {
+  it("has a heading for every anchor link of the real documents", () => {
     const out = buildLlmsFull(REAL_DOCS)
     const anchors = new Set(headingAnchors(out))
     const links = [...out.matchAll(/\]\(#([^)\s]*)\)/g)].map((m) => m[1] ?? "")
@@ -171,18 +172,10 @@ describe("buildLlmsFull", () => {
     for (const anchor of links) expect(anchors.has(anchor), `#${anchor}`).toBe(true)
   })
 
-  it.skipIf(!existsSync(path.join(REAL_DOCS, "api.md")))("links the two documents to each other inside the file", () => {
+  it("links the two documents to each other inside the file", () => {
     const out = buildLlmsFull(REAL_DOCS)
     expect(out).toContain("](#term-hierarchy)")
     expect(out).not.toMatch(/\]\(https:\/\/github\.com[^)]*\/docs\/(api|data-model)\.md/)
-  })
-
-  it("detects an anchor link without a heading", () => {
-    const dir = docsWith({ "api.md": "# API\n\n[x](data-model.md#nonexistent)\n", "data-model.md": "# Data Model\n" })
-    const out = buildLlmsFull(dir)
-    const anchors = new Set(headingAnchors(out))
-    expect(anchors.has("nonexistent")).toBe(false)
-    expect(out).toContain("[x](#nonexistent)")
   })
 })
 
@@ -206,7 +199,7 @@ describe("llms.txt", () => {
     return { path, params: new URLSearchParams(search) }
   }
 
-  it.skipIf(!existsSync(path.join(REAL_DOCS, "api.md")))("names only headings that llms-full.txt has, with the same text", () => {
+  it("names only headings that llms-full.txt has, with the same text", () => {
     const headings = new Set([...buildLlmsFull(REAL_DOCS).matchAll(/^#{1,6}\s+(.+?)\s*$/gm)].map((m) => m[1]))
     const named = [...llms.matchAll(/See "([^"]+)"/g)].map((m) => m[1] ?? "")
     expect(named.length).toBeGreaterThan(5)
@@ -224,7 +217,7 @@ describe("llms.txt", () => {
     expect(line).toContain(`A URL without \`tab\` shows \`${DEFAULTS.tab}\`.`)
   })
 
-  it("names defaults that a URL leaves out and that the UI sends to the API for the named tabs", () => {
+  it("names defaults that the UI does not write to a URL and that the UI sends to the API for the named tabs", () => {
     const line = recipe("Read the other parameters of a URL of the UI")
     const renamed = new Map(pairs(line))
     const groups = (/so send them: (.+?)\. /.exec(line)?.[1] ?? "").split(/, (?:and )?/)
@@ -244,7 +237,7 @@ describe("llms.txt", () => {
     }
   })
 
-  it("gives the API name of each URL parameter that has another name, and URL parameters that keep their names", () => {
+  it("gives the API name of each URL parameter in every request that the parameter changes", () => {
     const line = recipe("Read the other parameters of a URL of the UI")
     const state: WorkspaceState = {
       ...DEFAULTS,
@@ -262,18 +255,46 @@ describe("llms.txt", () => {
       trendTo: 2020,
     }
     const url = writeState(state)
-    const sent = (name: string): string[] => TABS.flatMap((tab) => requestOf({ ...state, tab }).params.getAll(name))
-    const renamed = pairs(line)
-    expect(renamed.length).toBeGreaterThan(3)
-    for (const [urlName, apiName] of renamed) {
-      expect(url.get(urlName), urlName).not.toBeNull()
-      expect(sent(apiName), `${urlName} is ${apiName}`).toContain(url.get(urlName))
-    }
     const kept = [...(/such as (.+?), have the same names/.exec(line)?.[1] ?? "").matchAll(/`([A-Za-z_]+)`/g)].map((m) => m[1] ?? "")
-    expect(kept.length).toBeGreaterThan(3)
-    for (const name of kept) {
-      expect(url.get(name), name).not.toBeNull()
-      expect(sent(name), name).toContain(url.get(name))
+    const names = [...pairs(line), ...kept.map((name): [string, string] => [name, name])]
+    expect(names.length).toBeGreaterThan(6)
+    for (const [urlName, apiName] of names) {
+      expect(url.get(urlName), urlName).not.toBeNull()
+      const without = new URLSearchParams(url)
+      without.delete(urlName)
+      const tabs = TABS.filter((tab) => requestOf({ ...readState(url), tab }).params.toString() !== requestOf({ ...readState(without), tab }).params.toString())
+      expect(tabs.length, urlName).toBeGreaterThan(0)
+      for (const tab of tabs) {
+        expect(requestOf({ ...readState(url), tab }).params.get(apiName), `${tab}: ${urlName} is ${apiName}`).toBe(url.get(urlName))
+      }
     }
+  })
+})
+
+describe("llms-full.ts as a command", () => {
+  const SCRIPT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../scripts/llms-full.ts")
+
+  const runWith = (commit: string | undefined): string => {
+    const docs = docsWith({ "api.md": "# API\n\nsee [build](build.md)\n", "data-model.md": "# Data model\n" })
+    const out = path.join(docs, "out.txt")
+    const env = { ...process.env }
+    delete env.BSLLMNER_VIEWER_COMMIT
+    if (commit !== undefined) env.BSLLMNER_VIEWER_COMMIT = commit
+    execFileSync(process.execPath, [SCRIPT, docs, out], { env })
+    return readFileSync(out, "utf8")
+  }
+
+  it("points the GitHub addresses at main when BSLLMNER_VIEWER_COMMIT is empty or not set", () => {
+    for (const commit of [undefined, ""]) {
+      const text = runWith(commit)
+      expect(text).toContain("](https://github.com/dbcls/bsllmner-viewer/blob/main/docs/build.md)")
+    }
+  })
+
+  it("points the GitHub addresses at the commit when BSLLMNER_VIEWER_COMMIT is set", () => {
+    const commit = "0123456789abcdef0123456789abcdef01234567"
+    const text = runWith(commit)
+    expect(text).toContain(`](https://github.com/dbcls/bsllmner-viewer/blob/${commit}/docs/build.md)`)
+    expect(text).not.toContain("/blob/main/")
   })
 })

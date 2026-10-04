@@ -203,8 +203,8 @@ class ExportSession:
 def _remove_stale_temp_directories(base: Path) -> None:
     """Remove the temporary directories of workers that are gone, for example one that the system killed.
 
-    A directory is stale when no process of this container has the pid in its name. Without `/proc`, nothing is
-    removed.
+    A directory is stale if its name is `worker-<pid>` and /proc has no entry for that pid. If /proc does not exist,
+    nothing is removed.
     """
     if not Path("/proc/self").exists() or not base.is_dir():
         return
@@ -215,8 +215,12 @@ def _remove_stale_temp_directories(base: Path) -> None:
 
 
 def _temp_directory_problem(temp: Path, error: OSError) -> str:
-    """One line that says why the temporary directory cannot be created: the owner and the mode of the nearest path
-    that exists, and the uid of the api. A volume keeps the owner of the user that first wrote to it."""
+    """One line that says why the temporary directory cannot be created.
+
+    The line names the owner and the mode of the nearest path that exists, and the uid of the api. A container volume
+    keeps the owner that it got when it was created, which is the owner of the directory in the image or root. The
+    owner can therefore differ from the uid of the api.
+    """
     nearest = next((path for path in temp.parents if path.exists()), None)
     where = ""
     if nearest is not None:

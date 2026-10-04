@@ -1,19 +1,14 @@
 import { render, screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
-import type * as Router from "react-router"
-import { MemoryRouter } from "react-router"
-import { beforeEach, describe, expect, it, vi } from "vitest"
+import { createMemoryRouter, MemoryRouter, Outlet, RouterProvider } from "react-router"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 
 import type * as Client from "~/lib/api/client"
 import { DEFAULTS } from "~/lib/workspace-state"
 
 import { renderWithQuery } from "../query"
 
-type Mode = "ok" | 400 | 404 | 422 | 500 | "network"
-
-const routeError = vi.hoisted(() => ({ value: undefined as unknown }))
-
-vi.mock("react-router", async (importOriginal) => ({ ...(await importOriginal<typeof Router>()), useRouteError: () => routeError.value }))
+type Mode = "ok" | 400 | 404 | 422 | 429 | 500 | "network"
 
 const net = vi.hoisted(() => ({ dataset: "ok" as Mode, entry: "ok" as Mode, terms: "ok" as Mode }))
 
@@ -46,7 +41,15 @@ import { TermPicker } from "~/features/workspace/term-picker/term-picker"
 import { ErrorBoundary } from "~/root"
 import { Footer } from "~/shell/footer"
 
-vi.stubGlobal("ResizeObserver", class { observe = vi.fn(); unobserve = vi.fn(); disconnect = vi.fn() })
+// The data router builds each Request with the AbortSignal of jsdom. The Request of Node (undici) accepts only its own
+// AbortSignal and throws a TypeError. The Request class below drops the signal, so the data router can build its requests.
+const NativeRequest = globalThis.Request
+globalThis.Request = class extends NativeRequest {
+  constructor(input: RequestInfo | URL, init?: RequestInit) {
+    const { signal: _signal, ...rest } = init ?? {}
+    super(input, rest)
+  }
+}
 
 beforeEach(() => {
   net.dataset = "ok"
@@ -54,7 +57,10 @@ beforeEach(() => {
   net.terms = "ok"
   localStorage.clear()
   vi.unstubAllGlobals()
-  vi.stubGlobal("ResizeObserver", class { observe = vi.fn(); unobserve = vi.fn(); disconnect = vi.fn() })
+})
+
+afterEach(() => {
+  vi.restoreAllMocks()
 })
 
 describe("the sample page", () => {
@@ -65,7 +71,7 @@ describe("the sample page", () => {
       </MemoryRouter>,
     )
 
-  it.each([500, "network"] as const)("offers to try again when the BioSample cannot be loaded (%s)", async (mode) => {
+  it.each([500, 429, "network"] as const)("offers to try again when the BioSample cannot be loaded (%s)", async (mode) => {
     net.entry = mode
     renderSample()
     expect(await screen.findByText("Could not load this BioSample.")).toBeInTheDocument()
@@ -109,6 +115,14 @@ describe("the footer", () => {
     expect(screen.queryByText(/loading/i)).toBeNull()
   })
 
+  it("marks the dataset line as busy while the dataset loads, and then shows the dataset", async () => {
+    renderWithQuery(<Footer />)
+    const footer = screen.getByRole("contentinfo")
+    expect(footer.querySelector('[aria-busy="true"]')).not.toBeNull()
+    expect(await screen.findByText("Dataset: BioSamples with RNA-Seq experiments")).toBeInTheDocument()
+    expect(footer.querySelector('[aria-busy="true"]')).toBeNull()
+  })
+
   it("says that the dataset information is unavailable when it cannot be loaded", async () => {
     net.dataset = 500
     renderWithQuery(<Footer />)
@@ -119,10 +133,11 @@ describe("the footer", () => {
 describe("the API dialog", () => {
   const renderModal = () => renderWithQuery(<ApiModal open onClose={vi.fn()} state={DEFAULTS} onAlert={vi.fn()} />)
 
-  it("shows no Loading text while the response is on its way", () => {
+  it("shows no Loading text while the response loads", () => {
     vi.stubGlobal("fetch", () => new Promise(() => undefined))
     renderModal()
     expect(screen.queryByText(/loading/i)).toBeNull()
+    expect(screen.getByRole("region", { name: "Response (excerpt)" })).toHaveAttribute("aria-busy", "true")
   })
 
   it("shows the status of a failed response in one line", async () => {
@@ -130,6 +145,16 @@ describe("the API dialog", () => {
     renderModal()
     expect(await screen.findByText("500 Internal Server Error")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /^Try again/ })).toBeInTheDocument()
+  })
+
+  it("asks again when Try again is pressed, and shows the response", async () => {
+    let status = 500
+    vi.stubGlobal("fetch", async () => (status === 200 ? new Response(JSON.stringify({ total: 3 }), { status }) : new Response(JSON.stringify({ type: "about:blank", title: "Internal Server Error", status }), { status })))
+    renderModal()
+    expect(await screen.findByText("500 Internal Server Error")).toBeInTheDocument()
+    status = 200
+    await userEvent.click(screen.getByRole("button", { name: /^Try again/ }))
+    expect(await screen.findByText(/"total": 3/)).toBeInTheDocument()
   })
 
   it("says that the server could not be reached when the request fails", async () => {
@@ -155,24 +180,45 @@ describe("the API dialog", () => {
 })
 
 describe("the error boundary of the route", () => {
-  const renderBoundary = (error: unknown) => {
-    routeError.value = error
-    render(
-      <MemoryRouter>
-        <ErrorBoundary />
-      </MemoryRouter>,
+  const Boom = (): never => {
+    throw new Error("boom")
+  }
+
+  const renderAt = (url: string) => {
+    const router = createMemoryRouter(
+      [
+        {
+          path: "/",
+          element: <Outlet />,
+          errorElement: <ErrorBoundary />,
+          HydrateFallback: () => null,
+          children: [
+            { index: true, element: <p>top</p> },
+            { path: "boom", element: <Boom /> },
+            {
+              path: "down",
+              loader: () => {
+                throw new Response(null, { status: 500, statusText: "Internal Server Error" })
+              },
+              element: <p>never</p>,
+            },
+          ],
+        },
+      ],
+      { initialEntries: [url] },
     )
+    render(<RouterProvider router={router} />)
   }
 
   it("links to the top page when the page does not exist", async () => {
-    renderBoundary({ status: 404, statusText: "Not Found", internal: false, data: "" })
+    renderAt("/missing")
     expect(await screen.findByText("404 Not Found")).toBeInTheDocument()
     expect(screen.getByRole("link", { name: "Go to the top page" })).toHaveAttribute("href", "/")
     expect(screen.queryByRole("button", { name: "Reload" })).toBeNull()
   })
 
   it("puts the message in the main landmark and offers a link that skips to it", async () => {
-    renderBoundary({ status: 404, statusText: "Not Found", internal: false, data: "" })
+    renderAt("/missing")
     const main = await screen.findByRole("main")
     expect(main).toHaveAttribute("id", "main")
     expect(main).toHaveTextContent("404 Not Found")
@@ -182,10 +228,18 @@ describe("the error boundary of the route", () => {
   it("offers to reload the page for any other failure", async () => {
     const reload = vi.fn()
     vi.stubGlobal("location", { ...window.location, reload })
-    renderBoundary(new Error("boom"))
+    vi.spyOn(console, "error").mockImplementation(() => undefined)
+    renderAt("/boom")
     expect(await screen.findByText("Something went wrong.")).toBeInTheDocument()
     expect(screen.queryByRole("link", { name: "Go to the top page" })).toBeNull()
     await userEvent.click(screen.getByRole("button", { name: "Reload" }))
     expect(reload).toHaveBeenCalledTimes(1)
+  })
+
+  it("shows the status of a route response other than 404 and offers to reload the page", async () => {
+    renderAt("/down")
+    expect(await screen.findByText("500 Internal Server Error")).toBeInTheDocument()
+    expect(screen.queryByRole("link", { name: "Go to the top page" })).toBeNull()
+    expect(screen.getByRole("button", { name: "Reload" })).toBeInTheDocument()
   })
 })

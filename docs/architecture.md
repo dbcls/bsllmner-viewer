@@ -21,7 +21,7 @@ bsllmner-viewer consists of four components: build produces a store, the store h
 
 | Path | Contents |
 |---|---|
-| `backend/` | Python package containing both build and api |
+| `backend/` | Python package containing both build and api, and the OpenAPI document of the api (`openapi.json`) |
 | `frontend/` | TypeScript single-page application |
 | `docs/` | Specifications |
 
@@ -35,13 +35,13 @@ Input formats and build operations are specified in [build.md](build.md), the me
 
 The frontend displays what the api returns and does not count matches or evaluate conditions itself. Every count, table, and chart that the UI shows comes from one api query, and every query accepts the same condition DSL. Any result shown in the UI is therefore reproducible by an API client using the same condition.
 
-The frontend may sort, color, and lay out results, but every count it displays comes from the api.
+The frontend may sort, color, and arrange results, but every count that the frontend displays comes from the api.
 
-The reverse also holds: the api has no condition or operation that the UI does not offer. Every field of the condition DSL can be set from the condition panel or from a view. A capability is added to both sides in the same change, and a DSL field that the UI stops offering is removed from the api.
+The reverse also holds: the api has no condition and no data operation that the UI does not offer. Every field of the condition DSL can be set from the condition panel or from a view. A client of the api can choose some values that the UI fixes, such as the number of default elements and `facetSelfExclude`. `GET /api/service-info` is for health monitoring and has no counterpart in the UI. A condition or a data operation is added to both sides in the same change, and a DSL field that the UI stops offering is removed from the api.
 
 ### Only the api interprets the condition DSL
 
-Parsing, serialization, and evaluation of the condition DSL live in the api. The frontend holds a condition as the URL string `q`. It reads the AST, the labels, the selected clauses, and the text of the keyword box from the api's parse operation, and it changes the condition only through the api's select and keyword operations. A URL cannot mean different things in the UI and in the API.
+Parsing, serialization, and evaluation of the condition DSL live in the api. The frontend holds a condition as the URL string `q`. The frontend reads the AST, the labels, the selected clauses, and the text of the keyword box from the api's parse operation. The frontend changes a condition through the api's select and keyword operations, and does not compose a condition string itself. The frontend sets `q` directly only to a string that the user typed, to a condition that the api returned, to an empty condition, or to one of the example conditions that the top page links to. A URL cannot mean different things in the UI and in the API.
 
 ### A published store is never modified
 
@@ -51,10 +51,10 @@ build is the only component that writes a store. api opens it read-only.
 
 ### API types are generated from OpenAPI
 
-The api's OpenAPI document is the source of truth for request and response types. The frontend generates its API types from it; handwritten types are not used.
+The api's OpenAPI document is the source of truth for request and response types. The document is committed as `backend/openapi.json`, and the frontend generates its API types from this file. Handwritten types are not used. Tests check that the file is the document of the api and that the types are the ones generated from the file.
 
 ## Technology constraints
 
 - Store as a single DuckDB file. Datasets are built in bulk and served read-only. One file per version makes publication and rollback a file switch and requires no database server.
 - Frontend as a static single-page application. The api is a public API without authentication, so no server-side layer is needed between the frontend and the api.
-- One HTML file for every page. Its head names and describes the site, for programs that read the HTML without running JavaScript, such as the programs that make the previews of shared links. In the browser, each page sets its own title. A page also sets a description and a canonical address if it has them, and `noindex` if it shows an error or an accession that is not in the dataset. A link to an address that robots.txt disallows has `rel="nofollow"` (`crawlRel` in the frontend). If you change the addresses that robots.txt disallows, then change `crawlRel` in the same way.
+- One HTML file for every page. The head of the HTML file names and describes the site, for programs that read the HTML without running JavaScript, such as the programs that make the previews of shared links. In the browser, each page sets its own title. A page also sets a description and a canonical address if it has them, and `noindex` if it is an error page or the page of an accession that is not in the dataset or that could not be loaded. A link to an address that robots.txt disallows has `rel="nofollow"` (`crawlRel` in the frontend). If you change the addresses that robots.txt disallows, then change `crawlRel` in the same way.

@@ -38,7 +38,7 @@ describe("createQueryClient", () => {
     expect(invalidated(client, "b")).toBe(false)
   })
 
-  it("fetches again when the api goes back to the version before", async () => {
+  it("fetches again when the api serves the earlier dataset version again", async () => {
     const client = createQueryClient()
     await fetchAs(client, "a", named("one"))
     await fetchAs(client, "b", named("two"))
@@ -57,11 +57,12 @@ describe("createQueryClient", () => {
     },
   )
 
-  it("gives every client its own dataset version", async () => {
+  it("gives every client its own dataset version, so that a response of another client does not make it fetch again", async () => {
     const one = createQueryClient()
     const two = createQueryClient()
+    await fetchAs(two, "p", named("two"))
     await fetchAs(one, "a", named("one"))
-    await fetchAs(two, "a", named("two"))
-    expect(invalidated(one, "a")).toBe(false)
+    await fetchAs(two, "r", named("two"))
+    expect(invalidated(two, "p")).toBe(false)
   })
 })

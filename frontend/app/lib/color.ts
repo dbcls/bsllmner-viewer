@@ -1,6 +1,6 @@
 /**
  * Chart colors computed from the design tokens at runtime, so that components
- * never carry color values of their own.
+ * do not define color values of their own.
  */
 
 const FALLBACKS: Record<string, string> = {
@@ -51,11 +51,30 @@ export const logPosition = (value: number, max: number): number => {
   return Math.log(1 + value) / Math.log(1 + max)
 }
 
-/** Four-step brand scale used for counts: soft → light → brand → deeper. */
+type ScaleStop = { token: string; at: number }
+
+/**
+ * The colors of the count scale and the log positions where the scale reaches them. `countScale` gives the color of a
+ * cell from these stops. The legend on the page and the legend of the saved figure draw their gradients from the same
+ * stops, so that each legend shows the color of a cell at each position.
+ */
+export const COUNT_SCALE_STOPS: readonly [ScaleStop, ScaleStop, ...ScaleStop[]] = [
+  { token: "--color-brand-soft", at: 0 },
+  { token: "--color-brand-light", at: 0.5 },
+  { token: "--color-brand-deeper", at: 1 },
+]
+
+/**
+ * The color of a count on the count scale, from its log position t. A t of 0 or less is the surface color. Above 0, the
+ * color goes linearly between the two stops of `COUNT_SCALE_STOPS` around t.
+ */
 export const countScale = (t: number): string => {
   if (t <= 0) return token("--color-surface")
-  if (t < 0.5) return mix(token("--color-brand-soft"), token("--color-brand-light"), t * 2)
-  return mix(token("--color-brand-light"), token("--color-brand-deeper"), (t - 0.5) * 2)
+  const next = COUNT_SCALE_STOPS.findIndex((stop) => t < stop.at)
+  const index = next === -1 ? COUNT_SCALE_STOPS.length - 1 : next
+  const from = COUNT_SCALE_STOPS[index - 1] ?? COUNT_SCALE_STOPS[0]
+  const to = COUNT_SCALE_STOPS[index] ?? COUNT_SCALE_STOPS[1]
+  return mix(token(from.token), token(to.token), (t - from.at) / (to.at - from.at))
 }
 
 /** The red, green, and blue of a hex color or of an `rgb(r, g, b)` color, as `mix` writes it. */

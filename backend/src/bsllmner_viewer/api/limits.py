@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import math
 import os
 import re
 import tempfile
@@ -30,7 +31,8 @@ RESEND_SECONDS = 0.02
 # The threads of the server that run the requests. Every request that waits for a slot holds one.
 SERVER_THREADS = 128
 
-_SIZE = re.compile(r"[0-9]+(?:\.[0-9]+)?\s?(?:B|KB|MB|GB|TB|KiB|MiB|GiB|TiB)")
+# A size that DuckDB reads, with at most one ASCII space between the number and the unit.
+_SIZE = re.compile(r"[0-9]+(?:\.[0-9]+)? ?(?:B|KB|MB|GB|TB|KiB|MiB|GiB|TiB)")
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,6 +52,8 @@ class Limits:
         for name, value in (("memory limit", self.memory_limit), ("temporary directory size", self.max_temp_size)):
             if not _SIZE.fullmatch(value):
                 raise ValueError(f"the {name} must be a size such as 4GB, got {value!r}")
+        if not (math.isfinite(self.query_timeout) and math.isfinite(self.queue_timeout)):
+            raise ValueError("the query timeout and the queue timeout must be finite numbers of seconds")
         if self.query_timeout <= 0 or self.queue_timeout < 0:
             raise ValueError("the query timeout must be positive and the queue timeout must not be negative")
         if self.max_queries < 1 or self.max_exports < 1 or self.export_batch < 1:

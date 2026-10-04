@@ -178,7 +178,11 @@ class Text:
 
 
 def _normalize(chars: str, origin: list[int], *, strip: bool, keep_brackets: bool) -> tuple[str, list[int]]:
-    """Separators become one space (or nothing, with `strip`). Brackets go with their content, or alone."""
+    """Replace each run of separators (white space, `-`, and `_`) with one space, or with nothing if `strip` is true.
+
+    Separators at the start and at the end are removed. If `keep_brackets` is false, each bracket pair is removed with
+    its content. If `keep_brackets` is true, each bracket is a separator.
+    """
     out: list[str] = []
     out_origin: list[int] = []
     after_space = True
@@ -260,7 +264,12 @@ def _at_boundaries(raw: str, start: int, end: int, *, affixes: bool = False) -> 
 
 
 def _balanced(raw: str, start: int, end: int) -> Span:
-    """The span, widened over a bracket next to it that closes or opens a bracket inside it."""
+    """The span, widened over the brackets next to it.
+
+    If the span has more opening brackets, the end moves over the closing brackets that follow the span. If the span has
+    more closing brackets, the start moves over the opening brackets that precede the span. The span stops widening
+    when the numbers are equal or when the next character is not a bracket.
+    """
     inside = raw[start:end]
     opened = sum(inside.count(ch) for ch in _OPEN)
     closed = sum(inside.count(ch) for ch in _CLOSE)
@@ -286,7 +295,10 @@ def _starts(hay: str, needle: str) -> list[int]:
 
 
 def _without_overlaps(spans: list[Span]) -> list[Span]:
-    """The spans in order, each one left out if it overlaps an earlier one; of two that start together, the longer."""
+    """The spans in order, without overlaps.
+
+    A span that overlaps an earlier span is not kept. Of two spans that start at the same position, the longer is kept.
+    """
     kept: list[Span] = []
     for span in sorted(spans, key=lambda s: (s.start, -s.end)):
         if not kept or span.start >= kept[-1].end:

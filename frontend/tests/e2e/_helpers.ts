@@ -1,9 +1,28 @@
-import { expect, type Locator, type Page } from "@playwright/test"
+import { expect, type Locator, type Page, test } from "@playwright/test"
 
 const POLL = { timeout: 15_000 }
 
+/**
+ * Skips the test when the dataset is too small for the scenario, such as a list that fits on one page. A dataset that lacks
+ * what every dataset has, such as a disease term, fails the test instead (`throw`).
+ */
+export const skipUnless: (condition: unknown, reason: string) => asserts condition = (condition, reason) => {
+  if (condition) return
+  test.skip(true, reason)
+  throw new Error(reason)
+}
+
 /** A count as the UI writes it. */
 export const formatCount = (value: number): string => value.toLocaleString("en-US")
+
+/** A share as the UI writes it: a whole percent, but never "0%" above 0 and never "100%" below the whole. */
+export const formatPercent = (value: number, total: number): string => {
+  if (!(total > 0)) return "0%"
+  const percent = (value / total) * 100
+  if (percent > 0 && percent < 0.5) return "<1%"
+  if (percent >= 99.5 && percent < 100) return ">99%"
+  return `${Math.round(percent)}%`
+}
 
 /** The rows on one page of the tables (Samples and Projects) when no other number is chosen. */
 export const TABLE_PER_PAGE = 20

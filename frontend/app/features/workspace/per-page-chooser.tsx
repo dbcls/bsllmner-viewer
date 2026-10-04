@@ -9,8 +9,9 @@ type PerPageChooserProps = {
 }
 
 /**
- * How many rows a page of a table holds, next to the sort of the table and in the same form. The caller returns to the
- * first page, because the rows that were in view are elsewhere in a list of pages of another size.
+ * A control for the number of rows per page of a table. The control has the same form as SortChooser: a label and a
+ * small Select.
+ * The caller returns to the first page, because the rows that were in view are on a different page at the new page size.
  */
 export const PerPageChooser = ({ value, onChange }: PerPageChooserProps) => (
   <span className="inline-flex items-center gap-1.5 text-fs-label text-ink-soft">

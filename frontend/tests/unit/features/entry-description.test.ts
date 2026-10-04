@@ -42,7 +42,7 @@ describe("entryDescription", () => {
     expect(entryDescription(entry(annotations))).toBe("Ontology terms of BioSample SAMD1 (Homo sapiens). Genetic knockout: TP53, BRCA1.")
   })
 
-  it("leaves out the values without a term", () => {
+  it("omits the values without a term", () => {
     const description = entryDescription(entry([annotation("drug", null), annotation("tissue", "liver")]))
     expect(description).toBe("Ontology terms of BioSample SAMD1 (Homo sapiens). Tissue: liver.")
   })

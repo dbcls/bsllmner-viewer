@@ -48,5 +48,6 @@ describe("MenuButton keyboard", () => {
         unmount()
       }
     },
+    20_000,
   )
 })

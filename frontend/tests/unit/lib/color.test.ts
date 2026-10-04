@@ -1,6 +1,36 @@
+import { readFileSync } from "node:fs"
+import { resolve } from "node:path"
+
 import { describe, expect, it } from "vitest"
 
-import { logPosition, mix, RATIO_STEPS, ratioScale, ratioScaleIsDark } from "~/lib/color"
+import { contrastRatio, COUNT_SCALE_STOPS, countScale, logPosition, mix, RATIO_STEPS, ratioScale, ratioScaleIsDark, token } from "~/lib/color"
+
+describe("token", () => {
+  it("falls back to the value of the stylesheet for each color token that it has a fallback for", () => {
+    const css = readFileSync(resolve(process.cwd(), "app/styles/tailwind.css"), "utf8")
+    const checked: string[] = []
+    for (const [, name = "", value = ""] of css.matchAll(/(--color-[a-z-]+):\s*(#[0-9A-Fa-f]{3,8})\s*;/g)) {
+      // A token without a fallback resolves to black.
+      if (token(name) === "#000000") continue
+      expect(token(name).toLowerCase(), name).toBe(value.toLowerCase())
+      checked.push(name)
+    }
+    expect(checked).toEqual(expect.arrayContaining(["--color-surface", "--color-ink", "--color-brand-soft", "--color-brand-light", "--color-brand-deeper"]))
+  })
+})
+
+describe("countScale", () => {
+  it("gives the surface color for a position of 0 or less", () => {
+    expect(countScale(0)).toBe(token("--color-surface"))
+    expect(countScale(-0.5)).toBe(token("--color-surface"))
+  })
+
+  it("gives the color of each stop above 0 at the position of the stop", () => {
+    for (const stop of COUNT_SCALE_STOPS.filter((s) => s.at > 0)) {
+      expect(contrastRatio(countScale(stop.at), token(stop.token)), stop.token).toBeCloseTo(1, 5)
+    }
+  })
+})
 
 describe("logPosition", () => {
   it("maps zero and non-positive to 0 and the maximum to 1", () => {
@@ -27,7 +57,7 @@ describe("ratioScale", () => {
     expect(ratioScale(0.501)).not.toBe(neutral)
   })
 
-  it("darkens at half, twice, and four times the expected count", () => {
+  it("darkens above half, from twice, and from four times the expected count", () => {
     const steps = [ratioScale(0.5), ratioScale(1), ratioScale(2), ratioScale(4)]
     expect(new Set(steps).size).toBe(4)
     expect(ratioScale(1.999)).toBe(ratioScale(1))

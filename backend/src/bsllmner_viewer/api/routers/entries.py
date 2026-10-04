@@ -39,11 +39,12 @@ router = APIRouter(tags=["Entries"])
     operation_id="listEntries",
     responses=error_responses(bad_request=DSL_SLUGS, not_found=True, busy=True),
     response_model=EntriesResponse,
-    summary="BioSample entries that match the condition",
+    summary="List the BioSamples that match a condition",
     description=(
         "Lists the BioSamples that match `q`, one page at a time. `pagination.total` is the count of `q` in the "
-        "BioSample unit, and each item lists the experiments of the BioSample that match `q`. An entry type that is "
-        'not `biosample` gets 404. See "Entries" in /llms-full.txt.'
+        "BioSample unit. Each item lists the SRA Experiments of the BioSample that match `q`. An entry type that is "
+        "not `biosample` gets 404. The Samples view of the UI uses this operation. "
+        'See "Entries" in /llms-full.txt.'
     ),
 )
 def list_entries(
@@ -73,11 +74,11 @@ def list_entries(
     operation_id="getEntry",
     responses=error_responses(not_found=True),
     response_model=EntryResponse,
-    summary="A BioSample with its annotations and evidence",
+    summary="Get a BioSample with its annotations and evidence",
     description=(
-        "Returns one BioSample with its original metadata, annotations with evidence, experiments, and BioProjects. "
-        "The BioSample does not have to be in the population: `inPopulation` of each experiment tells whether the "
-        "experiment is in the population. "
+        "Returns one BioSample with its original metadata, annotations with evidence, SRA Experiments, and "
+        "BioProjects. The BioSample does not have to be in the population: `inPopulation` of each SRA Experiment "
+        "tells whether the SRA Experiment is in the population. "
         "`run` is the name of the bsllmner-mk2 run that analyzed the BioSample, not an SRA Run. "
         "An accession that is not that of a BioSample gets 404. Find the BioSample of another accession with the "
         'accession as a keyword in `q`. See "Entries" in /llms-full.txt.'
@@ -157,8 +158,8 @@ def get_entry(
         found.setdefault((str(field), int(value_index)), []).append(
             (offset[str(kind)] + int(item), bool(in_name), int(start), int(end), str(strategy))
         )
-    # An attribute under a name that bsllmner-mk2 drops records how the BioSample was submitted and archived, and so
-    # does an item of the record; they are shown only when evidence of the BioSample points to them.
+    # An attribute under a name that bsllmner-mk2 drops, and an item of the record, describe how the BioSample was
+    # submitted and archived. The response includes such an item only when evidence of the BioSample points to it.
     evidenced = {index for pieces in found.values() for index, *_ in pieces}
     shown = [
         index

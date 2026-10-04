@@ -8,9 +8,9 @@ import { DEFAULTS } from "~/lib/workspace-state"
 
 import { renderWithQuery } from "../query"
 
-type Mode = "ok" | "empty" | 400 | 500 | "network"
+type Mode = "ok" | "empty" | "pastEnd" | "held" | 400 | 500 | "network"
 
-const net = vi.hoisted(() => ({ mode: "ok" as Mode, dataset: "ok" as "ok" | 500, requests: [] as string[] }))
+const net = vi.hoisted(() => ({ mode: "ok" as Mode, dataset: "ok" as "ok" | 500, requests: [] as string[], release: undefined as undefined | (() => void) }))
 
 const VERSION = { name: "test", createdAt: "2026-10-03T00:00:00Z", model: "m", digest: "0000000000000000" }
 const element = (value: string) => ({ value, label: `label ${value}`, clauses: [{ field: "disease", value }], count: 3 })
@@ -18,7 +18,7 @@ const element = (value: string) => ({ value, label: `label ${value}`, clauses: [
 vi.mock("~/lib/api/client", async (importOriginal) => {
   const original = await importOriginal<typeof Client>()
   const { ok, failure } = await import("../query")
-  const GET = async (path: string) => {
+  const GET = async (path: string, init?: { params?: { query?: { q?: string } } }) => {
     if (path === "/api/dataset") {
       if (net.dataset === 500) return failure(500)
       const field = { name: "disease", multiValued: false, ontologies: ["MONDO"], mappedBiosampleCount: 1 }
@@ -27,7 +27,17 @@ vi.mock("~/lib/api/client", async (importOriginal) => {
     net.requests.push(path)
     if (net.mode === "network") throw new TypeError("Failed to fetch")
     if (net.mode === 400 || net.mode === 500) return failure(net.mode, "too many")
-    if ((net.mode as string) === "pastEnd") return ok({ items: [], pagination: { page: 9, perPage: 20, total: 5000 } })
+    if (net.mode === "pastEnd") return ok({ items: [], pagination: { page: 9, perPage: 20, total: 41 } })
+    if (net.mode === "held") {
+      const item = (identifier: string) => ({ identifier, title: "t", organism: null, libraryStrategy: [], bioprojects: [], datePublished: null, annotations: {} })
+      if (init?.params?.query?.q === "c:d") {
+        await new Promise<void>((resolve) => {
+          net.release = resolve
+        })
+        return ok({ items: [item("SAMD9")], pagination: { page: 9, perPage: 20, total: 5000 } })
+      }
+      return ok({ items: [item("SAMD1")], pagination: { page: 1, perPage: 20, total: 41 } })
+    }
     const empty = net.mode === "empty"
     const pagination = { page: 1, perPage: 20, total: empty ? 0 : 1 }
     if (path === "/api/entries/{type}") {
@@ -58,26 +68,27 @@ import { SamplesTab } from "~/features/workspace/samples/samples-tab"
 import { TrendTab } from "~/features/workspace/trend/trend-tab"
 import type { Condition } from "~/features/workspace/use-condition"
 
-vi.stubGlobal("ResizeObserver", class { observe = vi.fn(); unobserve = vi.fn(); disconnect = vi.fn() })
-
 const condition = { isSelected: () => false, selected: [], toggle: vi.fn(), toggleNarrow: vi.fn() } as unknown as Condition
 const noop = vi.fn()
 
-const views: { name: string; target: string; empty: string; render: () => void }[] = [
+const views: { name: string; target: string; loaded: string; empty: string; render: () => void }[] = [
   {
     name: "Samples",
+    loaded: "SAMD1",
     target: "Could not load the BioSamples.",
     empty: "No BioSamples match this condition.",
     render: () => renderWithQuery(<MemoryRouter><SamplesTab state={DEFAULTS} onPage={noop} onPerPage={noop} onPastEnd={noop} search="" /></MemoryRouter>),
   },
   {
     name: "Projects",
+    loaded: "PRJ1",
     target: "Could not load the BioProjects.",
     empty: "No BioProjects match this condition.",
     render: () => renderWithQuery(<ProjectsTab state={{ ...DEFAULTS, tab: "projects" }} condition={condition} onPage={noop} onSort={noop} onPerPage={noop} onPastEnd={noop} />),
   },
   {
     name: "Heatmap",
+    loaded: "label A",
     target: "Could not load the heatmap.",
     empty: "No BioSamples match this condition.",
     render: () =>
@@ -87,6 +98,7 @@ const views: { name: string; target: string; empty: string; render: () => void }
   },
   {
     name: "Trend",
+    loaded: "2020",
     target: "Could not load the trend.",
     empty: "No BioSamples with a publication year match this condition.",
     render: () =>
@@ -101,9 +113,10 @@ beforeEach(() => {
   net.dataset = "ok"
   localStorage.clear()
   net.requests.length = 0
+  net.release = undefined
 })
 
-describe.each(views)("$name", ({ target, empty, render }) => {
+describe.each(views)("$name", ({ target, loaded, empty, render }) => {
   it("shows the detail of the api and no Try again when the request is refused (400)", async () => {
     net.mode = 400
     render()
@@ -118,7 +131,8 @@ describe.each(views)("$name", ({ target, empty, render }) => {
     expect(screen.getAllByRole("status")).toHaveLength(1)
     net.mode = "ok"
     await userEvent.click(screen.getByRole("button", { name: /^Try again/ }))
-    await vi.waitFor(() => expect(screen.queryByText(target)).toBeNull())
+    expect((await screen.findAllByText(loaded)).length).toBeGreaterThan(0)
+    expect(screen.queryByText(target)).toBeNull()
   })
 
   it("says that nothing matches the condition when there are no results", async () => {
@@ -145,10 +159,10 @@ describe("Distribution", () => {
     expect(document.querySelectorAll(".animate-pulse")).toHaveLength(0)
   })
 
-  it("says that nothing matches the condition when there are no BioSamples, with the unit of the count", async () => {
+  it("says that nothing matches the condition in the unit of the count when there are no results", async () => {
     net.mode = "empty"
-    renderDistribution()
-    expect(await screen.findByText("No BioSamples match this condition.")).toBeInTheDocument()
+    renderWithQuery(<DistributionTab state={{ ...DEFAULTS, tab: "distribution", unit: "bioproject" }} condition={condition} onUnit={noop} onTermIds={noop} onAlert={noop} />)
+    expect(await screen.findByText("No BioProjects match this condition.")).toBeInTheDocument()
   })
 })
 
@@ -164,16 +178,41 @@ describe("the page of a table", () => {
     await vi.waitFor(() => expect(onPastEnd).toHaveBeenCalledWith(1, { q: null, page: 4 }))
   })
 
-  it("does not say that nothing matches while the answer for a page past the end has a count", async () => {
-    net.mode = "pastEnd" as never
+  it("does not say that nothing matches while the answer for a page past the end has a count, and moves to the last page", async () => {
+    const onPastEnd = vi.fn()
+    net.mode = "pastEnd"
     renderWithQuery(
       <MemoryRouter>
-        <SamplesTab state={{ ...DEFAULTS, page: 9 }} onPage={noop} onPerPage={noop} onPastEnd={noop} search="" />
+        <SamplesTab state={{ ...DEFAULTS, page: 9 }} onPage={noop} onPerPage={noop} onPastEnd={onPastEnd} search="" />
       </MemoryRouter>,
     )
-    await vi.waitFor(() => expect(net.requests).toContain("/api/entries/{type}"))
-    await new Promise((resolve) => setTimeout(resolve, 50))
+    await vi.waitFor(() => expect(onPastEnd).toHaveBeenCalledWith(3, { q: null, page: 9 }))
     expect(screen.queryByText("No BioSamples match this condition.")).toBeNull()
+  })
+
+  it("waits for the count of its own request, not of the rows that stand in from the previous request", async () => {
+    const onPastEnd = vi.fn()
+    net.mode = "held"
+    const tab = (q: string, page: number) => (
+      <MemoryRouter>
+        <SamplesTab state={{ ...DEFAULTS, q, page }} onPage={noop} onPerPage={noop} onPastEnd={onPastEnd} search="" />
+      </MemoryRouter>
+    )
+    const { rerender } = renderWithQuery(tab("a:b", 1))
+    await screen.findByText("SAMD1")
+    rerender(tab("c:d", 9))
+    await vi.waitFor(() => expect(net.release).toBeDefined())
+    expect(onPastEnd).not.toHaveBeenCalled()
+    net.release?.()
+    await screen.findByText("SAMD9")
+    expect(onPastEnd).not.toHaveBeenCalled()
+  })
+
+  it("of BioProjects is replaced with the last page when it is past the last page", async () => {
+    const onPastEnd = vi.fn()
+    net.mode = "empty"
+    renderWithQuery(<ProjectsTab state={{ ...DEFAULTS, tab: "projects", page: 4 }} condition={condition} onPage={noop} onSort={noop} onPerPage={noop} onPastEnd={onPastEnd} />)
+    await vi.waitFor(() => expect(onPastEnd).toHaveBeenCalledWith(1, { q: null, page: 4 }))
   })
 
   it("is left as it is when it holds results", async () => {
@@ -189,7 +228,7 @@ describe("the page of a table", () => {
 })
 
 describe("Heatmap that could not be loaded", () => {
-  it("counts the terms that the URL names, not zero, and lists them in the dialog so that they can be taken off", async () => {
+  it("counts the terms that the URL names, not zero, and lists them in the dialog so that they can be removed", async () => {
     net.mode = 500
     renderWithQuery(
       <HeatmapTab state={{ ...DEFAULTS, tab: "heatmap", row: "disease", col: "library_strategy", rowTerms: ["A", "B", "C"] }} condition={condition} update={noop} latest={() => DEFAULTS} replacing={false} setReplacing={noop} onAlert={noop} />,

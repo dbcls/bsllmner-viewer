@@ -80,7 +80,7 @@ test.describe("projects", () => {
     await expect(main.getByRole("button", { name: `Add ${first.identifier} to the condition` })).toBeVisible()
   })
 
-  test("the DDBJ link of a row opens the DDBJ Search page of its project and keeps the condition", async ({ page, request }) => {
+  test("the DDBJ link of a row opens the DDBJ Search page of its project and leaves the condition empty", async ({ page, request }) => {
     const [first] = (await projects(request, null, "biosampleCount:desc", 1)).items
     if (!first) throw new Error("the dataset has no BioProject")
     const href = `https://ddbj.nig.ac.jp/search/entry/bioproject/${first.identifier}`

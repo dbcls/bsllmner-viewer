@@ -7,8 +7,9 @@
  * bg-brand / text-brand / border-brand, --spacing-page-gutter becomes
  * px-page-gutter, --text-fs-h1 becomes text-fs-h1).
  *
- * Only app/ui and app/shell may reference colors as raw hex or use Tailwind
- * arbitrary values; everywhere else must go through a token utility class.
+ * Lint rejects raw hex colors in app/features, app/routes, app/ui, and app/shell.
+ * Lint also rejects Tailwind arbitrary values in app/features and app/routes.
+ * In these directories, use a token utility class.
  * Add a token here before introducing a new value.
  */
 @theme {
@@ -46,9 +47,9 @@
   --color-brand-mid:      #7F58A4;  /* LLM-selected glyph and small text (AA on white) */
   --color-brand-deeper:   #3A1F52;  /* darkest step of the count scale */
   --color-grid:           #EDEBF2;
-  --color-skeleton:       #ECE9F2;  /* the place of content that is on its way */
+  --color-skeleton:       #ECE9F2;  /* the placeholder for content that has not loaded */
 
-  /* Lines that split the trend, in a fixed order. The brand purple is the line of the condition itself;
+  /* Colors of the series lines of the trend, in a fixed order. The brand purple is the line of the condition itself;
      the red of gaps and the goldenrod of the warn status are not used for a line. Every pair of the five colors stays
      apart under protanopia, deuteranopia, and tritanopia (OKLab delta E 8 or more) and in normal vision (15 or more),
      and so does each of them with the condition purple and the All entries grey. */
@@ -152,7 +153,7 @@
 
 /* === Global a11y rules ==================================================== */
 
-/* focus rules live in @layer base so a utility class can still override them
+/* focus rules are in @layer base so a utility class can still override them
    (e.g. an input wrapper that represents focus itself). Un-layered rules
    would win the cascade over utilities regardless of source order. */
 @layer base {

@@ -30,7 +30,7 @@ type ShellLayoutProps = {
 export const ShellLayout = ({ children }: ShellLayoutProps) => <ShellFrame footer={<Footer />}>{children}</ShellFrame>
 
 /**
- * The shell with an empty page, drawn into the HTML when the app is built and shown until the JavaScript runs. It asks
- * nothing of the api, so the footer keeps the place of the dataset line.
+ * The shell with an empty page. The build writes the shell into the HTML, and the browser shows the shell until the
+ * JavaScript runs. The shell does not call the api, so the footer shows a placeholder where the dataset line goes.
  */
 export const ShellFallback = () => <ShellFrame footer={<FooterFallback />} />

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import time
+
 import pytest
 
-from bsllmner_viewer.dsl.ast import BoolOp, FreeText, Node, normalize, structurally_equal
+from bsllmner_viewer.dsl.ast import FreeText, normalize, structurally_equal
 from bsllmner_viewer.dsl.errors import DslError, ErrorType
 from bsllmner_viewer.dsl.keyword import (
     Accession,
@@ -10,6 +12,7 @@ from bsllmner_viewer.dsl.keyword import (
     accession_kind,
     keyword_text,
     parts,
+    searchable_text,
     typed_keywords,
     word_matches,
 )
@@ -35,10 +38,20 @@ def _patterns(value: str, *, phrase: bool = False) -> list[tuple[str, ...]]:
         ("--..!!", []),
         ("a_b", ["a", "b"]),
         ("H3K27ac", ["h3k27ac"]),
-        ("日本語", []),
+        ("\u65e5\u672c\u8a9e", ["\u65e5\u672c\u8a9e"]),
+        ("\u03b2-catenin", ["\u03b2", "catenin"]),
+        ("cafe\u0301 au lait", ["caf\u00e9", "au", "lait"]),
+        ("\u0130stanbul", ["istanbul"]),
+        ("\uff2d\uff23\uff26\uff17", ["\uff4d\uff43\uff46\uff17"]),
+        ("x\u00b2", ["x"]),
+        ("\u4e2d\u30fb\u65e5", ["\u4e2d", "\u65e5"]),
+        ("\u0301\u0301", []),
+        ("x \u0301 y", ["x", "y"]),
     ],
 )
-def test_parts_splits_at_every_character_other_than_ascii_letters_and_digits(text: str, expected: list[str]) -> None:
+def test_parts_are_runs_of_letters_digits_and_combining_marks_that_have_a_letter_or_a_digit(
+    text: str, expected: list[str]
+) -> None:
     assert parts(text) == expected
 
 
@@ -60,7 +73,7 @@ def test_parts_splits_at_every_character_other_than_ascii_letters_and_digits(tex
         ("PrjEb333", "bioproject"),
     ],
 )
-def test_accession_kind_recognizes_every_documented_kind_case_insensitively(word: str, kind: str) -> None:
+def test_accession_kind_recognizes_every_accession_kind_case_insensitively(word: str, kind: str) -> None:
     assert accession_kind(word) == kind
 
 
@@ -81,6 +94,8 @@ def test_accession_kind_recognizes_every_documented_kind_case_insensitively(word
         "SRX1 ",
         "SRX-1",
         "SRX1\n",
+        "\u017frx1",
+        "\uff33\uff32\uff38\uff11",
     ],
 )
 def test_accession_kind_without_the_exact_form_is_none(word: str) -> None:
@@ -204,15 +219,12 @@ def test_typed_keywords_wildcard_is_rejected(text: str) -> None:
     assert info.value.type is ErrorType.unexpected_token
 
 
-@pytest.mark.parametrize("text", ["+", "-- ..", '""', '"+ -"', '"" liver'])
-def test_typed_keywords_parts_without_a_letter_or_digit_are_dropped(text: str) -> None:
-    assert [k.value for k in typed_keywords(text)] in ([], ["liver"])
-
-
-def test_typed_keywords_unbalanced_quote_keeps_every_word() -> None:
-    for text in ('"abc', 'say "hello world', 'abc"', '"', "'abc", "say 'hello world", "abc'", "'"):
-        found = [p for k in typed_keywords(text) for p in parts(k.value)]
-        assert sorted(found) == sorted(parts(text)), text
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [("+", []), ("-- ..", []), ('""', []), ('"+ -"', []), ('"" liver', ["liver"])],
+)
+def test_typed_keywords_parts_without_a_letter_or_digit_are_dropped(text: str, expected: list[str]) -> None:
+    assert [k.value for k in typed_keywords(text)] == expected
 
 
 def test_typed_keywords_escaped_quote_in_a_phrase_is_unescaped() -> None:
@@ -235,8 +247,9 @@ def test_typed_keywords_single_quote_inside_or_at_the_end_of_a_word_is_part_of_t
     assert typed_keywords("Alzheimer's disease") == [FreeText("Alzheimer's disease")]
 
 
-def test_typed_keywords_word_starting_with_an_unclosed_single_quote_becomes_a_phrase() -> None:
-    assert typed_keywords("'s liver") == [FreeText("liver"), FreeText("'s", True)]
+def test_typed_keywords_word_starting_with_a_single_quote_that_no_quote_closes_stays_a_word() -> None:
+    assert typed_keywords("'s liver") == [FreeText("'s liver")]
+    assert typed_keywords("x 's y'") == [FreeText("x"), FreeText("s y", True)]
 
 
 def test_typed_keywords_single_quotes_at_the_start_and_the_end_of_words_make_a_phrase() -> None:
@@ -247,18 +260,8 @@ def test_typed_keywords_single_quotes_at_the_start_and_the_end_of_words_make_a_p
 
 
 def test_typed_keywords_single_quote_closes_a_phrase_only_at_the_end_of_a_word() -> None:
-    assert typed_keywords("'s and Crohn's") == [FreeText("and Crohn's"), FreeText("'s", True)]
+    assert typed_keywords("'s and Crohn's") == [FreeText("'s and Crohn's")]
     assert typed_keywords("5' and 3'") == [FreeText("5' and 3'")]
-
-
-@pytest.mark.parametrize("text", ["' '0", "' 0'", "3' end", "5'-UTR", "Alzheimer's disease", "'s", "x 'y", "'a b'"])
-def test_typed_keywords_with_single_quotes_survive_serialization_alone_and_together(text: str) -> None:
-    keywords = typed_keywords(text)
-    assert keywords
-    for keyword in keywords:
-        assert structurally_equal(normalize(parse(serialize(keyword))), keyword)
-    combined: Node = keywords[0] if len(keywords) == 1 else BoolOp("AND", tuple(keywords))
-    assert structurally_equal(normalize(parse(serialize(combined))), normalize(combined))
 
 
 def test_keyword_text_keeps_a_backslash_of_a_phrase() -> None:
@@ -296,3 +299,35 @@ def test_normalize_keeps_operator_words_in_a_phrase() -> None:
     node = normalize(FreeText("AND cancer", is_phrase=True))
     assert node == FreeText("AND cancer", is_phrase=True)
     assert normalize(FreeText("AND cancer NOT x")) == FreeText("and cancer not x")
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "a" + "́" * 20000 + "!",
+        "ACGT" * 10000 + ".",
+        "́" * 40000,
+        "a-" * 20000 + " ",
+        ("a" + "́" * 50 + "-") * 400,
+    ],
+)
+def test_searchable_text_and_parts_take_linear_time_on_long_words_and_runs_of_combining_marks(text: str) -> None:
+    started = time.perf_counter()
+    searchable_text(text)
+    parts(text)
+    assert time.perf_counter() - started < 1.0
+
+
+@pytest.mark.parametrize(
+    ("one", "other"),
+    [
+        ("université paris cité", "université paris cité"),
+        ("ΟΔΟΣ", "οδοσ"),
+        ("οδος", "οδοσ"),
+    ],
+)
+def test_parts_and_searchable_text_treat_canonically_equal_texts_and_the_final_sigma_alike(
+    one: str, other: str
+) -> None:
+    assert parts(one) == parts(other)
+    assert searchable_text(one) == searchable_text(other)

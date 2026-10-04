@@ -32,7 +32,7 @@ test.describe("workspace navigation", () => {
     await expect(conditionRegion(page).getByText(term.value, { exact: true })).toBeVisible()
   })
 
-  test("choosing Experiments writes the api value of the counting unit to the URL", async ({ page, request }) => {
+  test("choosing SRA Experiments writes the api value of the counting unit to the URL", async ({ page, request }) => {
     const { q } = await topDiseaseCondition(request)
     await page.goto(workspaceUrl({ tab: "distribution", q }))
     await page.getByRole("radio", { name: "SRA Experiments" }).click()
@@ -168,7 +168,7 @@ test.describe("workspace navigation", () => {
     await expect(conditionRegion(page)).toContainText(new RegExp(`${formatCount(await countOf(request, q))}\\s*BioSamples`))
   })
 
-  test("the tags of each question on the landing page are the values of its condition in the dataset", async ({ page, request }) => {
+  test("the condition of each question on the landing page is in its canonical form, and its tags are the values of the condition in the dataset", async ({ page, request }) => {
     type Leaf = { field?: string; op: string; value?: string; rules?: Leaf[] }
     const leaves = (node: Leaf): Leaf[] => (node.rules ? node.rules.flatMap(leaves) : [node])
     await page.goto("/")
@@ -178,10 +178,10 @@ test.describe("workspace navigation", () => {
     for (const question of await questions.all()) {
       const q = new URL((await question.getAttribute("href")) ?? "", page.url()).searchParams.get("q")
       if (!q) throw new Error("a question has no condition")
-      const parsed = (await (await request.get(`/api/dsl/parse?${new URLSearchParams({ q }).toString()}`)).json()) as {
-        ast: Leaf
-        labels: Record<string, string>
-      }
+      const response = await request.get(`/api/dsl/parse?${new URLSearchParams({ q }).toString()}`)
+      expect(response.status(), `parse of ${q}`).toBe(200)
+      const parsed = (await response.json()) as { q: string; ast: Leaf; labels: Record<string, string> }
+      expect(parsed.q, `the canonical form of ${q}`).toBe(q)
       for (const leaf of leaves(parsed.ast)) {
         const value = leaf.value ?? ""
         await expect(question, `the tag of ${leaf.field}:${value}`).toContainText(parsed.labels[value] ?? value)
@@ -226,7 +226,8 @@ test.describe("workspace navigation", () => {
     if (!top) throw new Error("the dataset has no assay")
     const q = await select(request, null, top.clauses)
     await page.goto("/")
-    // The card of the statistics: the innermost element with both the heading and links. The examples name assays too.
+    // The Statistics card: the innermost element that holds both the heading and links. Other cards also contain assay
+    // names, so the heading narrows the search.
     const statistics = page
       .locator("div")
       .filter({ has: page.getByRole("heading", { name: "Statistics", exact: true }) })

@@ -41,7 +41,7 @@ ENV PATH=/app/.venv/bin:$PATH \
     PYTHONUNBUFFERED=1
 
 # The uid is fixed, so that it stays the same for the volumes that a container of an earlier image created. A new
-# volume takes the owner of its directory in the image, so the temporary directory of DuckDB belongs to the user.
+# volume takes the owner of its directory in the image, so the temporary directory of DuckDB belongs to the api user.
 RUN groupadd --system --gid 10001 api \
     && useradd --system --uid 10001 --gid api --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin api \
     && install -d -o api -g api /var/tmp/bsllmner-viewer

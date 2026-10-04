@@ -15,10 +15,10 @@ export type TermPanelDetails = {
 }
 
 type TermPanelProps = {
-  /** The label of the term, drawn before the details arrive. */
+  /** The label of the term. The panel shows the label at once, also while the details load. */
   label: string
   termId: string
-  /** Undefined while the details are on their way, and null when there are none. */
+  /** Undefined while the details load, and null when there are none. */
   details: TermPanelDetails | null | undefined
   /** An action at the right end of the last line, such as a link to the BioSamples with the term. */
   action?: ReactNode
@@ -34,7 +34,7 @@ const DetailRow = ({ name, children }: { name: string; children: ReactNode }) =>
 /**
  * The details of a term in a popover: the label, the ID, the synonyms, and the parent terms, with a link to the page of
  * the term on the site of its ontology, named after the ontology, and an action. A row without values, a link without
- * a URL, and a last line without a link or an action are left out.
+ * a URL, and a last line without a link or an action are omitted.
  */
 export const TermPanel = ({ label, termId, details, action }: TermPanelProps) => {
   const link = details?.url && details.ontologyName ? <ExternalLink href={details.url}>{details.ontologyName}</ExternalLink> : null

@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-from hypothesis import given
+from hypothesis import example, given
 from hypothesis import strategies as st
 
 from bsllmner_viewer.api.term_sites import shown_synonyms
 
-words = st.text(alphabet="abcABC xyz", min_size=1, max_size=6)
+words = st.text(alphabet="abcABC xyzßS", min_size=1, max_size=6)
 
 
+@example(None, ["Straße", "STRASSE"])
 @given(st.one_of(st.none(), words), st.lists(words, max_size=8))
 def test_shown_synonyms_differ_from_the_label_and_from_each_other_beyond_letter_case(
     label: str | None, synonyms: list[str]
@@ -25,3 +26,7 @@ def test_shown_synonyms_drop_the_label_in_other_cases_and_keep_one_of_each_case_
     assert shown_synonyms("Dimethyl sulfoxide", ["DIMETHYL SULFOXIDE", "DMSO", "dmso", "dimethyl sulfoxide"]) == [
         "DMSO"
     ]
+
+
+def test_shown_synonyms_treat_sharp_s_and_ss_as_the_same_beyond_letter_case() -> None:
+    assert shown_synonyms(None, ["Straße", "STRASSE"]) == ["Straße"]

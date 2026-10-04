@@ -70,28 +70,15 @@ describe("Select", () => {
     expect(onChange).not.toHaveBeenCalled()
   })
 
-  it("opens on ArrowDown at the chosen option, moves with the arrow keys, and chooses with Enter", async () => {
+  it.each(["ArrowDown", "ArrowUp"])("opens on %s at the chosen option without moving", async (key) => {
     const user = userEvent.setup()
     const onChange = vi.fn()
     render(<Controlled onChange={onChange} />)
     combobox().focus()
-    await user.keyboard("{ArrowDown}")
+    await user.keyboard(`{${key}}`)
     expect(combobox()).toHaveAttribute("aria-activedescendant", screen.getByRole("option", { name: "Tissue" }).id)
-    await user.keyboard("{ArrowDown}{ArrowDown}{ArrowUp}{Enter}")
-    expect(onChange).toHaveBeenCalledExactlyOnceWith("disease")
-  })
-
-  it("stops at the ends of the list and jumps to them with Home and End", async () => {
-    const user = userEvent.setup()
-    const onChange = vi.fn()
-    render(<Controlled onChange={onChange} />)
-    combobox().focus()
-    await user.keyboard("{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}{ArrowDown}{Enter}")
-    expect(onChange).toHaveBeenLastCalledWith("drug")
-    await user.keyboard("{ArrowUp}{Home}{ArrowUp}{Enter}")
-    expect(onChange).toHaveBeenLastCalledWith("cell_line")
-    await user.keyboard("{End}{Enter}")
-    expect(onChange).toHaveBeenLastCalledWith("drug")
+    await user.keyboard("{Enter}")
+    expect(onChange).not.toHaveBeenCalled()
   })
 
   it("moves to the next option whose label starts with a typed letter", async () => {

@@ -1,6 +1,8 @@
-"""Expected counts, ratios, and classes of cross-tabulation cells, as documented in docs/api.md."""
+"""Expected counts, ratios, and classes of cross-tabulation cells."""
 
 from __future__ import annotations
+
+import math
 
 from hypothesis import given
 from hypothesis import strategies as st
@@ -63,9 +65,27 @@ def test_classify_large_population_small_difference_unclassified() -> None:
     assert cls is None
 
 
-def test_classify_boundaries_of_ratio_thresholds_classified() -> None:
+def test_classify_at_the_thresholds_of_the_ratio_the_residual_and_the_expected_count() -> None:
     assert classify(10, 5.0, 2.0, 2.0) == "over"
     assert classify(5, 10.0, 0.5, -2.0) == "under"
     assert classify(10, 5.0, 2.0, 1.99) is None
     assert classify(5, 10.0, 0.5, -1.99) is None
     assert classify(0, 4.99, 0.0, -2.2) is None
+
+
+@given(cells())
+def test_expected_and_residual_follow_the_formulas_of_the_docs(cell: tuple[int, int, int, int]) -> None:
+    observed, row, col, total = cell
+    expected, residual = expected_and_residual(observed, row, col, total)
+    if total == 0:
+        assert (expected, residual) == (None, None)
+        return
+    want_expected = row * col / total
+    assert expected is not None
+    assert math.isclose(expected, want_expected, rel_tol=1e-12, abs_tol=1e-12)
+    if want_expected == 0 or row == total or col == total:
+        assert residual is None
+        return
+    want_residual = (observed - want_expected) / math.sqrt(want_expected * (1 - row / total) * (1 - col / total))
+    assert residual is not None
+    assert math.isclose(residual, want_residual, rel_tol=1e-9, abs_tol=1e-9)

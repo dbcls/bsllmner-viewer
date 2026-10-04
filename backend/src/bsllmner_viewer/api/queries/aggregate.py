@@ -197,9 +197,13 @@ def ratio_to_expected(observed: int, expected: float | None) -> float | None:
 
 
 def classify(observed: int, expected: float | None, ratio: float | None, residual: float | None) -> str | None:
-    """
-    The class of a cell. Under and over need both a ratio of at most half or at least twice the expected count and a
-    residual beyond the threshold: the ratio is the size of the difference, and the residual grows with the population.
+    """The class of a cell, or None.
+
+    The class is None if the expected count is None or less than EXPECTED_MIN, and "gap" if the observed count is 0.
+    The class is "under" if the ratio is at most 1 / RATIO_THRESHOLD and the residual is at most -RESIDUAL_THRESHOLD,
+    and "over" if the ratio is at least RATIO_THRESHOLD and the residual is at least RESIDUAL_THRESHOLD. Otherwise,
+    the class is None. The class needs both the ratio and the residual, because the ratio shows the size of the
+    difference and the residual grows with the population.
     """
     if expected is None or expected < EXPECTED_MIN:
         return None

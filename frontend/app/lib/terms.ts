@@ -7,10 +7,10 @@ import { fieldLabel } from "./labels"
 /** The field choice that searches every annotation field. */
 export const ALL_FIELDS = "*"
 
-/** How long the search text rests before the terms are searched. */
+/** How long to wait after the last change of the search text before the terms are searched, in ms. */
 export const TERM_SEARCH_DEBOUNCE_MS = 200
 
-/** The rows that hold the place of a term search result before it arrives. */
+/** The number of placeholder rows shown while a term search result loads. */
 export const SKELETON_TERMS = 8
 
 /** The choices of a field Select for a term search: every field, then each annotation field. */

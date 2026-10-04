@@ -157,6 +157,19 @@ describe("Popover with a hover trigger", () => {
     expect(screen.queryByRole("dialog")).toBeNull()
   })
 
+  it("stays open when the pointer returns to the hover trigger before the panel closes", () => {
+    vi.useFakeTimers()
+    renderHover()
+    const id = screen.getByText("UBERON:0000955")
+    fireEvent.mouseEnter(id)
+    wait(HOVER_OPEN_MS)
+    fireEvent.mouseLeave(id)
+    wait(HOVER_CLOSE_MS - 1)
+    fireEvent.mouseEnter(id)
+    wait(HOVER_CLOSE_MS)
+    expect(screen.getByRole("dialog", { name: "brain" })).toBeTruthy()
+  })
+
   it("pins a panel that the pointer opened when the button is clicked, and keeps it after the pointer leaves", () => {
     vi.useFakeTimers()
     renderHover()

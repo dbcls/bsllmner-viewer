@@ -13,8 +13,8 @@ export const TEXT_SIZE = { body: 14, "body-sm": 13, label: 12, micro: 11 } as co
 type TextWeight = 400 | 500 | 600
 
 /**
- * Where the page sets the text that a role stands for: the file, the Tailwind classes that one element carries, and
- * the classes of an ancestor that the element inherits.
+ * Where the page sets the text that a role stands for: the file, the Tailwind classes on one element, and
+ * the classes on an ancestor that the element inherits from.
  */
 type ScreenText = { file: string; classes: string[]; ancestors?: string[] }
 

@@ -17,6 +17,8 @@ const HUMAN_Q_UNSELECTED = "organism_id:9606 OR organism_id:9606"
 const state = vi.hoisted(() => ({
   selects: [] as SelectBody[],
   releaseParse: undefined as (() => void) | undefined,
+  hold: false,
+  signals: [] as (AbortSignal | undefined)[],
 }))
 
 vi.mock("~/lib/api/client", async (importOriginal) => {
@@ -36,7 +38,11 @@ vi.mock("~/lib/api/client", async (importOriginal) => {
     const ast = isOld ? { field: "date_published", op: "between", from: OLD_RANGE.from, to: OLD_RANGE.to } : null
     return ok({ q, ast, labels: {}, selected: isOld ? [OLD_RANGE] : [], keyword: "" })
   }
-  const POST = async (_path: string, init: { body: SelectBody }) => {
+  const POST = async (_path: string, init: { body: SelectBody; signal?: AbortSignal }) => {
+    if (state.hold) {
+      state.signals.push(init.signal)
+      return new Promise<never>(() => undefined)
+    }
     state.selects.push(init.body)
     if (init.body.clauses[0]?.["field"] === HUMAN.field) {
       const ast = { field: HUMAN.field, op: "eq", value: HUMAN.value }
@@ -50,10 +56,14 @@ vi.mock("~/lib/api/client", async (importOriginal) => {
 })
 
 import { useCondition } from "~/features/workspace/use-condition"
+import { useClausesCondition } from "~/lib/api/queries"
 import { DEFAULTS } from "~/lib/workspace-state"
 
 beforeEach(() => {
   state.selects.length = 0
+  state.releaseParse = undefined
+  state.hold = false
+  state.signals.length = 0
 })
 
 describe("useCondition replaceField", () => {
@@ -66,6 +76,7 @@ describe("useCondition replaceField", () => {
     act(() => {
       replaced = result.current.replaceField("date_published", NEW_RANGE)
     })
+    await waitFor(() => expect(state.releaseParse).toBeDefined())
     await act(async () => {
       state.releaseParse?.()
       await replaced
@@ -73,6 +84,7 @@ describe("useCondition replaceField", () => {
 
     expect(state.selects.map((s) => s.clauses)).toEqual([[OLD_RANGE], [NEW_RANGE]])
     expect(state.selects[1]?.q).toBeNull()
+    expect(state.selects.map((s) => s.mode)).toEqual(["toggle", "toggle"])
     expect(update).toHaveBeenCalledWith({ q: "date_published:[2018-01-01 TO 2019-12-31]" })
   })
 
@@ -84,6 +96,7 @@ describe("useCondition replaceField", () => {
     act(() => {
       replaced = result.current.replaceField("date_published", NEW_RANGE)
     })
+    await waitFor(() => expect(state.releaseParse).toBeDefined())
     await act(async () => {
       state.releaseParse?.()
       await replaced
@@ -153,6 +166,7 @@ describe("useCondition toggleNarrow", () => {
 describe("useCondition isSelected", () => {
   it("follows the selected clauses of the api, not the AST", async () => {
     const { result } = renderHook(() => useCondition(HUMAN_Q_UNSELECTED, vi.fn(), () => ({ ...DEFAULTS, q: HUMAN_Q_UNSELECTED })), { wrapper })
+    await waitFor(() => expect(state.releaseParse).toBeDefined())
     await act(async () => {
       state.releaseParse?.()
     })
@@ -161,8 +175,31 @@ describe("useCondition isSelected", () => {
     expect(result.current.isSelected([HUMAN])).toBe(false)
   })
 
+  it("is true only when the condition has every clause of the element, with the same range", async () => {
+    const { result } = renderHook(() => useCondition(Q, vi.fn(), () => ({ ...DEFAULTS, q: Q })), { wrapper })
+    await waitFor(() => expect(state.releaseParse).toBeDefined())
+    await act(async () => {
+      state.releaseParse?.()
+    })
+    await waitFor(() => expect(result.current.isSelected([OLD_RANGE])).toBe(true))
+    expect(result.current.isSelected([OLD_RANGE, HUMAN])).toBe(false)
+    expect(result.current.isSelected([{ ...OLD_RANGE, to: "2017-12-31" }])).toBe(false)
+    expect(result.current.isSelected([{ ...OLD_RANGE, from: "2014-01-01" }])).toBe(false)
+  })
+
   it("is false for no clauses", () => {
     const { result } = renderHook(() => useCondition(null, vi.fn(), () => ({ ...DEFAULTS, q: null })), { wrapper })
     expect(result.current.isSelected([])).toBe(false)
+  })
+})
+
+describe("useClausesCondition", () => {
+  it("cancels the request of an element that leaves the screen before the answer arrives", async () => {
+    state.hold = true
+    const { unmount } = renderHook(() => useClausesCondition([HUMAN]), { wrapper })
+    await waitFor(() => expect(state.signals).toHaveLength(1))
+    expect(state.signals[0]?.aborted).toBe(false)
+    unmount()
+    await waitFor(() => expect(state.signals[0]?.aborted).toBe(true))
   })
 })

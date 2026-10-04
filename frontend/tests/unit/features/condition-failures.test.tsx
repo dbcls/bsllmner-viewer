@@ -27,7 +27,7 @@ vi.mock("~/lib/api/client", async (importOriginal) => {
       return ok({ datasetVersion: VERSION, version: {}, targetAssays: ["RNA-Seq"], assays: [], fields: [field], dslFields: [], statuses: {}, totals: { biosample: 1, experiment: 1, bioproject: 1 }, organisms: [], ontologies: [] })
     }
     if (path === "/api/dsl/parse") return failure(net.parseStatus, "unexpected character at column 1")
-    // Whatever else is asked for stays on its way, so that the notices of the test are those of the condition.
+    // Every other request never answers, so the notices of the test are those of the condition.
     return new Promise(() => undefined)
   }
   const POST = async (path: string) => {
@@ -41,8 +41,6 @@ vi.mock("~/lib/api/client", async (importOriginal) => {
 
 import { useCondition } from "~/features/workspace/use-condition"
 import { WorkspacePage } from "~/features/workspace/workspace-page"
-
-vi.stubGlobal("ResizeObserver", class { observe = vi.fn(); unobserve = vi.fn(); disconnect = vi.fn() })
 
 const CLAUSE = { field: "organism_id", value: "9606" }
 
@@ -114,17 +112,28 @@ describe("the workspace with a condition in the URL that the api rejects", () =>
       </MemoryRouter>,
     )
 
-  it("says why in the condition bar, offers to clear it, and asks the api for nothing more once it knows", async () => {
+  it("says why in the condition bar and offers to clear it", async () => {
     renderPage()
     expect(await screen.findByText("The condition in the URL is not valid: unexpected character at column 1")).toBeInTheDocument()
     expect(screen.queryByText("No condition. All entries of the dataset are shown.")).toBeNull()
     expect(screen.getByText("Fix the condition to see results.")).toBeInTheDocument()
+    await userEvent.click(screen.getByRole("button", { name: "Clear all" }))
+    await vi.waitFor(() => expect(screen.queryByText(/The condition in the URL is not valid/)).toBeNull())
+  })
+
+  it("asks the api for nothing more once it knows that the condition is not valid", async () => {
+    renderPage()
+    await screen.findByText(/The condition in the URL is not valid/)
     const asked = net.requests.length
     await new Promise((resolve) => setTimeout(resolve, 100))
     expect(net.requests).toHaveLength(asked)
     expect(net.requests.filter((path) => path === "/api/dsl/parse")).toHaveLength(1)
-    await userEvent.click(screen.getByRole("button", { name: "Clear all" }))
-    await vi.waitFor(() => expect(screen.queryByText(/The condition in the URL is not valid/)).toBeNull())
+  })
+
+  it("shows no view while the condition in the URL is not valid", async () => {
+    renderPage()
+    await screen.findByText(/The condition in the URL is not valid/)
+    expect(screen.queryByRole("table")).toBeNull()
   })
 
   it("offers to try again, not a verdict on the condition, when the parse fails on the server", async () => {

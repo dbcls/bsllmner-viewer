@@ -84,10 +84,21 @@ def normalize_term_id(value: str) -> str:
 
 
 def read_ontology(path: Path) -> Iterator[OntologyTerm]:
-    if path.suffix.lower() == ".obo":
-        yield from read_obo(path)
-    else:
-        yield from read_owl(path)
+    """The terms of an OBO or OWL file whose IDs are CURIEs (`PREFIX:local`), with the parents of that form.
+
+    An ontology file can list terms of another resource by a URL, such as the genes that MONDO cites as
+    `http://identifiers.org/hgnc/5032`. Such an ID has no prefix after normalization, so the term is not read.
+    """
+    terms = read_obo(path) if path.suffix.lower() == ".obo" else read_owl(path)
+    for term in terms:
+        if _is_curie(term.term_id):
+            term.parents = [parent for parent in term.parents if _is_curie(parent)]
+            yield term
+
+
+def _is_curie(term_id: str) -> bool:
+    prefix, colon, local = term_id.partition(":")
+    return bool(prefix and colon and local) and not prefix.lower().startswith("http")
 
 
 def read_obo(path: Path) -> Iterator[OntologyTerm]:
@@ -149,8 +160,11 @@ def _obo_is_a_parent(value: str) -> str | None:
 
 
 def _obo_part_of_parent(value: str) -> str | None:
-    """The target of a `relationship:` value if it is an unconditional part-of relation that states existence, else
-    None."""
+    """The target of a `relationship:` value if the relation is `part_of` or `BFO:0000050`, else None.
+
+    The result is also None if a qualifier makes the relation universal (`all_only="true"`) or conditional
+    (`gci_relation` or `gci_filler`).
+    """
     fields = value.split("!")[0].split("{")[0].split()
     if len(fields) != 2 or fields[0] not in _OBO_PART_OF:
         return None

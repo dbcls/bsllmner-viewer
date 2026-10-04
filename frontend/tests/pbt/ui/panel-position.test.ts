@@ -75,7 +75,7 @@ describe("panelPositionIn", () => {
   })
 
   test.prop([scene, fc.integer({ min: 1, max: 1200 })])(
-    "keeps a panel lined up with the left edge inside the viewport on the right, by lining it up with the right edge when it fits there",
+    "aligns a left-aligned panel to the right edge of the control when it would overflow the right side of the viewport and fits that way",
     (s, panelWidth) => {
       const position = panelPositionIn(s.box, s.viewport, s.panelHeight, { align: "left", matchWidth: s.matchWidth }, panelWidth)
       const fitsLeft = s.box.left + panelWidth <= s.viewport.width

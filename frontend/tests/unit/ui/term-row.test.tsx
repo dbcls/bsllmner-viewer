@@ -22,7 +22,7 @@ describe("TermRow", () => {
     expect(screen.getByRole("button")).toHaveTextContent("Cell cycle cellnerve CELLGO:0007049")
   })
 
-  it("marks nothing when no text was searched, and shows no synonym when the search did not match one", () => {
+  it("marks nothing when the searched text is blank, and shows the ID right after the label without a synonym", () => {
     const { container } = render(<TermRow label="neuron" id="CL:0000540" count="3" highlight=" " onClick={vi.fn()} />)
     expect(container.querySelector("mark")).toBeNull()
     expect(screen.getByRole("button")).toHaveTextContent("neuronCL:0000540")

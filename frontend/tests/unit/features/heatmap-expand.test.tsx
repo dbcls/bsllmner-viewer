@@ -2,6 +2,7 @@ import { act, fireEvent, screen } from "@testing-library/react"
 import { useRef, useState } from "react"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
+import { MAX_AXIS_TERMS } from "~/features/workspace/axis/axis-terms"
 import type { Update } from "~/features/workspace/state"
 import type * as Client from "~/lib/api/client"
 import { DEFAULTS, type Patch, type WorkspaceState } from "~/lib/workspace-state"
@@ -89,7 +90,7 @@ describe("opening the children of a row", () => {
     expect(onUpdate).toHaveBeenLastCalledWith({ rowTerms: ["A", "A1", "B", "B1"] })
   })
 
-  it("ignores a second press on a row whose children are on their way", async () => {
+  it("ignores a second press on a row whose children are loading", async () => {
     net.childrenOf = { A: ["A1"] }
     const { onUpdate } = render(["A", "B"])
     const button = await chevron("A")
@@ -113,12 +114,32 @@ describe("opening the children of a row", () => {
 
   it("does not open past the most terms that the api takes, and says so", async () => {
     net.childrenOf = { F0: ["C:new"] }
-    const rows = Array.from({ length: 100 }, (_, index) => `F${index}`)
+    const rows = Array.from({ length: MAX_AXIS_TERMS }, (_, index) => `F${index}`)
     const { onUpdate, onAlert } = render(rows)
     fireEvent.click(await chevron("F0"))
     await vi.waitFor(() => expect(net.children.size).toBe(1))
     await answer("F0")
     expect(onAlert).toHaveBeenCalledWith("A heatmap axis shows up to 100 terms.")
+    expect(onUpdate).not.toHaveBeenCalled()
+  })
+
+  it("opens the children when the axis then has exactly the most terms that the api takes", async () => {
+    net.childrenOf = { F0: ["C:new"] }
+    const { onUpdate, onAlert } = render(Array.from({ length: MAX_AXIS_TERMS - 1 }, (_, index) => `F${index}`))
+    fireEvent.click(await chevron("F0"))
+    await vi.waitFor(() => expect(net.children.size).toBe(1))
+    await answer("F0")
+    expect(onAlert).not.toHaveBeenCalled()
+    expect(onUpdate.mock.lastCall?.[0].rowTerms).toHaveLength(MAX_AXIS_TERMS)
+  })
+
+  it("says so and leaves the rows as they are when the row has no child terms with data", async () => {
+    net.childrenOf = { A: ["A"] }
+    const { onUpdate, onAlert } = render(["A", "B"])
+    fireEvent.click(await chevron("A"))
+    await vi.waitFor(() => expect(net.children.size).toBe(1))
+    await answer("A")
+    expect(onAlert).toHaveBeenCalledWith("No child terms with data.")
     expect(onUpdate).not.toHaveBeenCalled()
   })
 

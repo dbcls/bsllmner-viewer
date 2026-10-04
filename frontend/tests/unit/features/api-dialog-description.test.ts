@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import { apiDialogDescription } from "~/features/workspace/overlays"
 import { apiRequestsFor } from "~/features/workspace/view-requests"
-import { DEFAULTS, TABS } from "~/lib/workspace-state"
+import { DEFAULTS, TAB_LABELS, TABS } from "~/lib/workspace-state"
 
 const FIELDS = ["cell_line", "tissue", "disease"]
 
@@ -20,6 +20,7 @@ describe("apiDialogDescription", () => {
   it("names the view and the current condition, and no parameter of the request", () => {
     for (const tab of TABS) {
       expect(apiDialogDescription(tab)).toContain("for the current condition")
+      expect(apiDialogDescription(tab)).toContain(`${TAB_LABELS[tab]} view`)
       expect(apiDialogDescription(tab)).not.toMatch(/\bq\b/)
     }
   })

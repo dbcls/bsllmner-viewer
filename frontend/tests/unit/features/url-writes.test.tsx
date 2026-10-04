@@ -27,7 +27,7 @@ vi.mock("~/lib/api/client", async (importOriginal) => {
     if (failure) throw new Error("the api failed")
     const { q, clauses, keyword } = init.body
     if (path === "/api/dsl/select") {
-      // A clause that the condition has is taken off, and any other is added.
+      // A clause that the condition has is removed, and any other is added.
       let parts = (q ?? "").split(" AND ").filter(Boolean)
       for (const clause of clauses ?? []) {
         const text = `${clause.field}:${clause.value}`
@@ -44,7 +44,8 @@ vi.mock("~/lib/api/client", async (importOriginal) => {
 import { useWorkspaceState } from "~/features/workspace/state"
 import { useCondition } from "~/features/workspace/use-condition"
 
-// The AbortSignal of jsdom is not the one of undici: without it the data router can build its requests.
+// The data router builds each Request with the AbortSignal of jsdom. The Request of Node (undici) accepts only its own
+// AbortSignal and throws a TypeError. The Request class below drops the signal, so the data router can build its requests.
 const NativeRequest = globalThis.Request
 globalThis.Request = class extends NativeRequest {
   constructor(input: RequestInfo | URL, init?: RequestInit) {
@@ -133,7 +134,7 @@ describe("useCondition operations", () => {
     expect(search.get("q")).toBe("A AND assay:RNA")
   })
 
-  it("builds a replaceField that a stale closure started from the latest q", async () => {
+  it("sends the request of replaceField from the latest q when replaceField is called on a hook value from before the toggle", async () => {
     mount("/entries?q=A")
     await flush()
     const stale = hook.current
@@ -223,8 +224,8 @@ describe("useCondition operations", () => {
   })
 })
 
-describe("useCondition operations that take clauses off", () => {
-  it("keeps a clause off when it is taken off twice before the first answer", async () => {
+describe("useCondition operations that remove clauses", () => {
+  it("keeps a clause removed when it is removed twice before the first answer", async () => {
     const router = mount("/entries?q=A AND assay:RNA")
     await flush()
     let first: Promise<unknown> = Promise.resolve()
@@ -243,7 +244,7 @@ describe("useCondition operations that take clauses off", () => {
     expect(params(router.state.location.search).get("q")).toBe("A")
   })
 
-  it("takes a field off after a replacement of the field without bringing a clause back", async () => {
+  it("removes a field after a replacement of the field, and does not restore a clause of the field", async () => {
     const router = mount("/entries?q=A AND date_published:old")
     await flush()
     let replaced: Promise<unknown> = Promise.resolve()
@@ -261,7 +262,7 @@ describe("useCondition operations that take clauses off", () => {
 })
 
 describe("useCondition when the condition changes while an operation waits", () => {
-  it("does not bring back a condition that Clear all cleared", async () => {
+  it("does not restore a condition that Clear all cleared", async () => {
     const router = mount("/entries?q=A")
     await flush()
     let toggled: Promise<unknown> = Promise.resolve()
@@ -274,7 +275,7 @@ describe("useCondition when the condition changes while an operation waits", () 
     expect(params(router.state.location.search).get("q")).toBeNull()
   })
 
-  it("does not bring back a keyword change over a condition that was applied as text", async () => {
+  it("does not restore a keyword change over a condition that was applied as text", async () => {
     const router = mount("/entries?q=A")
     await flush()
     let typed: Promise<unknown> = Promise.resolve()

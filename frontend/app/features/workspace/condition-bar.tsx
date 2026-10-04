@@ -29,7 +29,7 @@ type RailProps = {
 
 /**
  * The left column of one row of the condition. The first row holds the badge; a line runs from it down to the last row
- * and turns into each row at the height of the row's first line (`top-3.5`, the middle of `h-7`).
+ * and branches to each row at the height of the row's first line (`top-3.5`, the middle of `h-7`).
  */
 const Rail = ({ index, count }: RailProps) => {
   const first = index === 0
@@ -125,12 +125,15 @@ const Tree = ({ groups, condition, termFields }: TreeProps) => (
 )
 
 type Total = {
-  /** Undefined while the count is on its way, and null when it cannot be had. */
+  /** Undefined while the count loads, and null when the count is unavailable. */
   count: number | null | undefined
   unit: string
 }
 
-/** The counts of the condition in each unit. A count on its way is a skeleton beside its unit, so the line keeps its place. */
+/**
+ * The counts of the condition in each unit. A count that has not loaded is a skeleton beside its unit, so the line
+ * keeps its place.
+ */
 const Totals = ({ totals }: { totals: Total[] }) => (
   <p aria-live="polite" aria-busy={totals.some((total) => total.count === undefined) || undefined} className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
     {totals.map(({ count, unit }) => (
@@ -144,11 +147,15 @@ const Totals = ({ totals }: { totals: Total[] }) => (
 
 /**
  * The number of rows that the tree of a condition string will take: one per field that the string names. Values in
- * quotes are left out, since a term ID such as `"EFO:0004038"` looks like a field. Used for the skeleton rows while the
- * condition is parsed, so that the bar has its height before the tree arrives.
+ * quotes (double or single, with a backslash escaping a character) are omitted, since a term ID such as
+ * `"EFO:0004038"` looks like a field. As in the condition grammar, a single quote starts a phrase only where a word
+ * cannot continue: at the start, or after white space or a character that a word cannot have. A single quote inside a
+ * word, as in `Alzheimer's`, is part of the word. A single-quoted phrase closes only at a quote that white space, `)`,
+ * or the end follows, so `'Alzheimer's disease'` is one phrase, and a quote that no such quote follows starts a word.
+ * Used for the skeleton rows while the condition is parsed, so that the bar has its height before the tree arrives.
  */
 export const estimatedRows = (q: string): number => {
-  const unquoted = q.replace(/"[^"]*"/g, '""')
+  const unquoted = q.replace(/"(?:[^"\\]|\\.)*"|(?<![^\s:()[\]"{}^~*?/])'(?:[^'\\]|\\.|'(?=[^\s)]))*'(?![^\s)])/g, '""')
   const fields = [...unquoted.matchAll(/(?:^|[\s(])([A-Za-z_]\w*):/g)].map((match) => match[1])
   return Math.max(1, new Set(fields).size)
 }
@@ -176,7 +183,8 @@ export const ConditionBar = ({ q, condition, onShare, onApi, exportMenu }: Condi
   // The counts are not asked for while the condition cannot be read.
   const readable = !condition.parseError
   const biosamples = useEntries({ q, page: 1, perPage: 1 }, readable)
-  // Experiments are not entries; the total of any distribution counted in experiments is the count of the condition.
+  // Only BioSamples are entries. The total of a distribution in SRA Experiments without self-exclusion is the number of
+  // SRA Experiments under the condition. The request sets `limit` to 1, because only the total is used.
   const experiments = useDistribution({ field: "library_strategy", q, unit: "sra-experiment", selfExclusion: false, limit: 1 }, readable)
   const projects = useProjects({ q, selfExclusion: false, sort: "biosampleCount:desc", page: 1, perPage: 1 }, readable)
   const groups = conditionGroups(condition.ast, condition.selected, condition.keywordText)

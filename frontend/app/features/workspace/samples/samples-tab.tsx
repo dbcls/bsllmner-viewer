@@ -27,10 +27,13 @@ const hasValue = (value: AnnotationValue): boolean => hasStatusValue(value.statu
 /** The statuses that the cells mark, and so the legend names. */
 const CELL_STATUSES = VALUE_STATUSES.map((code) => ({ code, ...statusInfo(code) }))
 
-/** One width for every annotation column, so that the columns line up; a longer value ends in an ellipsis. */
+/** One width for every annotation column, so that the columns align; a longer value ends in an ellipsis. */
 const ANNOTATION_WIDTH = "w-36 min-w-36 max-w-36"
 
-/** The width of the first column, which stays put when the table scrolls sideways. It holds the longest accession. */
+/**
+ * The width of the first column, which does not move when the table scrolls sideways. The column fits the longest
+ * accession.
+ */
 const FROZEN_WIDTH = "w-36 min-w-36 max-w-36"
 
 type SamplesTabProps = {
@@ -52,8 +55,9 @@ export const SamplesTab = ({ state, onPage, onPastEnd, onPerPage, search }: Samp
   const failed = queryFailed(entries)
   usePastEnd(entries, state.page, state.perPage, state.q, onPastEnd)
   const table = useTableTop(onPage)
-  // A row opens its BioSample as its link does: a click with Cmd or Ctrl, or with the middle button, opens a new tab, which
-  // has no list to return to; a plain click opens it here, with the list to return to.
+  // A click on a row opens the BioSample in the same way as the link in the row. With Cmd, Ctrl, or the middle button, the
+  // BioSample opens in a new tab. The new tab has no history state, so its back link goes to the whole dataset. A plain
+  // click opens the BioSample in the same tab with the state for the back link.
   const openRow = (event: MouseEvent, accession: string) => {
     // A link or a button in the row does its own work.
     if (event.target instanceof Element && event.target.closest("a, button")) return

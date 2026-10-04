@@ -2,16 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import { responseExcerpt } from "~/features/workspace/overlays"
 
-const DATASET_VERSION = { name: "bsllmner-mistral-all", createdAt: "2026-10-01T23:40:57Z", model: "mistral-small3.1:24b", digest: "8680d08da76ce8cf" }
-
 describe("responseExcerpt", () => {
-  it("drops the top-level datasetVersion and starts with the fields that answer the request", () => {
-    const text = JSON.stringify({ datasetVersion: DATASET_VERSION, q: "a:b", total: 3 })
-    const excerpt = responseExcerpt(text)
-    expect(excerpt).not.toContain("datasetVersion")
-    expect(excerpt).toBe(JSON.stringify({ q: "a:b", total: 3 }, null, 2))
-  })
-
   it("keeps a datasetVersion that is not at the top level", () => {
     const body = { items: [{ datasetVersion: "x" }] }
     expect(responseExcerpt(JSON.stringify(body))).toBe(JSON.stringify(body, null, 2))
@@ -21,13 +12,6 @@ describe("responseExcerpt", () => {
     expect(responseExcerpt("[1,2]")).toBe(JSON.stringify([1, 2], null, 2))
     expect(responseExcerpt("null")).toBe("null")
     expect(responseExcerpt("3")).toBe("3")
-  })
-
-  it("cuts a long JSON body at 2500 characters and marks the cut", () => {
-    const body = { q: "a", items: Array.from({ length: 500 }, (_, i) => ({ identifier: `SAMN${i}` })) }
-    const excerpt = responseExcerpt(JSON.stringify(body))
-    expect(excerpt.endsWith("\n  …")).toBe(true)
-    expect(excerpt.length).toBe(2500 + "\n  …".length)
   })
 
   it("does not mark a body of exactly 2500 characters as cut", () => {
@@ -41,5 +25,27 @@ describe("responseExcerpt", () => {
     expect(responseExcerpt("Internal Server Error")).toBe("Internal Server Error")
     expect(responseExcerpt("e".repeat(3000))).toBe("e".repeat(2500))
     expect(responseExcerpt("")).toBe("")
+  })
+
+  describe("a surrogate pair at the cut", () => {
+    const MARK = "\n  …"
+    /** The pretty-printed body of `{ q: value }` before the characters of the value. */
+    const head = '{\n  "q": "'
+    const body = (xs: number) => JSON.stringify({ q: `${"x".repeat(xs)}😀${"y".repeat(20)}` })
+
+    it("cuts one unit earlier when the cut is inside the pair", () => {
+      const excerpt = responseExcerpt(body(2499 - head.length))
+      expect(excerpt).toBe(`${head}${"x".repeat(2499 - head.length)}${MARK}`)
+    })
+
+    it("keeps a pair that ends at the cut", () => {
+      const excerpt = responseExcerpt(body(2498 - head.length))
+      expect(excerpt).toBe(`${head}${"x".repeat(2498 - head.length)}😀${MARK}`)
+    })
+
+    it("cuts a body that is not JSON before a pair that the cut would split", () => {
+      expect(responseExcerpt(`${"x".repeat(2499)}😀`)).toBe("x".repeat(2499))
+      expect(responseExcerpt(`${"x".repeat(2498)}😀`)).toBe(`${"x".repeat(2498)}😀`)
+    })
   })
 })

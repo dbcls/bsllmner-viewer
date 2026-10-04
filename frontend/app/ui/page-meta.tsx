@@ -13,7 +13,7 @@ const absolute = (path: string): string => new URL(path, globalThis.location.ori
 
 /**
  * The title and the meta elements of the page that draws it. React puts them in the head of the document, and removes
- * them when the page goes away.
+ * them when the page disappears.
  */
 export const PageMeta = ({ title, description, canonicalPath, noindex = false }: PageMetaProps) => (
   <>
