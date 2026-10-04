@@ -2,9 +2,15 @@ import type { ReactNode } from "react"
 
 import { Footer, FooterFallback } from "./footer"
 import { Header } from "./header"
+import { SHELL_FRAME_ID } from "./page-change"
 
+/** The frame of every page. It takes the focus when another page opens (`PageChange`), without a ring around the page. */
 const ShellFrame = ({ footer, children }: { footer: ReactNode; children?: ReactNode }) => (
-  <div className="flex min-h-screen min-w-content-max flex-col bg-surface-subtle text-fs-body leading-normal text-ink">
+  <div
+    id={SHELL_FRAME_ID}
+    tabIndex={-1}
+    className="flex min-h-screen min-w-content-max flex-col bg-surface-subtle text-fs-body leading-normal text-ink outline-none focus-visible:rounded-none focus-visible:shadow-none"
+  >
     <a
       href="#main"
       className="sr-only rounded-button border border-border-soft bg-surface px-3 py-1.5 text-fs-body-sm font-semibold text-ink focus:not-sr-only focus:absolute focus:top-2 focus:left-2 focus:z-tooltip"

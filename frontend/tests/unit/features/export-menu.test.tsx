@@ -8,14 +8,14 @@ import { exportAccessionsUrl, exportEntriesUrl } from "~/lib/api/client"
 describe("ExportMenu", () => {
   it("lists the entry exports and the accession lists, in order, as downloads of the condition", async () => {
     const user = userEvent.setup()
-    render(<ExportMenu q="disease:x" totalEntries={1234} />)
+    render(<ExportMenu q="disease:x" totalEntries={4100500} />)
     const button = screen.getByRole("button", { name: "Export" })
     expect(button).toHaveAttribute("aria-haspopup", "menu")
     await user.click(button)
     const items = screen.getAllByRole("menuitem")
     expect(items.map((item) => item.textContent)).toEqual([
-      "TSV1,234 rows",
-      "NDJSON",
+      "TSV~1.2 GB",
+      "NDJSON~4.1 GB",
       "BioSampleSAMN…",
       "SRA ExperimentSRX…",
       "SRA RunSRR…",
@@ -30,14 +30,21 @@ describe("ExportMenu", () => {
       exportAccessionsUrl("bioproject", "disease:x"),
     ])
     for (const item of items) expect(item).toHaveAttribute("download")
-    expect(screen.getByRole("group", { name: "Entries (all annotation fields)" })).toBeInTheDocument()
-    expect(screen.getByRole("group", { name: "Accession lists (one per line)" })).toBeInTheDocument()
+    expect(screen.getByRole("group", { name: "Matching entries (all annotation fields)" })).toBeInTheDocument()
+    expect(screen.getByRole("group", { name: "Matching accessions (one per line)" })).toBeInTheDocument()
   })
 
-  it("shows no row count until the total is known", async () => {
+  it("shows no size until the number of entries is known", async () => {
     const user = userEvent.setup()
     render(<ExportMenu q={null} totalEntries={undefined} />)
     await user.click(screen.getByRole("button", { name: "Export" }))
-    expect(screen.getAllByRole("menuitem")[0]).toHaveTextContent(/^TSV$/)
+    expect(screen.getAllByRole("menuitem").slice(0, 2).map((item) => item.textContent)).toEqual(["TSV", "NDJSON"])
+  })
+
+  it("shows the size of an export of no entry as under 1 KB, without the mark of an estimate, as the file still has its header", async () => {
+    const user = userEvent.setup()
+    render(<ExportMenu q="disease:x" totalEntries={0} />)
+    await user.click(screen.getByRole("button", { name: "Export" }))
+    expect(screen.getAllByRole("menuitem").slice(0, 2).map((item) => item.textContent)).toEqual(["TSV<1 KB", "NDJSON<1 KB"])
   })
 })

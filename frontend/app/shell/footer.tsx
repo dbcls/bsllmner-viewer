@@ -2,11 +2,11 @@ import type { ReactNode } from "react"
 
 import { queryFailed, useDataset } from "~/lib/api/queries"
 import { buildCommit } from "~/lib/build-info"
+import { ANNOTATION_CRATE, DBCLS } from "~/lib/crate"
 import { formatCount } from "~/lib/format"
 import { assayList } from "~/lib/labels"
 import { cn, ExternalLink, Skeleton } from "~/ui"
 
-const CRATE_URL = "https://biosampleplus.s3.ap-northeast-1.amazonaws.com/index.html"
 const SUPERCOMPUTER_URL = "https://sc.ddbj.nig.ac.jp/en/"
 const REPOSITORY_URL = "https://github.com/dbcls/bsllmner-viewer"
 
@@ -18,7 +18,7 @@ const REPOSITORY_URL = "https://github.com/dbcls/bsllmner-viewer"
 const ORGANIZATIONS = [
   { name: "BioData Science Initiative (BSI)", url: "https://bsi.rois.ac.jp/", logo: "/logos/bsi.svg", height: "h-6" },
   { name: "DNA Data Bank of Japan (DDBJ)", url: "https://www.ddbj.nig.ac.jp/index-e.html", logo: "/logos/ddbj.svg", height: "h-6.25" },
-  { name: "Database Division for Life Science (DBCLS)", url: "https://dbcls.rois.ac.jp/index-en.html", logo: "/logos/dbcls.svg", height: "h-7.5" },
+  { ...DBCLS, logo: "/logos/dbcls.svg", height: "h-7.5" },
   { name: "Chiba University", url: "https://www.chiba-u.ac.jp/e/", logo: "/logos/chiba-u.svg", height: "h-5" },
 ]
 
@@ -42,7 +42,7 @@ const FooterFrame = ({ dataset }: { dataset: ReactNode }) => {
         <p className="flex flex-wrap gap-x-4">{dataset}</p>
         <p className="flex flex-wrap gap-x-4">
           <span>
-            RO-Crate: <ExternalLink href={CRATE_URL}>BioSample Plus</ExternalLink> (CC BY 4.0)
+            RO-Crate: <ExternalLink href={ANNOTATION_CRATE.url}>{ANNOTATION_CRATE.name}</ExternalLink> ({ANNOTATION_CRATE.license.name})
           </span>
           <span>
             Computed on the <ExternalLink href={SUPERCOMPUTER_URL}>NIG supercomputer</ExternalLink>

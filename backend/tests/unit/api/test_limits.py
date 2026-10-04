@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import gc
+import os
 import shutil
 import threading
 import time
@@ -160,8 +161,28 @@ class TestStoreConfiguration:
     def test_an_unwritable_temporary_directory_stops_the_start(self, copy_of_store: Path, tmp_path: Path) -> None:
         blocker = tmp_path / "file"
         blocker.write_text("x")
-        with pytest.raises(OSError):  # noqa: PT011
+        with pytest.raises(RuntimeError, match="cannot create the temporary directory"):
             Store(copy_of_store, Limits(temp_directory=blocker / "temp"))
+
+    def test_a_temporary_directory_of_another_owner_stops_the_start_with_the_owner_and_the_uid_of_the_api(
+        self, copy_of_store: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # The tests run as root, which can write to any directory, so the file system refuses the directory here.
+        base = tmp_path / "temp"
+        base.mkdir()
+
+        def refuse(self: Path, *args: Any, **kwargs: Any) -> None:
+            raise PermissionError(13, "Permission denied", str(self))
+
+        monkeypatch.setattr(Path, "mkdir", refuse)
+        with pytest.raises(RuntimeError) as raised:
+            Store(copy_of_store, Limits(temp_directory=base))
+        message = str(raised.value)
+        assert "\n" not in message
+        assert str(base / "worker-") in message
+        assert f"{base} belongs to uid {base.stat().st_uid}" in message
+        assert "drwx" in message
+        assert f"runs as uid {os.getuid()}" in message
 
     def test_the_api_reads_every_kind_of_request_under_the_configuration(self, configured: Store) -> None:
         with TestClient(create_app(configured.path)) as client:

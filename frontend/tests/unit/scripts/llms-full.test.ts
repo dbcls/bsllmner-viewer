@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
@@ -6,12 +6,17 @@ import { fileURLToPath } from "node:url"
 import fc from "fast-check"
 import { afterEach, describe, expect, it } from "vitest"
 
+import { apiRequestsFor } from "~/features/workspace/view-requests"
+import { DEFAULTS, type Tab, TABS, type WorkspaceState, writeState } from "~/lib/workspace-state"
+
 import { buildLlmsFull, GITHUB_DOCS_URL, githubDocsUrl, headingAnchors, rewriteLinks } from "../../../scripts/llms-full.ts"
 
 const ROOT = "https://github.com/dbcls/bsllmner-viewer/blob/main/"
 
 // docs/ of the repository, or /docs in the container where /app is frontend/.
 const REAL_DOCS = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../../docs")
+
+const LLMS_TXT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../public/llms.txt")
 
 const made: string[] = []
 
@@ -178,5 +183,97 @@ describe("buildLlmsFull", () => {
     const anchors = new Set(headingAnchors(out))
     expect(anchors.has("nonexistent")).toBe(false)
     expect(out).toContain("[x](#nonexistent)")
+  })
+})
+
+describe("llms.txt", () => {
+  const llms = readFileSync(LLMS_TXT, "utf8")
+
+  /** Annotation fields of a dataset, enough for every default axis of the UI. */
+  const FIELDS = ["cell_line", "tissue", "disease"]
+
+  /** The recipe whose name starts the line. */
+  const recipe = (name: string): string => llms.split("\n").find((line) => line.startsWith(`- ${name}:`)) ?? ""
+
+  /** The pairs that a recipe writes as "`a` is `b`". */
+  const pairs = (line: string): [string, string][] => [...line.matchAll(/`([^`]+)` is `([^`]+)`/g)].map((m) => [m[1] ?? "", m[2] ?? ""])
+
+  const isTab = (value: string): value is Tab => (TABS as readonly string[]).includes(value)
+
+  /** The path and the query parameters of the first api request that the UI makes for a view. */
+  const requestOf = (state: WorkspaceState): { path: string; params: URLSearchParams } => {
+    const [path = "", search = ""] = (apiRequestsFor(state, FIELDS)[0] ?? "").split("?")
+    return { path, params: new URLSearchParams(search) }
+  }
+
+  it.skipIf(!existsSync(path.join(REAL_DOCS, "api.md")))("names only headings that llms-full.txt has, with the same text", () => {
+    const headings = new Set([...buildLlmsFull(REAL_DOCS).matchAll(/^#{1,6}\s+(.+?)\s*$/gm)].map((m) => m[1]))
+    const named = [...llms.matchAll(/See "([^"]+)"/g)].map((m) => m[1] ?? "")
+    expect(named.length).toBeGreaterThan(5)
+    for (const heading of named) expect(headings.has(heading), heading).toBe(true)
+  })
+
+  it("maps every tab of a workspace URL to the operation that the UI calls for it, and names the tab of a URL without one", () => {
+    const line = recipe("Get the same numbers as the UI")
+    const operations = pairs(line).filter(([, operation]) => operation.startsWith("GET "))
+    expect(operations.map(([tab]) => tab).toSorted()).toEqual([...TABS].toSorted())
+    for (const [tab, operation] of operations) {
+      if (!isTab(tab)) throw new Error(`not a tab: ${tab}`)
+      expect(`GET ${requestOf({ ...DEFAULTS, tab }).path}`, tab).toBe(operation)
+    }
+    expect(line).toContain(`A URL without \`tab\` shows \`${DEFAULTS.tab}\`.`)
+  })
+
+  it("names defaults that a URL leaves out and that the UI sends to the API for the named tabs", () => {
+    const line = recipe("Read the other parameters of a URL of the UI")
+    const renamed = new Map(pairs(line))
+    const groups = (/so send them: (.+?)\. /.exec(line)?.[1] ?? "").split(/, (?:and )?/)
+    expect(groups.length).toBeGreaterThanOrEqual(3)
+    for (const group of groups) {
+      const [, values = "", tabs = ""] = /^(.*) for (.*)$/.exec(group) ?? []
+      const defaults = [...values.matchAll(/`([A-Za-z_]+)=([^`]+)`/g)].map((m) => [m[1] ?? "", m[2] ?? ""] as const)
+      const named = [...tabs.matchAll(/`([a-z]+)`/g)].map((m) => m[1] ?? "")
+      expect(defaults.length * named.length, group).toBeGreaterThan(0)
+      for (const tab of named) {
+        if (!isTab(tab)) throw new Error(`not a tab: ${tab}`)
+        for (const [name, value] of defaults) {
+          expect(writeState({ ...DEFAULTS, tab }).has(name), `${tab}: ${name}`).toBe(false)
+          expect(requestOf({ ...DEFAULTS, tab }).params.get(renamed.get(name) ?? name), `${tab}: ${name}`).toBe(value)
+        }
+      }
+    }
+  })
+
+  it("gives the API name of each URL parameter that has another name, and URL parameters that keep their names", () => {
+    const line = recipe("Read the other parameters of a URL of the UI")
+    const state: WorkspaceState = {
+      ...DEFAULTS,
+      unit: "bioproject",
+      page: 2,
+      perPage: 50,
+      sort: "experimentCount:asc",
+      row: "tissue",
+      col: "disease",
+      rowTerms: ["UBERON:0000955"],
+      colTerms: ["MONDO:0007254"],
+      trendField: "tissue",
+      trendTerms: ["UBERON:0002107"],
+      trendFrom: 2015,
+      trendTo: 2020,
+    }
+    const url = writeState(state)
+    const sent = (name: string): string[] => TABS.flatMap((tab) => requestOf({ ...state, tab }).params.getAll(name))
+    const renamed = pairs(line)
+    expect(renamed.length).toBeGreaterThan(3)
+    for (const [urlName, apiName] of renamed) {
+      expect(url.get(urlName), urlName).not.toBeNull()
+      expect(sent(apiName), `${urlName} is ${apiName}`).toContain(url.get(urlName))
+    }
+    const kept = [...(/such as (.+?), have the same names/.exec(line)?.[1] ?? "").matchAll(/`([A-Za-z_]+)`/g)].map((m) => m[1] ?? "")
+    expect(kept.length).toBeGreaterThan(3)
+    for (const name of kept) {
+      expect(url.get(name), name).not.toBeNull()
+      expect(sent(name), name).toContain(url.get(name))
+    }
   })
 })

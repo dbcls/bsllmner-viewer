@@ -5,7 +5,8 @@ import { isInvalidCondition } from "~/lib/api/client"
 import { useDataset, useEntries } from "~/lib/api/queries"
 import type { TermHit } from "~/lib/api/types"
 import { copyText } from "~/lib/export"
-import { Alert, Card } from "~/ui"
+import { ENTRIES_SECTION, pageTitle, SITE_DESCRIPTION } from "~/lib/site"
+import { Alert, Card, PageMeta } from "~/ui"
 
 import { ConditionBar } from "./condition-bar"
 import { ConditionPanel } from "./condition-panel"
@@ -69,12 +70,15 @@ export const WorkspacePage = () => {
 
   return (
     <>
+      {/* robots.txt keeps crawlers away from the workspace with parameters, so only the workspace without them names its canonical address. */}
+      <PageMeta title={pageTitle(ENTRIES_SECTION)} description={SITE_DESCRIPTION} canonicalPath={location.search === "" ? "/entries" : undefined} />
       <ConditionBar
         q={state.q}
         condition={condition}
         onShare={share}
         onApi={() => setApiOpen(true)}
-        exportMenu={<ExportMenu q={state.q} totalEntries={entries.data?.pagination.total} />}
+        // The count of the condition before stays while the count of a new condition is on its way, and is not the size of its export.
+        exportMenu={<ExportMenu q={state.q} totalEntries={entries.isPlaceholderData ? undefined : entries.data?.pagination.total} />}
       />
       <div className="flex min-h-0 flex-1 items-stretch">
         <ConditionPanel q={state.q} condition={condition} onAddTerm={() => setPickerOpen(true)} />

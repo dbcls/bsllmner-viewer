@@ -2,11 +2,11 @@ import { readFile } from "node:fs/promises"
 
 import { expect, test } from "@playwright/test"
 
-import { countOf, distribution, entries, select, smallProjects } from "./_api"
-import { expectCounted, fieldLabel, formatCount, workspaceUrl } from "./_helpers"
+import { distribution, entries, select, smallProjects } from "./_api"
+import { expectCounted, fieldLabel, workspaceUrl } from "./_helpers"
 
 test.describe("outputs of the condition", () => {
-  test("the export menu links carry the condition and the entry count", async ({ page, request }) => {
+  test("the export menu links carry the condition, and the entry exports show their likely size", async ({ page, request }) => {
     const [term] = (await distribution(request, "disease")).elements
     if (!term) throw new Error("the dataset has no disease")
     const q = await select(request, null, term.clauses)
@@ -30,7 +30,12 @@ test.describe("outputs of the condition", () => {
       expect(url.searchParams.get("q")).toBe(q)
       expect(url.searchParams.get("format")).toBe(format)
     }
-    await expect(menu.getByRole("menuitem", { name: /^TSV/ })).toContainText(`${formatCount(await countOf(request, q))} rows`)
+    // The size is an estimate from the number of entries. The menu shows no row count.
+    for (const name of [/^TSV/, /^NDJSON/]) {
+      const item = menu.getByRole("menuitem", { name })
+      await expect(item).toContainText(/(~[\d.,]+ [KMGT]B|<1 KB)$/)
+      await expect(item).not.toContainText("rows")
+    }
     await page.keyboard.press("Escape")
     await expect(menu).toBeHidden()
   })

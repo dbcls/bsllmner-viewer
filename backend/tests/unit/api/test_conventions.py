@@ -288,6 +288,21 @@ class TestPaths:
         assert body["type"] == "about:blank"
         assert "SAMN_NONE" in body["detail"]
 
+    @pytest.mark.parametrize("path", ["/api/nope", "/api/dataset/", "/api/entries", "/openapi.json", "/docs"])
+    def test_a_path_without_an_operation_points_to_the_openapi_document(self, client: TestClient, path: str) -> None:
+        response = client.get(path)
+        assert response.status_code == 404
+        assert response.json()["type"] == "about:blank"
+        assert "GET /api/openapi.json" in response.json()["detail"]
+
+    @pytest.mark.parametrize("path", ["/api/entries/biosample/SAMN_NONE", "/api/terms/NOPE:1", "/api/entries/sample"])
+    def test_a_missing_entry_term_or_entry_type_does_not_point_to_the_openapi_document(
+        self, client: TestClient, path: str
+    ) -> None:
+        response = client.get(path)
+        assert response.status_code == 404
+        assert "openapi" not in response.json()["detail"]
+
     def test_method_not_allowed_is_a_problem(self, client: TestClient) -> None:
         response = client.post("/api/entries/biosample")
         assert response.status_code == 405
@@ -662,6 +677,10 @@ class TestOpenApi:
         assert "swagger" in client.get("/api").text.lower()
         assert client.get("/api/redoc").status_code == 200
         assert client.get("/api/docs").status_code == 404
+
+    def test_the_documentation_pages_have_no_oauth2_redirect_page(self, client: TestClient) -> None:
+        assert client.get("/docs/oauth2-redirect").status_code == 404
+        assert "oauth2" not in client.get("/api").text.lower()
 
 
 class TestExport:

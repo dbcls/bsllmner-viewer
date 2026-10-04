@@ -8,8 +8,10 @@ import { assayDotClass } from "~/lib/assays"
 import { backHref } from "~/lib/back-link"
 import { chipAtlasHref, ddbjSearchHref, ncbiHref, taxonomyHref } from "~/lib/external-links"
 import { fieldLabel, hasStatusValue, statusInfo, VALUE_STATUSES } from "~/lib/labels"
-import { Card, cn, ErrorNotice,ExternalLink, HelpHint, PageHeading, Pager, SectionHeading, Skeleton, StatusMeanings, StatusPill, Tag } from "~/ui"
+import { crawlRel, ENTRIES_SECTION, pageTitle } from "~/lib/site"
+import { Card, cn, ErrorNotice,ExternalLink, HelpHint, PageHeading, PageMeta, Pager, SectionHeading, Skeleton, StatusMeanings, StatusPill, Tag } from "~/ui"
 
+import { entryDescription } from "./entry-description"
 import { segmentText, type Span } from "./evidence"
 import { TermPopover } from "./term-popover"
 
@@ -29,9 +31,15 @@ export const SamplePage = ({ accession }: SamplePageProps) => {
   const dataset = useDataset()
   const targetAssays = dataset.data?.targetAssays ?? []
   const [highlighted, setHighlighted] = useState<string | null>(null)
+  const title = pageTitle(accession, ENTRIES_SECTION)
 
   if (!entry.data && !entry.isError) {
-    return <SampleSkeleton accession={accession} back={back} annotationRows={dataset.data?.fields.length ?? SKELETON_ANNOTATIONS} />
+    return (
+      <>
+        <PageMeta title={title} />
+        <SampleSkeleton accession={accession} back={back} annotationRows={dataset.data?.fields.length ?? SKELETON_ANNOTATIONS} />
+      </>
+    )
   }
 
   if (!entry.data) {
@@ -39,6 +47,7 @@ export const SamplePage = ({ accession }: SamplePageProps) => {
     const notFound = isClientError(entry.error) && entry.error.problem.status !== 429
     return (
       <PageFrame>
+        <PageMeta title={title} noindex />
         <BackLink href={back} />
         <div className="mt-3">
           <Card padding="lg">
@@ -58,6 +67,7 @@ export const SamplePage = ({ accession }: SamplePageProps) => {
 
   return (
     <PageFrame>
+      <PageMeta title={title} description={entryDescription(data)} canonicalPath={`/entries/${encodeURIComponent(data.identifier)}`} />
       <BackLink href={back} />
       <div className="mt-3 mb-4">
         <Card padding="lg">
@@ -276,7 +286,7 @@ const SkeletonTableCard = ({ title, columns, widths, rows }: SkeletonTableCardPr
 )
 
 const BackLink = ({ href }: { href: string }) => (
-  <Link to={href} className="text-fs-body-sm text-brand no-underline hover:text-brand-deep">
+  <Link to={href} rel={crawlRel(href)} className="text-fs-body-sm text-brand no-underline hover:text-brand-deep">
     ← Back to Samples
   </Link>
 )

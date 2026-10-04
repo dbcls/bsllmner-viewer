@@ -3,6 +3,7 @@ import { Link } from "react-router"
 
 import type { Clause } from "~/lib/api/types"
 import { useConditionHref } from "~/lib/condition-href"
+import { crawlRel } from "~/lib/site"
 import { cn } from "~/ui"
 
 type ConditionLinkProps = {
@@ -21,7 +22,7 @@ type ConditionLinkProps = {
 export const ConditionLink = ({ clauses, enabled = true, className, children }: ConditionLinkProps) => {
   const { href, failed } = useConditionHref(clauses, enabled)
   return href ? (
-    <Link to={href} className={className}>
+    <Link to={href} rel={crawlRel(href)} className={className}>
       {children}
     </Link>
   ) : (

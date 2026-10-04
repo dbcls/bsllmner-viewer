@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Iterator
 from pathlib import Path
 
+import duckdb
 import pytest
+from fastapi.responses import StreamingResponse
 from fastapi.testclient import TestClient
 from hypothesis import assume, given
 from hypothesis import strategies as st
@@ -77,6 +80,72 @@ class TestUnhandledErrorHeaders:
         failed = isolated_client.get("/api/boom")
         assert failed.status_code == 500
         assert "access-control-allow-origin" not in failed.headers
+
+
+class TestErrorLogs:
+    """The log line of an error names the method, the path, and the request ID that the response reports."""
+
+    def test_an_unhandled_exception_is_logged_with_its_traceback_and_the_request_id_of_the_response(
+        self, isolated_client: TestClient, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        def boom() -> None:
+            raise RuntimeError("internal detail")
+
+        isolated_client.app.add_api_route("/api/boom", boom)  # type: ignore[attr-defined]
+        with caplog.at_level(logging.WARNING, logger="bsllmner_viewer"):
+            failed = isolated_client.get("/api/boom")
+        assert failed.status_code == 500
+        [record] = [r for r in caplog.records if r.name.startswith("bsllmner_viewer")]
+        assert record.levelno == logging.ERROR
+        assert record.exc_info is not None
+        message = record.getMessage()
+        assert "GET /api/boom" in message
+        assert failed.json()["requestId"] in message
+        assert "internal detail" in message
+
+    def test_a_response_that_fails_after_it_started_is_logged_with_the_request_id(
+        self, isolated_client: TestClient, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        def rows() -> Iterator[bytes]:
+            yield b"first row\n"
+            raise duckdb.InterruptException("stopped after the first row")
+
+        def late() -> StreamingResponse:
+            return StreamingResponse(rows(), media_type="text/plain")
+
+        isolated_client.app.add_api_route("/api/late", late)  # type: ignore[attr-defined]
+        with caplog.at_level(logging.WARNING, logger="bsllmner_viewer"):
+            isolated_client.get("/api/late", headers={"X-Request-ID": "req-late"})
+        [record] = [r for r in caplog.records if r.name.startswith("bsllmner_viewer")]
+        assert record.levelno == logging.WARNING
+        message = record.getMessage()
+        assert "GET /api/late" in message
+        assert "req-late" in message
+        assert "stopped after the first row" in message
+
+    @pytest.mark.parametrize(
+        ("error", "slug"),
+        [(duckdb.InterruptException, "query-timeout"), (duckdb.OutOfMemoryException, "query-too-large")],
+    )
+    def test_a_query_stopped_by_a_limit_is_logged_as_a_warning_with_the_request_id(
+        self,
+        isolated_client: TestClient,
+        caplog: pytest.LogCaptureFixture,
+        error: type[duckdb.Error],
+        slug: str,
+    ) -> None:
+        def stopped() -> None:
+            raise error("stopped")
+
+        isolated_client.app.add_api_route("/api/stopped", stopped)  # type: ignore[attr-defined]
+        with caplog.at_level(logging.WARNING, logger="bsllmner_viewer"):
+            response = isolated_client.get("/api/stopped", headers={"X-Request-ID": "req-limit"})
+        assert response.status_code == 503
+        assert response.json()["type"] == PROBLEM_PREFIX + slug
+        [record] = [r for r in caplog.records if r.name.startswith("bsllmner_viewer")]
+        assert record.levelno == logging.WARNING
+        assert "GET /api/stopped" in record.getMessage()
+        assert "req-limit" in record.getMessage()
 
 
 _LINE_BREAKS = ["\n", "\r", "\r\n", "\x0b", "\x0c", "\x1c", "\x1d", "\x1e", "\x85", "\u2028", "\u2029"]

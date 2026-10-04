@@ -3,6 +3,7 @@
 *.duckdb
 *.duckdb.wal
 data/
+/log/
 backend/.venv/
 backend/.mypy_cache/
 backend/.pytest_cache/

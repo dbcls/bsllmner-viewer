@@ -6,9 +6,11 @@ The api is a public API without authentication. The frontend and other clients u
 
 - Swagger UI: `/api`
 - ReDoc: `/api/redoc`
-- OpenAPI document: `/api/openapi.json`
+- OpenAPI document: `/api/openapi.json`. FastAPI serves its OpenAPI document at `/openapi.json` by default, so the web server in front of the api redirects `/openapi.json` to `/api/openapi.json` ([operations.md](operations.md#crawlers)).
 - `/llms.txt`: a short entry for programs such as LLM agents, with condition examples and recipes for common tasks
 - `/llms-full.txt`: this document and [data-model.md](data-model.md) in one file. The build of the web image generates it, so it is always the version of the deployed api.
+
+The head of every HTML page of the UI links the OpenAPI document (`rel="service-desc"`), the Swagger UI (`rel="service-doc"`), and `/llms.txt` (`rel="alternate"` with `type="text/markdown"`). A program that reads a page therefore finds the API without running the scripts of the page.
 
 ## Conventions
 
@@ -37,10 +39,10 @@ A client can predict the status from the OpenAPI document. The OpenAPI document 
 |---|---|
 | 422 | The request does not match the OpenAPI document of the operation. Examples: a query parameter that the operation does not declare, a missing parameter, a value of the wrong type, out of range, outside an enumeration, or longer than the limit, a body that is not JSON, an unknown or a missing key in a body, and an empty `clauses`. |
 | 400 | The request matches the OpenAPI document, but it breaks a rule of the condition DSL or of the dataset. The slug of `type` names the rule. |
-| 404 | The path does not exist, or the entry type, the accession, or the term does not exist. |
+| 404 | The path does not exist, or the entry type, the accession, or the term does not exist. For a path under `/api` without an operation, `detail` points to the OpenAPI document. |
 | 405 | The method is not allowed for the path. The `Allow` header lists the allowed methods. |
 | 413 | The body is too large. The web server in front of the api returns this status ([operations.md](operations.md#limits-of-the-web-server)). |
-| 429 | One client has too many requests in progress. The web server in front of the api returns this status, with a `Retry-After` header ([operations.md](operations.md#limits-of-the-web-server)). |
+| 429 | One client address has too many requests in progress, or too many exports in progress. The web server in front of the api returns this status, with a `Retry-After` header ([operations.md](operations.md#limits-of-the-web-server)). |
 | 500 | The api failed unexpectedly. `detail` does not give the cause. |
 | 503 | The api is at its limits (see [Limits](#limits)). The slug of `type` names the limit. |
 

@@ -385,7 +385,14 @@ class Evidence(ApiModel):
     end: int = Field(
         description="Unicode code point offset after the last code point of the match in that name or value as stored"
     )
-    strategy: EvidenceStrategy = Field(description="The matching strategy that found the evidence")
+    strategy: EvidenceStrategy = Field(
+        description=(
+            "The matching strategy that found the evidence. Each strategy accepts more variation than the strategy "
+            "before it: `exact` (none), `case_insensitive` (letter case and Unicode compatibility forms), `normalized` "
+            "(separators, brackets, and genotype affixes such as `KO`), `bag_of_words` (word order), `fuzzy` (small "
+            "spelling errors), and `ontology_synonym` (another name of the assigned term)"
+        )
+    )
 
 
 class EntryAnnotation(ApiModel):

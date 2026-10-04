@@ -12,7 +12,7 @@ docker compose run --rm --no-deps api uv run python scripts/synthetic_store.py /
 docker compose up
 ```
 
-- `.env` sets `BSLLMNER_VIEWER_DATA_DIR`, the directory mounted at `/data` in both containers (manifests, inputs, reference data, and store files), and `BSLLMNER_VIEWER_STORE`, the store file the api opens. `.env.example` points at the synthetic store, which the second command builds from generated data in a few seconds.
+- `.env` sets `BSLLMNER_VIEWER_DATA_DIR`, the directory mounted at `/data` in the api container (manifests, inputs, reference data, and store files), and `BSLLMNER_VIEWER_STORE`, the store file the api opens. `.env.example` points at the synthetic store, which the second command builds from generated data in a few seconds.
 - The api serves `http://localhost:8000`. Swagger UI is at `/api`, and the OpenAPI document is at `/api/openapi.json`.
 - The frontend dev server serves `http://localhost:5173` and calls the api through the Vite proxy. It also serves `/llms-full.txt`, which it makes from `docs/` on each request. Compose mounts `docs/` read-only at `/docs` in the `api` and `frontend` containers for this, and for the tests that check the docs. The `api` container also mounts `frontend/public/` at `/frontend/public`, for the tests that check `llms.txt` against the OpenAPI document.
 - To serve a store built from real runs (see [operations.md](operations.md)), point `BSLLMNER_VIEWER_STORE` at it and recreate the api container: `docker compose up -d --force-recreate api`.

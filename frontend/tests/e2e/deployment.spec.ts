@@ -7,14 +7,18 @@ import { EXPECTED } from "./playwright.config"
  * what it was meant to be, which the runner passes in (`EXPECTED`).
  */
 test.describe("deployment", () => {
-  test("a deployment that search engines may index disallows only the entry lists and exports, and sends no noindex header", async ({ page, request }) => {
+  test("a deployment that search engines may index disallows only the workspace with parameters, and marks only the exports noindex", async ({ page, request }) => {
     test.skip(EXPECTED.noindex !== "false", "BSLLMNER_VIEWER_E2E_NOINDEX=false is not given")
     const robots = (await (await request.get("/robots.txt")).text()).split("\n").map((line) => line.trim())
-    expect(robots).toContain("Disallow: /entries?")
-    expect(robots).toContain("Disallow: /api/export/")
-    expect(robots).not.toContain("Disallow: /")
-    const response = await page.goto("/")
-    expect(response?.headers()["x-robots-tag"]).toBeUndefined()
+    expect(robots.filter((line) => line.startsWith("Disallow:"))).toEqual(["Disallow: /entries?"])
+    for (const path of ["/", "/entries", "/api/service-info", "/llms.txt", "/llms-full.txt"]) {
+      const response = await page.goto(path)
+      expect(response?.headers()["x-robots-tag"], path).toBeUndefined()
+    }
+    // A condition that matches no BioProject, so that the export is one header line.
+    const exported = await request.get("/api/export/accessions/bioproject", { params: { q: "bioproject:PRJNA0" } })
+    expect(exported.status()).toBe(200)
+    expect(exported.headers()["x-robots-tag"]).toContain("noindex")
   })
 
   test("a deployment that search engines must not index allows only the API, llms.txt, and llms-full.txt and marks every response noindex", async ({ page, request }) => {

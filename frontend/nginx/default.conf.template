@@ -6,9 +6,11 @@ map "${BSLLMNER_VIEWER_NOINDEX}" $robots_file {
     default /robots.txt;
 }
 
-map "${BSLLMNER_VIEWER_NOINDEX}" $x_robots_tag {
-    true    noindex;
-    default "";
+# An export is data for programs, so no deployment lets search engines index it.
+map "${BSLLMNER_VIEWER_NOINDEX}:$uri" $x_robots_tag {
+    ~^true:              noindex;
+    ~^[^:]*:/api/export/ noindex;
+    default              "";
 }
 
 # The Swagger UI and ReDoc pages of the api load their scripts, styles, and fonts from the CDNs that FastAPI uses by default.
@@ -27,9 +29,16 @@ map "$status:$uri" $cache_control_v {
 }
 
 # The api sets these headers for its own responses. nginx sets them for the errors that it returns.
-map $status $retry_after {
-    429     1;
-    default "";
+# An export holds a slot of the api for minutes, so a client with too many exports waits longer before it tries again.
+map "$status:$uri" $retry_after {
+    ~^429:/api/export/ 10;
+    ~^429:             1;
+    default            "";
+}
+
+map $uri $too_many_detail {
+    ~^/api/export/ "This client has too many exports in progress.";
+    default        "This client has too many requests in progress.";
 }
 
 # The request ID of the gateway is used when it is safe to put in a JSON body. Otherwise nginx makes its own.
@@ -69,16 +78,25 @@ map $uri $problem_instance {
 }
 
 limit_conn_zone $binary_remote_addr zone=per_client:10m;
+limit_conn_zone $binary_remote_addr zone=per_client_export:10m;
 
 map $http_x_forwarded_proto $forwarded_proto {
     ""      $scheme;
     default $http_x_forwarded_proto;
 }
 
+# The combined format, followed by the seconds of the request and of the api, and the request ID of the response, which
+# the warnings and errors in the log of the api name.
+log_format timed '$remote_addr - $remote_user [$time_local] "$request" $status $body_bytes_sent '
+                 '"$http_referer" "$http_user_agent" '
+                 'request_time=$request_time upstream_time=$upstream_response_time request_id=$sent_http_x_request_id';
+
 server {
     listen 80;
     server_name _;
     server_tokens off;
+
+    access_log /var/log/nginx/access.log timed;
 
     root /usr/share/nginx/html;
     index index.html;
@@ -128,6 +146,21 @@ server {
         error_page 429 @too_many_requests;
         proxy_pass $api_upstream;
         include /etc/nginx/proxy.inc;
+
+        # An export keeps a slot of the api until the client has read all of it. A location that sets limit_conn does
+        # not inherit the limit of the location around it, and proxy_pass is never inherited.
+        location ~ ^/api/export/ {
+            limit_conn per_client 100;
+            limit_conn per_client_export 2;
+            proxy_pass $api_upstream;
+        }
+    }
+
+    # Clients look for the OpenAPI document at the default path of FastAPI. The relative Location keeps the scheme and
+    # the host of the reverse proxy in front of the web container.
+    location = /openapi.json {
+        absolute_redirect off;
+        return 301 /api/openapi.json;
     }
 
     location @payload_too_large {
@@ -137,7 +170,7 @@ server {
 
     location @too_many_requests {
         default_type application/problem+json;
-        return 429 '{"type":"about:blank","title":"Too Many Requests","status":429,"detail":"This client has too many requests in progress.","instance":"$problem_instance","timestamp":"$time_iso8601","requestId":"$problem_request_id"}';
+        return 429 '{"type":"about:blank","title":"Too Many Requests","status":429,"detail":"$too_many_detail","instance":"$problem_instance","timestamp":"$time_iso8601","requestId":"$problem_request_id"}';
     }
 
     location = /robots.txt {

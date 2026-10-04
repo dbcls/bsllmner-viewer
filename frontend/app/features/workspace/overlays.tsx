@@ -4,7 +4,7 @@ import { ApiError, canTryAgain, exportAccessionsUrl, exportEntriesUrl, loadFailu
 import { queryFailed, useDataset } from "~/lib/api/queries"
 import type { AccessionType } from "~/lib/api/types"
 import { copyText } from "~/lib/export"
-import { formatCount } from "~/lib/format"
+import { formatSize } from "~/lib/format"
 import { ACTION_ICON, CopyButton, ErrorNotice, MenuButton, Modal, Skeleton } from "~/ui"
 
 import { type Tab, TAB_LABELS, type WorkspaceState } from "./state"
@@ -23,6 +23,28 @@ const ACCESSION_TYPES: Record<AccessionType, { label: string; hint: string }> = 
   bioproject: { label: "BioProject", hint: "PRJ…" },
 }
 
+/**
+ * The bytes of one entry in an export, for the size that the menu shows before a download, so that a download of
+ * gigabytes is not started by chance. They are measured on the dataset that the site serves. Measure them again when
+ * the dataset changes.
+ */
+const ENTRY_BYTES = { tsv: 300, ndjson: 1000 } as const
+
+type EntryFormat = keyof typeof ENTRY_BYTES
+
+/** The size that an export of the entries is likely to have, marked as an estimate unless it is under 1 KB. */
+const entrySize = (totalEntries: number, format: EntryFormat): string => {
+  const size = formatSize(totalEntries * ENTRY_BYTES[format])
+  return size.startsWith("<") ? size : `~${size}`
+}
+
+/** The entry export of a format, with the size it is likely to have once the number of entries is known. */
+const entryExport = (q: string | null, totalEntries: number | undefined, format: EntryFormat, label: string) => ({
+  label,
+  href: exportEntriesUrl("biosample", q, format),
+  ...(totalEntries === undefined ? {} : { hint: entrySize(totalEntries, format) }),
+})
+
 /** The outputs of the condition: entry exports and accession lists. */
 export const ExportMenu = ({ q, totalEntries }: ExportMenuProps) => (
   <MenuButton
@@ -32,19 +54,12 @@ export const ExportMenu = ({ q, totalEntries }: ExportMenuProps) => (
     monoHints
     items={[
       {
-        title: "Entries",
+        title: "Matching entries",
         note: "all annotation fields",
-        items: [
-          {
-            label: "TSV",
-            href: exportEntriesUrl("biosample", q, "tsv"),
-            ...(totalEntries === undefined ? {} : { hint: `${formatCount(totalEntries)} rows` }),
-          },
-          { label: "NDJSON", href: exportEntriesUrl("biosample", q, "ndjson") },
-        ],
+        items: [entryExport(q, totalEntries, "tsv", "TSV"), entryExport(q, totalEntries, "ndjson", "NDJSON")],
       },
       {
-        title: "Accession lists",
+        title: "Matching accessions",
         note: "one per line",
         items: (Object.entries(ACCESSION_TYPES) as [AccessionType, (typeof ACCESSION_TYPES)[AccessionType]][]).map(([type, { label, hint }]) => ({
           label,

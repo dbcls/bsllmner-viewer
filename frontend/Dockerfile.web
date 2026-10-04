@@ -1,6 +1,6 @@
 # Production image: the built single-page application served by nginx, which also proxies /api to the api container.
 # The build context is the root of the repository, because the image also serves a file that it makes from docs/.
-FROM node:24-bookworm-slim AS build
+FROM docker.io/library/node:24-bookworm-slim AS build
 WORKDIR /app
 COPY frontend/package.json frontend/package-lock.json ./
 RUN --mount=type=cache,target=/root/.npm npm ci
@@ -13,7 +13,7 @@ RUN npm run build && node nginx/csp-hashes.mjs build/client/index.html /app/csp-
 COPY docs/api.md docs/data-model.md /docs/
 RUN node scripts/llms-full.ts /docs build/client/llms-full.txt
 
-FROM nginx:1.29-alpine
+FROM docker.io/library/nginx:1.29-alpine
 # The image's entrypoint writes the nameservers into NGINX_LOCAL_RESOLVERS and fills the template with the filtered variables.
 ENV NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1 \
     NGINX_ENVSUBST_FILTER="^(BSLLMNER_VIEWER_|NGINX_LOCAL_RESOLVERS$)" \

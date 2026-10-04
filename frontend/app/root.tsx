@@ -19,7 +19,6 @@ import {
   Link,
   Links,
   type LinksFunction,
-  Meta,
   Outlet,
   Scripts,
   ScrollRestoration,
@@ -27,8 +26,9 @@ import {
 } from "react-router"
 
 import { queryClient } from "~/lib/query-client"
-import { ShellFallback, ShellLayout } from "~/shell"
-import { Button, Card, PageHeading } from "~/ui"
+import { pageTitle, SITE_DESCRIPTION, SITE_NAME } from "~/lib/site"
+import { PageChange, ShellFallback, ShellLayout } from "~/shell"
+import { Button, Card, PageHeading, PageMeta } from "~/ui"
 
 /**
  * The faces that every page draws first: the text and the numbers (Public Sans 400 and IBM Plex Mono 400) and the header
@@ -43,13 +43,16 @@ export const Layout = ({ children }: { children: ReactNode }) => (
     <head>
       <meta charSet="utf-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1" />
-      <title>bsllmner-viewer</title>
       <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-      <Meta />
+      {/* Where a program finds the API from the HTML: its OpenAPI document, its documentation page, and the Markdown entry for LLM agents. */}
+      <link rel="service-desc" href="/api/openapi.json" />
+      <link rel="service-doc" href="/api" />
+      <link rel="alternate" type="text/markdown" href="/llms.txt" title="bsllmner-viewer for LLM agents" />
       <Links />
     </head>
     <body>
       {children}
+      <PageChange />
       <ScrollRestoration />
       <Scripts />
     </body>
@@ -66,16 +69,32 @@ const App = () => (
 
 export default App
 
-/** The page that the built HTML shows until the JavaScript runs: the header and the footer around an empty page. */
-export const HydrateFallback = ShellFallback
+/**
+ * The page that the built HTML shows until the JavaScript runs: the header and the footer around an empty page. Its head
+ * is the same for every URL and names the site, for the crawlers that read the HTML without running the JavaScript, such
+ * as those that make the previews of shared links.
+ */
+export const HydrateFallback = () => (
+  <>
+    <PageMeta title={SITE_NAME} description={SITE_DESCRIPTION} />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content={SITE_NAME} />
+    <meta property="og:title" content={SITE_NAME} />
+    <meta property="og:description" content={SITE_DESCRIPTION} />
+    <meta name="twitter:card" content="summary" />
+    <ShellFallback />
+  </>
+)
 
 const ErrorBoundaryContent = () => {
   const error = useRouteError()
   const notFound = isRouteErrorResponse(error) && error.status === 404
   const message = isRouteErrorResponse(error) ? `${error.status} ${error.statusText}` : "Something went wrong."
+  const name = isRouteErrorResponse(error) ? error.statusText || String(error.status) : "Error"
 
   return (
     <main id="main" className="mx-auto w-full max-w-content-max px-page-gutter py-4">
+      <PageMeta title={pageTitle(name)} noindex />
       <Card padding="lg">
         <PageHeading>{message}</PageHeading>
         <div className="mt-4">

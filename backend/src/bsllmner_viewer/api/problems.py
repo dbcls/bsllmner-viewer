@@ -29,6 +29,7 @@ BLANK_TYPE = "about:blank"
 MEDIA_TYPE = "application/problem+json"
 REQUEST_ID_HEADER = "X-Request-ID"
 RETRY_AFTER_SECONDS = 5
+NO_OPERATION_DETAIL = "No operation has this path. GET /api/openapi.json lists the operations."
 
 logger = logging.getLogger(__name__)
 
@@ -201,6 +202,11 @@ def request_id_of(request: Request) -> str:
     return request_id or str(uuid.uuid4())
 
 
+def _request_line(request: Request) -> str:
+    """The method, the path, and the request ID, which the access log of the web container also has."""
+    return f"{request.method} {request.url.path} (request ID {request_id_of(request)})"
+
+
 def problem_response(
     request: Request, *, slug: str | None, status: int, detail: str, headers: Mapping[str, str] | None = None
 ) -> JSONResponse:
@@ -233,6 +239,7 @@ def install_problem_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(duckdb.InterruptException)
     async def _query_timeout(request: Request, _exc: duckdb.InterruptException) -> JSONResponse:
+        logger.warning("Query stopped by the time limit: %s", _request_line(request))
         return problem_response(
             request,
             slug="query-timeout",
@@ -242,7 +249,7 @@ def install_problem_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(duckdb.OutOfMemoryException)
     async def _query_too_large(request: Request, exc: duckdb.OutOfMemoryException) -> JSONResponse:
-        logger.warning("Query stopped by the memory limit: %s", exc)
+        logger.warning("Query stopped by the memory limit: %s: %s", _request_line(request), exc)
         return problem_response(
             request,
             slug="query-too-large",
@@ -252,7 +259,12 @@ def install_problem_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(StarletteHTTPException)
     async def _http_error(request: Request, exc: StarletteHTTPException) -> JSONResponse:
-        return problem_response(request, slug=None, status=exc.status_code, detail=str(exc.detail), headers=exc.headers)
+        detail = str(exc.detail)
+        # The router raises 404 with the status phrase when no operation has the path. A missing entry or term is an
+        # ApiError with a detail of its own.
+        if exc.status_code == 404 and detail == http.HTTPStatus.NOT_FOUND.phrase:
+            detail = NO_OPERATION_DETAIL
+        return problem_response(request, slug=None, status=exc.status_code, detail=detail, headers=exc.headers)
 
     @app.exception_handler(RequestValidationError)
     async def _validation_error(request: Request, exc: RequestValidationError) -> JSONResponse:
@@ -294,10 +306,20 @@ class UnhandledErrorMiddleware:
         try:
             await self.app(scope, receive, tracking_send)
         except Exception as exc:
+            request = Request(scope)
             if started:
+                # The response can no longer become a problem. The server logs the traceback after this line. Starlette
+                # wraps an error that has a handler, such as a query stopped by a limit, so the line names the cause.
+                cause = exc.__cause__ or exc
+                logger.warning(
+                    "Response stopped after it started: %s: %s: %s",
+                    _request_line(request),
+                    type(cause).__name__,
+                    cause,
+                )
                 raise
-            logger.exception("Unhandled exception: %s", exc)
-            response = problem_response(Request(scope), slug=None, status=500, detail="An unexpected error occurred.")
+            logger.exception("Unhandled exception: %s: %s", _request_line(request), exc)
+            response = problem_response(request, slug=None, status=500, detail="An unexpected error occurred.")
             await response(scope, receive, send)
 
 

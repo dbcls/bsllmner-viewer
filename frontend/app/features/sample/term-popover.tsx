@@ -3,6 +3,7 @@ import { Link } from "react-router"
 import { useTerm } from "~/lib/api/queries"
 import type { Clause } from "~/lib/api/types"
 import { useConditionHref } from "~/lib/condition-href"
+import { crawlRel } from "~/lib/site"
 import { termPanelDetails } from "~/lib/terms"
 import { ACTION_ICON, Icon, Popover, TermPanel } from "~/ui"
 
@@ -45,7 +46,7 @@ const TermPanelLoader = ({ label, termId, clauses }: TermPopoverProps) => {
       details={term.isError ? null : term.data && termPanelDetails(term.data)}
       action={
         href ? (
-          <Link to={href} className="text-brand no-underline hover:text-brand-deep">
+          <Link to={href} rel={crawlRel(href)} className="text-brand no-underline hover:text-brand-deep">
             {text}
           </Link>
         ) : (

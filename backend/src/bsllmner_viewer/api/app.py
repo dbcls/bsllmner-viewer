@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from collections.abc import AsyncIterator, MutableMapping
 from contextlib import asynccontextmanager
@@ -13,6 +14,7 @@ from fastapi import Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.datastructures import Headers, MutableHeaders
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
+from uvicorn.logging import DefaultFormatter
 
 from bsllmner_viewer.api.cache import ResponseCache
 from bsllmner_viewer.api.deps import reject_unknown_query_params
@@ -92,8 +94,22 @@ def _rewrite_error_content_types(operation: dict[str, Any]) -> None:
                 content[_PROBLEM_MEDIA_TYPE] = content.pop(media_type)
 
 
+def _log_like_uvicorn() -> None:
+    """Write the warnings and errors of the package in the format of uvicorn, so that each line starts with its level.
+
+    uvicorn configures only its own loggers, and without a handler a line would have the message alone.
+    """
+    logger = logging.getLogger("bsllmner_viewer")
+    if logger.handlers:
+        return
+    handler = logging.StreamHandler()
+    handler.setFormatter(DefaultFormatter("%(levelprefix)s %(message)s", use_colors=False))
+    logger.addHandler(handler)
+
+
 def create_app(store_path: Path | None = None, limits: Limits | None = None) -> FastAPI:
     path = store_path or store_path_from_env()
+    _log_like_uvicorn()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -112,6 +128,7 @@ def create_app(store_path: Path | None = None, limits: Limits | None = None) -> 
         docs_url="/api",
         redoc_url="/api/redoc",
         openapi_url="/api/openapi.json",
+        swagger_ui_oauth2_redirect_url=None,
         redirect_slashes=False,
         openapi_tags=OPENAPI_TAGS,
         contact={"name": "BioData Science Initiative", "url": "https://github.com/dbcls/bsllmner-viewer"},

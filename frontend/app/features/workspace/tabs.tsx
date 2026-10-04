@@ -1,6 +1,7 @@
 import type { MouseEvent } from "react"
 import { Link } from "react-router"
 
+import { crawlRel } from "~/lib/site"
 import { cn } from "~/ui"
 
 import { type Tab, TAB_LABELS, TABS, workspaceSearch, type WorkspaceState } from "./state"
@@ -17,10 +18,12 @@ export const Tabs = ({ state, onTab }: { state: WorkspaceState; onTab: (tab: Tab
     <nav className="flex gap-0.5" aria-label="Views">
       {TABS.map((tab) => {
         const active = tab === state.tab
+        const href = `/entries${workspaceSearch({ ...state, tab, page: 1 })}`
         return (
           <Link
             key={tab}
-            to={`/entries${workspaceSearch({ ...state, tab, page: 1 })}`}
+            to={href}
+            rel={crawlRel(href)}
             preventScrollReset
             onClick={(event) => {
               if (!isPlainClick(event)) return

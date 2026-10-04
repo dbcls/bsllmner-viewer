@@ -6,6 +6,7 @@ import hashlib
 import importlib.util
 import os
 import shutil
+import stat
 import sys
 from collections.abc import Callable, Iterator, MutableMapping
 from contextlib import AbstractContextManager, contextmanager
@@ -106,7 +107,10 @@ class Store:
         _remove_stale_temp_directories(limits.temp_directory)
         temp = limits.temp_directory / f"worker-{os.getpid()}"
         shutil.rmtree(temp, ignore_errors=True)
-        temp.mkdir(parents=True, exist_ok=True)
+        try:
+            temp.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            raise RuntimeError(_temp_directory_problem(temp, e)) from e
         self._temp_directory = temp
         self._con.execute(f"SET memory_limit = '{limits.memory_limit}'")
         self._con.execute(f"SET temp_directory = '{_quote(str(temp))}'")
@@ -208,6 +212,18 @@ def _remove_stale_temp_directories(base: Path) -> None:
         pid = entry.name.removeprefix("worker-")
         if pid.isdigit() and not Path(f"/proc/{pid}").exists():
             shutil.rmtree(entry, ignore_errors=True)
+
+
+def _temp_directory_problem(temp: Path, error: OSError) -> str:
+    """One line that says why the temporary directory cannot be created: the owner and the mode of the nearest path
+    that exists, and the uid of the api. A volume keeps the owner of the user that first wrote to it."""
+    nearest = next((path for path in temp.parents if path.exists()), None)
+    where = ""
+    if nearest is not None:
+        st = nearest.stat()
+        where = f": {nearest} belongs to uid {st.st_uid} and has mode {stat.filemode(st.st_mode)}"
+    uid = os.getuid()
+    return f"the api runs as uid {uid} and cannot create the temporary directory {temp} ({error.strerror}){where}"
 
 
 def _quote(value: str) -> str:

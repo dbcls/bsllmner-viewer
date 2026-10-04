@@ -6,11 +6,13 @@ import type { Clause, DatasetResponse, Unit } from "~/lib/api/types"
 import { formatCount } from "~/lib/format"
 import { fieldLabel, organismLabel, unitLabel } from "~/lib/labels"
 import { MATRIX_PRESETS, type Preset, QUESTION_PRESETS } from "~/lib/presets"
+import { crawlRel, SITE_DESCRIPTION, SITE_NAME, SITE_PURPOSE } from "~/lib/site"
 import { workspaceSearch } from "~/lib/workspace-state"
-import { ACTION_ICON, Caption, Card, ErrorNotice,ExternalLink, Icon, PageHeading, SectionHeading, Skeleton, Tag } from "~/ui"
+import { ACTION_ICON, Caption, Card, ErrorNotice,ExternalLink, Icon, PageHeading, PageMeta, SectionHeading, Skeleton, Tag } from "~/ui"
 
 import { ConditionLink } from "./condition-link"
 import { CountBar, countBarRowClass, CountBarSkeleton } from "./count-bar"
+import { DATASET_NAME, datasetSchema } from "./dataset-schema"
 import { TermSearch } from "./term-search"
 
 const STATISTICS_FIELDS = ["library_strategy", "organism_id"] as const
@@ -21,11 +23,13 @@ export const LandingPage = () => {
   const totals = dataset.data?.totals
   return (
     <main id="main" className="mx-auto w-full max-w-content-max flex-1 px-page-gutter py-4">
+      <PageMeta title={SITE_NAME} description={SITE_DESCRIPTION} canonicalPath="/" />
+      {dataset.data && <DatasetSchema dataset={dataset.data} />}
       <div className="grid grid-cols-landing items-start gap-4">
         <Card padding="lg">
-          <PageHeading>bsllmner-viewer: Ontology-annotated BioSamples</PageHeading>
+          <PageHeading>{`${SITE_NAME}: ${DATASET_NAME}`}</PageHeading>
           <p className="mt-3 mb-8 max-w-2xl text-fs-body text-ink-mid text-pretty">
-            Search BioSamples by the ontology terms that annotate them, and compare the results in tables and charts.{" "}
+            {SITE_PURPOSE}{" "}
             <ExternalLink kind="inline" href={MK2_URL}>bsllmner-mk2</ExternalLink> reads the attributes of each BioSample with a large language model (LLM).
             It extracts values such as the cell line, the tissue, and the disease, and then maps each value to an ontology term.
           </p>
@@ -68,6 +72,11 @@ export const LandingPage = () => {
   )
 }
 
+/** The schema.org Dataset of the page, which dataset search engines read. The browser does not run it. */
+const DatasetSchema = ({ dataset }: { dataset: DatasetResponse }) => (
+  <script type="application/ld+json">{JSON.stringify(datasetSchema(dataset, globalThis.location.origin))}</script>
+)
+
 /** How an example is told apart from the others under its title: the values of its condition, or one sentence about what it shows. */
 type PresetDetail = "values" | "description"
 
@@ -82,9 +91,11 @@ const PresetLinks = ({ presets, detail }: { presets: Preset[]; detail: PresetDet
 /** An example: its title and its detail, linked to the workspace in the state it describes. */
 const PresetLink = ({ preset, detail }: { preset: Preset; detail: PresetDetail }) => {
   const values = preset.values ?? []
+  const href = `/entries${workspaceSearch(preset.state)}`
   return (
     <Link
-      to={`/entries${workspaceSearch(preset.state)}`}
+      to={href}
+      rel={crawlRel(href)}
       className="flex items-center gap-3 rounded-button border border-border-soft bg-surface px-3.5 py-2.5 text-ink no-underline hover:border-brand hover:bg-brand-soft"
     >
       <span className="min-w-0 flex-1">

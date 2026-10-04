@@ -1,9 +1,10 @@
 # Deployment: api serving one store file, and nginx serving the built frontend and proxying /api.
-# Works with podman-compose and docker compose.
+# Works with podman-compose and docker compose. podman-compose also reads podman-compose.yml in this directory.
 services:
   api:
     build:
       context: ../backend
+      target: runtime
       args:
         BSLLMNER_VIEWER_COMMIT: ${BSLLMNER_VIEWER_COMMIT:-}
     image: bsllmner-viewer-api
@@ -23,9 +24,17 @@ services:
       BSLLMNER_VIEWER_MAX_QUERIES: ${BSLLMNER_VIEWER_MAX_QUERIES:-}
       BSLLMNER_VIEWER_MAX_EXPORTS: ${BSLLMNER_VIEWER_MAX_EXPORTS:-}
       BSLLMNER_VIEWER_QUEUE_TIMEOUT: ${BSLLMNER_VIEWER_QUEUE_TIMEOUT:-}
+    # The access log of the web container has every request of the api, with its time and its request ID.
     command: >
-      uv run uvicorn bsllmner_viewer.api.app:create_app --factory
-      --host 0.0.0.0 --port 8000 --workers ${BSLLMNER_VIEWER_API_WORKERS:-2}
+      uvicorn bsllmner_viewer.api.app:create_app --factory
+      --host 0.0.0.0 --port 8000 --workers ${BSLLMNER_VIEWER_API_WORKERS:-2} --no-access-log
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges
     # CMD-SHELL with one string: podman-compose 1.0.6 quotes the arguments of the CMD form wrongly.
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import json, urllib.request; r = urllib.request.urlopen('http://localhost:8000/api/service-info', timeout=5); raise SystemExit(json.load(r)['store'] != 'ok')\""]
@@ -49,6 +58,25 @@ services:
       BSLLMNER_VIEWER_NOINDEX: ${BSLLMNER_VIEWER_NOINDEX:-false}
     depends_on:
       - api
+    read_only: true
+    # The entrypoint of the image writes the configuration into conf.d when the container starts. nginx writes its pid
+    # into /run and its temporary files into /var/cache/nginx.
+    tmpfs:
+      - /etc/nginx/conf.d
+      - /var/cache/nginx
+      - /run
+      - /tmp
+    cap_drop:
+      - ALL
+    # The master process of nginx binds port 80 as root, makes its directories for the worker processes, and starts
+    # the worker processes as the user nginx.
+    cap_add:
+      - CHOWN
+      - NET_BIND_SERVICE
+      - SETGID
+      - SETUID
+    security_opt:
+      - no-new-privileges
     restart: always
 
 volumes:
