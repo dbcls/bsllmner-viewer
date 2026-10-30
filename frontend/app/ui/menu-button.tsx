@@ -70,9 +70,7 @@ export const MenuButton = ({ label, icon, items, appearance = "text", monoHints 
   }
 
   // A menu that is open when the button becomes disabled closes, and does not open again by itself.
-  useEffect(() => {
-    if (disabled) setOpen(false)
-  }, [disabled])
+  if (disabled && open) setOpen(false)
 
   const close = () => {
     setOpen(false)

@@ -1,7 +1,8 @@
-import { Fragment, useEffect, useState } from "react"
+import { useQueryClient } from "@tanstack/react-query"
+import { Fragment, useState } from "react"
 
 import { failureMessage, isInvalidCondition, loadFailureProps } from "~/lib/api/client"
-import { queryFailed, useDataset, useDistribution, useEntries, useParsedCondition, useProjects } from "~/lib/api/queries"
+import { parsedConditionOptions, queryFailed, useDataset, useDistribution, useEntries, useProjects } from "~/lib/api/queries"
 import { formatCount } from "~/lib/format"
 import { unitLabel } from "~/lib/labels"
 import { ACTION_ICON, Button, Chip, cn, CopyButton, ErrorNotice, LinkButton, Segmented, Skeleton, TextArea } from "~/ui"
@@ -177,9 +178,15 @@ const SkeletonRows = ({ count }: { count: number }) => (
 /** The current condition as a query tree or as the editable string, with its totals and the outputs that belong to it. */
 export const ConditionBar = ({ q, condition, onShare, onApi, exportMenu }: ConditionBarProps) => {
   const [mode, setMode] = useState<Mode>("visual")
+  const queryClient = useQueryClient()
   const [draft, setDraft] = useState(q ?? "")
+  // The condition that the draft was last set from. When the condition changes, the draft starts over from it.
+  const [draftOf, setDraftOf] = useState(q)
+  if (draftOf !== q) {
+    setDraftOf(q)
+    setDraft(q ?? "")
+  }
   const [draftError, setDraftError] = useState<string | null>(null)
-  const draftParse = useParsedCondition(draftError === "pending" ? draft : null)
   // The counts are not asked for while the condition cannot be read.
   const readable = !condition.parseError
   const biosamples = useEntries({ q, page: 1, perPage: 1 }, readable)
@@ -191,29 +198,21 @@ export const ConditionBar = ({ q, condition, onShare, onApi, exportMenu }: Condi
   const dataset = useDataset()
   const termFields = new Set(dataset.data?.dslFields.filter((field) => field.kind === "term").map((field) => field.name))
 
-  useEffect(() => {
-    setDraft(q ?? "")
-  }, [q])
-
-  const apply = () => {
+  const apply = async () => {
     const text = draft.trim()
     if (!text) {
       condition.clear()
       setDraftError(null)
       return
     }
-    setDraftError("pending")
-  }
-
-  useEffect(() => {
-    if (draftError !== "pending") return
-    if (draftParse.data) {
+    try {
+      const parsed = await queryClient.fetchQuery(parsedConditionOptions(draft))
       setDraftError(null)
-      condition.applyText(draftParse.data.q)
-    } else if (draftParse.error) {
-      setDraftError(failureMessage(draftParse.error, "load the condition"))
+      if (parsed) condition.applyText(parsed.q)
+    } catch (error) {
+      setDraftError(failureMessage(error, "load the condition"))
     }
-  }, [draftError, draftParse.data, draftParse.error, condition])
+  }
 
   const countOf = (query: { isError: boolean; data: unknown }, count: number | undefined) => (!readable || queryFailed(query) ? null : count)
   const totals: Total[] = [
@@ -253,11 +252,11 @@ export const ConditionBar = ({ q, condition, onShare, onApi, exportMenu }: Condi
                     placeholder='disease:"MONDO:0007254" AND library_strategy:ATAC-seq'
                     aria-label="Condition"
                   />
-                  <Button size="sm" onClick={apply}>
+                  <Button size="sm" onClick={() => void apply()}>
                     Apply
                   </Button>
                 </div>
-                {draftError && draftError !== "pending" && (
+                {draftError && (
                   <div role="alert" className="mt-1 text-fs-body-sm text-critical-fg">
                     {draftError}
                   </div>

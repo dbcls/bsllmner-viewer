@@ -1,12 +1,13 @@
 import { fc, test } from "@fast-check/vitest"
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react"
-import { useRef } from "react"
+import { createRef, useState } from "react"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
 import { useOutsidePointer } from "~/ui/panel-position"
 
 const Harness = ({ open, onOutside, count }: { open: boolean; onOutside: () => void; count: number }) => {
-  const refs = [useRef<HTMLDivElement>(null), useRef<HTMLDivElement>(null), useRef<HTMLDivElement>(null)].slice(0, count)
+  const [allRefs] = useState(() => [createRef<HTMLDivElement>(), createRef<HTMLDivElement>(), createRef<HTMLDivElement>()])
+  const refs = allRefs.slice(0, count)
   useOutsidePointer(open, refs, onOutside)
   return (
     <div>

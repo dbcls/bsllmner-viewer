@@ -139,7 +139,7 @@ describe("SamplePage", () => {
     expect(row("Disease").queryByText("—")).toBeNull()
     expect(row("Drug").queryByText("Extraction failed")).toBeNull()
     expect(row("Drug").queryByText("—")).toBeNull()
-    expect(row("Tissue").getByText("Exact match")).toBeTruthy()
+    expect(row("Tissue").getByText("Unique match")).toBeTruthy()
     expect(row("Tissue").getByText("“liver”")).toBeTruthy()
   })
 

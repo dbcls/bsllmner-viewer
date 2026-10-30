@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useState } from "react"
 
 import { loadFailureProps } from "~/lib/api/client"
 import { queryFailed, useTerms } from "~/lib/api/queries"
@@ -116,9 +116,12 @@ type TermPickerProps = {
 /** The dialog that adds an annotation term to the condition, searching every field until a field is chosen. */
 export const TermPicker = ({ open, onClose, fields, q, isSelected, onPick }: TermPickerProps) => {
   const [field, setField] = useState(ALL_FIELDS)
-  useEffect(() => {
+  // Each opening of the dialog searches every field again.
+  const [wasOpen, setWasOpen] = useState(open)
+  if (wasOpen !== open) {
+    setWasOpen(open)
     if (open) setField(ALL_FIELDS)
-  }, [open])
+  }
   return (
     <Modal open={open} onClose={onClose} title="Add a term">
       <PickerSearch

@@ -349,11 +349,13 @@ describe("map of nginx", () => {
 })
 
 describe("routes of the single-page application", () => {
+  // The splat route draws the not found page of the application for a path that nginx answers with 404.
+  const SPLAT = "*"
   const routesSource = readFileSync(path.resolve(HERE, "../../../app/routes.ts"), "utf8")
   const routePaths = [
     ...(/\bindex\(/.test(routesSource) ? ["/"] : []),
     ...[...routesSource.matchAll(/\broute\(\s*"([^"]+)"/g)].map((match) => match[1] ?? ""),
-  ]
+  ].filter((route) => route !== SPLAT)
   const found = locations(server(nodes)).find((candidate) =>
     directives(candidate.node, "try_files").some((args) => args[0] === "/index.html"),
   )
@@ -366,6 +368,7 @@ describe("routes of the single-page application", () => {
   }
 
   it("reads the paths of app/routes.ts", () => {
+    expect(routesSource).toContain(`route("${SPLAT}"`)
     expect(routePaths).toContain("/")
     expect(routePaths).toContain("/entries")
     expect(routePaths).toContain("/entries/:accession")

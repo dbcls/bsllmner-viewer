@@ -1,7 +1,7 @@
 import js from "@eslint/js"
 import stylistic from "@stylistic/eslint-plugin"
-import importPlugin from "eslint-plugin-import"
-import react from "eslint-plugin-react"
+import { createTypeScriptImportResolver } from "eslint-import-resolver-typescript"
+import { createNodeResolver, importX } from "eslint-plugin-import-x"
 import reactHooks from "eslint-plugin-react-hooks"
 import simpleImportSort from "eslint-plugin-simple-import-sort"
 import globals from "globals"
@@ -19,6 +19,24 @@ const ARBITRARY_CLASSNAME_RULES = [
   { selector: `Literal[value=${ARBITRARY_CLASS}]`, message: ARBITRARY_MESSAGE },
   { selector: `TemplateElement[value.raw=${ARBITRARY_CLASS}]`, message: ARBITRARY_MESSAGE },
 ]
+
+/**
+ * A component is an arrow function. `func-style` rejects a function declaration, and `prefer-arrow-callback` rejects a
+ * function expression that is passed as an argument. These selectors reject the other forms.
+ */
+const FUNCTION_FORM_RULES = [
+  { selector: "VariableDeclarator > FunctionExpression", message: "Assign an arrow function instead of a function expression." },
+  { selector: "ExportDefaultDeclaration > FunctionDeclaration", message: "Export a constant that holds an arrow function instead of a function declaration." },
+]
+
+/** The raw elements that have a component in ~/ui, which features and routes use instead. */
+const RAW_ELEMENT_RULES = [
+  { name: "button", message: "Raw <button> is not allowed. Use <Button> from ~/ui instead." },
+  { name: "a", message: "Raw <a> is not allowed. Use <Link> from react-router, or <ExternalLink> or <DownloadLink> from ~/ui, instead." },
+  { name: "input", message: "Raw <input> is not allowed. Use <TextInput>, <CheckboxRow>, or <Toggle> from ~/ui instead." },
+  { name: "select", message: "Raw <select> is not allowed. Use <Select> from ~/ui instead." },
+  { name: "textarea", message: "Raw <textarea> is not allowed. Use <TextArea> from ~/ui instead." },
+].map(({ name, message }) => ({ selector: `JSXOpeningElement[name.name="${name}"]`, message }))
 
 const MIDDLE_DOT_MESSAGE =
   "The middle dot (U+00B7) is not used in text that the app shows. Separate items with a comma, parentheses, a line break, or space between elements."
@@ -57,33 +75,23 @@ export default tseslint.config(
       },
     },
     settings: {
-      react: { version: "detect" },
-      "import/resolver": {
-        typescript: { project: "./tsconfig.json" },
-        node: true,
-      },
+      "import-x/resolver-next": [
+        createTypeScriptImportResolver({ project: "./tsconfig.json" }),
+        createNodeResolver(),
+      ],
     },
     plugins: {
-      react,
       "react-hooks": reactHooks,
       "@stylistic": stylistic,
       "simple-import-sort": simpleImportSort,
-      import: importPlugin,
+      "import-x": importX,
     },
     rules: {
-      // Only the rules of hooks. The recommended config of the plugin also has the rules of the React Compiler, and the
-      // code is not written for the React Compiler.
-      "react-hooks/rules-of-hooks": "error",
-      "react-hooks/exhaustive-deps": "warn",
-      "react/react-in-jsx-scope": "off",
-      "react/prop-types": "off",
-      "react/function-component-definition": ["error", {
-        namedComponents: "arrow-function",
-        unnamedComponents: "arrow-function",
-      }],
+      ...reactHooks.configs.recommended.rules,
 
       "func-style": ["error", "expression"],
       "prefer-arrow-callback": "error",
+      "no-restricted-syntax": ["error", ...FUNCTION_FORM_RULES],
 
       "@typescript-eslint/consistent-type-imports": ["error", { prefer: "type-imports" }],
       "@typescript-eslint/consistent-type-definitions": "off",
@@ -99,7 +107,7 @@ export default tseslint.config(
       "simple-import-sort/imports": "error",
       "simple-import-sort/exports": "error",
 
-      "import/no-restricted-paths": ["error", {
+      "import-x/no-restricted-paths": ["error", {
         zones: [
           { target: "./app/features/landing", from: "./app/features", except: ["./landing"] },
           { target: "./app/features/workspace", from: "./app/features", except: ["./workspace"] },
@@ -139,30 +147,28 @@ export default tseslint.config(
   {
     files: ["app/*.{ts,tsx}", "app/lib/**/*.{ts,tsx}"],
     rules: {
-      "no-restricted-syntax": ["error", ...MIDDLE_DOT_RULES],
+      "no-restricted-syntax": ["error", ...FUNCTION_FORM_RULES, ...MIDDLE_DOT_RULES],
     },
   },
 
   {
     files: ["app/{features,routes}/**/*.{ts,tsx}"],
     rules: {
-      "no-restricted-syntax": ["error", HEX_LITERAL_RULE, ...ARBITRARY_CLASSNAME_RULES, ...MIDDLE_DOT_RULES],
-      "react/forbid-elements": ["error", {
-        forbid: [
-          { element: "button", message: "Raw <button> is not allowed. Use <Button> from ~/ui instead." },
-          { element: "a", message: "Raw <a> is not allowed. Use <Link> from react-router, or <ExternalLink> or <DownloadLink> from ~/ui, instead." },
-          { element: "input", message: "Raw <input> is not allowed. Use <TextInput>, <CheckboxRow>, or <Toggle> from ~/ui instead." },
-          { element: "select", message: "Raw <select> is not allowed. Use <Select> from ~/ui instead." },
-          { element: "textarea", message: "Raw <textarea> is not allowed. Use <TextArea> from ~/ui instead." },
-        ],
-      }],
+      "no-restricted-syntax": [
+        "error",
+        ...FUNCTION_FORM_RULES,
+        HEX_LITERAL_RULE,
+        ...ARBITRARY_CLASSNAME_RULES,
+        ...MIDDLE_DOT_RULES,
+        ...RAW_ELEMENT_RULES,
+      ],
     },
   },
 
   {
     files: ["app/{ui,shell}/**/*.{ts,tsx}"],
     rules: {
-      "no-restricted-syntax": ["error", HEX_LITERAL_RULE, ...MIDDLE_DOT_RULES],
+      "no-restricted-syntax": ["error", ...FUNCTION_FORM_RULES, HEX_LITERAL_RULE, ...MIDDLE_DOT_RULES],
     },
   },
 
@@ -172,6 +178,7 @@ export default tseslint.config(
     rules: {
       "func-style": "off",
       "prefer-arrow-callback": "off",
+      "no-restricted-syntax": "off",
       "no-console": "off",
     },
   },

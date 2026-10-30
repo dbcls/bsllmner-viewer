@@ -409,7 +409,7 @@ const AnnotationRow = ({
 }) => {
   const info = statusInfo(annotation.status)
   const shown = hasStatusValue(annotation.status)
-  // The last column holds the widest status chip that a row shows, LLM selected, so that the values of every row start
+  // The last column holds the widest status chip that a row shows, Unique match, so that the values of every row start
   // and end at the same place; each chip keeps the width of its text, at the right end of the row.
   return (
     <div

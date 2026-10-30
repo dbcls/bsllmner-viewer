@@ -108,7 +108,12 @@ def test_narrowing_to_a_cell_matches_the_count_of_the_cell(
 def test_trend_points_match_counts(
     client: TestClient, ast: Node | None, unit: str, excl: bool, field: str | None
 ) -> None:
-    params = {"unit": unit, "q": condition_q(ast) or "", "facetSelfExclude": str(excl).lower(), "limit": 2}
+    params: dict[str, str | int] = {
+        "unit": unit,
+        "q": condition_q(ast) or "",
+        "facetSelfExclude": str(excl).lower(),
+        "limit": 2,
+    }
     if field:
         params["field"] = field
     body = client.get("/api/trend", params=params).json()
@@ -136,7 +141,12 @@ def test_trend_points_match_counts(
 def test_trend_all_entries_count_the_whole_population_in_the_years_of_the_trend(
     client: TestClient, ast: Node | None, unit: str, excl: bool, field: str | None
 ) -> None:
-    params = {"unit": unit, "q": condition_q(ast) or "", "facetSelfExclude": str(excl).lower(), "limit": 2}
+    params: dict[str, str | int] = {
+        "unit": unit,
+        "q": condition_q(ast) or "",
+        "facetSelfExclude": str(excl).lower(),
+        "limit": 2,
+    }
     if field:
         params["field"] = field
     body = client.get("/api/trend", params=params).json()

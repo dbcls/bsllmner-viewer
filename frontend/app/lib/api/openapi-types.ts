@@ -337,7 +337,7 @@ export interface components {
              * @description The extracted value; null when none was extracted
              */
             value: string | null;
-            /** @description Annotation status. The UI shows `mapped_exact` as "Exact match", `mapped_selected` as "LLM selected" (LLM: large language model), `unmapped_no_candidate` as "No candidate", `unmapped_rejected` as "Rejected", `not_stated` as "Not stated", and `extraction_failed` as "Extraction failed". See "Annotation status" in /llms-full.txt for the meanings */
+            /** @description Annotation status. The UI shows `mapped_exact` as "Unique match", `mapped_selected` as "LLM selected" (LLM: large language model), `unmapped_no_candidate` as "No candidate", `unmapped_rejected` as "Rejected", `not_stated` as "Not stated", and `extraction_failed` as "Extraction failed". See "Annotation status" in /llms-full.txt for the meanings */
             status: components["schemas"]["Status"];
             /**
              * Termid
@@ -733,7 +733,7 @@ export interface components {
              * @description The extracted value; null when none was extracted
              */
             value: string | null;
-            /** @description Annotation status. The UI shows `mapped_exact` as "Exact match", `mapped_selected` as "LLM selected" (LLM: large language model), `unmapped_no_candidate` as "No candidate", `unmapped_rejected` as "Rejected", `not_stated` as "Not stated", and `extraction_failed` as "Extraction failed". See "Annotation status" in /llms-full.txt for the meanings */
+            /** @description Annotation status. The UI shows `mapped_exact` as "Unique match", `mapped_selected` as "LLM selected" (LLM: large language model), `unmapped_no_candidate` as "No candidate", `unmapped_rejected` as "Rejected", `not_stated` as "Not stated", and `extraction_failed` as "Extraction failed". See "Annotation status" in /llms-full.txt for the meanings */
             status: components["schemas"]["Status"];
             /**
              * Termid

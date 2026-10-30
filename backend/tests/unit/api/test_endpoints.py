@@ -37,7 +37,7 @@ def test_dataset_counts_equal_the_distributions_of_the_whole_population(client: 
     body = client.get("/api/dataset").json()
 
     def counts(field: str) -> dict[str, int]:
-        params = {"field": field, "limit": 200}
+        params: dict[str, str | int] = {"field": field, "limit": 200}
         return {e["value"]: e["count"] for e in client.get("/api/distribution", params=params).json()["elements"]}
 
     assays = counts("library_strategy")

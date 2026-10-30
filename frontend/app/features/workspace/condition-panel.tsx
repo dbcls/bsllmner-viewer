@@ -51,11 +51,14 @@ export const ConditionPanel = ({ q, condition, onAddTerm }: ConditionPanelProps)
   const statusFields = selected.flatMap((clause) => fieldOfStatusField(clause.field) ?? [])
   const firstStatusField = statusFields[0]
   const [chosenStatusField, setStatusField] = useState(firstStatusField)
-  useEffect(() => {
-    if (firstStatusField !== undefined) setStatusField((current) => (current !== undefined && statusFields.includes(current) ? current : firstStatusField))
-    // The select follows the condition only when the set of fields with a status condition changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFields.join(",")])
+  // The select follows the condition only when the set of fields with a status condition changes. It keeps a chosen
+  // field that still has a status condition.
+  const statusFieldSet = statusFields.join(",")
+  const [statusFieldSetOf, setStatusFieldSetOf] = useState(statusFieldSet)
+  if (statusFieldSetOf !== statusFieldSet) {
+    setStatusFieldSetOf(statusFieldSet)
+    if (firstStatusField !== undefined && (chosenStatusField === undefined || !statusFields.includes(chosenStatusField))) setStatusField(firstStatusField)
+  }
 
   const fieldOptions = fields.map((f) => ({ value: f.name, label: fieldLabel(f.name) }))
   // Without a status condition, the status buttons are on the first field of the dataset.
@@ -319,10 +322,17 @@ const PublicationDate = ({ condition }: { condition: Condition }) => {
   const [to, setTo] = useState(range?.to ?? "")
   /** Counts the changes that were not written, because the condition moved on; the boxes then show the latest range again. */
   const [resync, setResync] = useState(0)
-  useEffect(() => {
+  // The boxes start over from the range of the condition when the range changes or a change was not written.
+  const shown = `${range?.from ?? ""}|${range?.to ?? ""}|${resync}`
+  const [shownOf, setShownOf] = useState(shown)
+  if (shownOf !== shown) {
+    setShownOf(shown)
     setFrom(range?.from ?? "")
     setTo(range?.to ?? "")
-  }, [range?.from, range?.to, resync])
+  }
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  /** The typed dates that have been applied, so that the timer and the blur apply them once. */
+  const sent = useRef<string | null>(null)
 
   const entered = enteredRange(from, to, today)
   const unchanged = from === (range?.from ?? "") && to === (range?.to ?? "")
@@ -337,9 +347,6 @@ const PublicationDate = ({ condition }: { condition: Condition }) => {
 
   const cleared = from === "" && to === ""
   const typed: DateRange | null | undefined = unchanged ? undefined : cleared ? null : entered !== null && entered !== "reversed" ? entered : undefined
-  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  /** The typed dates that have been applied, so that the timer and the blur apply them once. */
-  const sent = useRef<string | null>(null)
   const send = (dates: DateRange | null) => {
     clearTimeout(timer.current)
     sent.current = `${from}|${to}`

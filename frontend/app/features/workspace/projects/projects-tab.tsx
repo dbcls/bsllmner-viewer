@@ -43,7 +43,7 @@ type ProjectsTabProps = {
  * the condition stay among the others.
  */
 export const ProjectsTab = ({ state, condition, onPage, onPastEnd, onSort, onPerPage }: ProjectsTabProps) => {
-  const table = useTableTop(onPage)
+  const { ref: tableTopRef, onFootPage } = useTableTop(onPage)
   const projects = useProjects({ q: state.q, selfExclusion: true, sort: state.sort, page: state.page, perPage: state.perPage })
   const targetAssays = useDataset().data?.targetAssays ?? []
   const [sortKey = "biosampleCount", sortDirection = "desc"] = state.sort.split(":") as [ProjectSortKey, SortDirection]
@@ -52,7 +52,7 @@ export const ProjectsTab = ({ state, condition, onPage, onPastEnd, onSort, onPer
   usePastEnd(projects, state.page, state.perPage, state.q, onPastEnd)
 
   return (
-    <Card ref={table.ref} padding="none" flush busy={projects.isPlaceholderData}>
+    <Card ref={tableTopRef} padding="none" flush busy={projects.isPlaceholderData}>
       <CardHeader>
         <div className="ml-auto flex flex-wrap items-center gap-x-4 gap-y-2">
           <SortChooser keys={SORT_KEYS} value={sortKey} direction={sortDirection} onChange={(key, direction) => onSort(projectSort(key, direction))} />
@@ -95,7 +95,7 @@ export const ProjectsTab = ({ state, condition, onPage, onPastEnd, onSort, onPer
       </TableScroller>
       <CardFooter>
         <div className="ml-auto">
-          <Pager page={state.page} perPage={state.perPage} total={total} onChange={table.onFootPage} failed={failed} label="Pages (bottom)" />
+          <Pager page={state.page} perPage={state.perPage} total={total} onChange={onFootPage} failed={failed} label="Pages (bottom)" />
         </div>
       </CardFooter>
     </Card>

@@ -10,7 +10,7 @@ bsllmner-viewer reads the results of bsllmner-mk2, and links each BioSample to i
 
 - Queries on ontology terms that also match the descendants of each term over the directed acyclic graph (DAG) of the ontology. A query can also have conditions on the assay, the organism, the publication date, and the BioProject.
 - Aggregations of the matches of a query: distributions, cross-tabulations, and yearly trends. You choose whether an aggregation counts BioSamples, SRA Experiments, or BioProjects.
-- An annotation status for each annotation. The status tells whether an exact match mapped the value to a term, whether the LLM selected the term, whether the value has no adopted term, or whether the field has no extracted value.
+- An annotation status for each annotation. The status tells whether the value matched the label or a synonym of exactly one term, whether the LLM selected the term, whether the value has no adopted term, or whether the field has no extracted value.
 - Evidence that shows where each extracted value occurs in the original metadata of its BioSample.
 - Exports of the matching BioSamples as tab-separated values (TSV) or as newline-delimited JSON (NDJSON), and of the accessions of the matching BioSamples, SRA Experiments, SRA Runs, and BioProjects.
 - One condition language for the UI, the URLs of the UI, and the API. You can therefore reproduce every result of the UI through the API. The API follows the conventions of the DDBJ Search API.

@@ -46,8 +46,11 @@ const cssStops = (gradient: string): Stop[] => {
     const start = offsets[index - 1] as number
     offsets[index] = start + ((offsets[end] as number) - start) / (end - index + 1)
   }
-  return parts.map((part, index) => ({ color: part[1] ?? "", offset: offsets[index] as number }))
+  return parts.map((part, index) => ({ color: hex(part[1] ?? ""), offset: offsets[index] as number }))
 }
+
+/** A color as `#rrggbb`, the form that `mix` reads. The style of an element can give a hex color as `rgb(r, g, b)`. */
+const hex = (color: string): string => `#${rgb(color).map((value) => value.toString(16).padStart(2, "0")).join("")}`
 
 /** The stops of the gradient of the count legend of a saved figure. */
 const svgStops = (): Stop[] => {

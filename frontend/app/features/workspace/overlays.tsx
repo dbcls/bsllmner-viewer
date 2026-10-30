@@ -139,10 +139,16 @@ export const ApiModal = ({ open, onClose, state, onAlert }: ApiModalProps) => {
   const [first] = requests
   const origin = typeof window === "undefined" ? "" : window.location.origin
   const curl = requests.map((request) => `curl -s "${origin}${request}" \\\n  -H "Accept: application/json"`).join("\n\n")
+  // Each request that the open dialog sends starts from the loading state.
+  const request = open && first !== undefined ? `${attempt} ${first}` : null
+  const [shownRequest, setShownRequest] = useState(request)
+  if (shownRequest !== request) {
+    setShownRequest(request)
+    if (request !== null) setResponse({ kind: "loading" })
+  }
   useEffect(() => {
     if (!open || first === undefined) return
     let cancelled = false
-    setResponse({ kind: "loading" })
     fetch(first)
       .then(async (r) => {
         const text = await r.text()

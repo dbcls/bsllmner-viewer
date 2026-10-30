@@ -39,6 +39,7 @@ import { SamplePage } from "~/features/sample/sample-page"
 import { ApiModal } from "~/features/workspace/overlays"
 import { TermPicker } from "~/features/workspace/term-picker/term-picker"
 import { ErrorBoundary } from "~/root"
+import { clientLoader as notFoundLoader } from "~/routes/not-found"
 import { Footer } from "~/shell/footer"
 
 // The data router builds each Request with the AbortSignal of jsdom. The Request of Node (undici) accepts only its own
@@ -128,6 +129,13 @@ describe("the footer", () => {
     renderWithQuery(<Footer />)
     expect(await screen.findByText("Dataset information is unavailable")).toBeInTheDocument()
   })
+
+  it("names each logo link by its organization and says that the link opens in a new tab", () => {
+    renderWithQuery(<Footer />)
+    for (const name of ["BioData Science Initiative (BSI)", "DNA Data Bank of Japan (DDBJ)", "Chiba University"]) {
+      expect(screen.getByRole("link", { name: `${name} (opens in a new tab)` })).toHaveAttribute("target", "_blank")
+    }
+  })
 })
 
 describe("the API dialog", () => {
@@ -202,6 +210,7 @@ describe("the error boundary of the route", () => {
               },
               element: <p>never</p>,
             },
+            { path: "*", loader: notFoundLoader },
           ],
         },
       ],

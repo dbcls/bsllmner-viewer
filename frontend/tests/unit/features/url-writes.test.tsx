@@ -1,5 +1,6 @@
 import { QueryClientProvider } from "@tanstack/react-query"
 import { act, render } from "@testing-library/react"
+import { useEffect } from "react"
 import { createMemoryRouter, RouterProvider, useLocation } from "react-router"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -57,10 +58,14 @@ globalThis.Request = class extends NativeRequest {
 type Hook = ReturnType<typeof useCondition> & { update: ReturnType<typeof useWorkspaceState>[1]; search: string }
 const hook = { current: null as unknown as Hook }
 
+/** Gives the test the values of the last render, after React commits the render. */
 const Probe = () => {
   const [state, update, latest] = useWorkspaceState()
   const condition = useCondition(state.q, update, latest)
-  hook.current = { ...condition, update, search: useLocation().search }
+  const { search } = useLocation()
+  useEffect(() => {
+    hook.current = { ...condition, update, search }
+  })
   return null
 }
 

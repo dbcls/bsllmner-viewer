@@ -90,6 +90,18 @@ test.describe("pages", () => {
     await expect(page).toHaveTitle(SITE)
   })
 
+  test("the not found page draws without an error in the console, so its first render agrees with the built HTML", async ({ page }) => {
+    const errors: string[] = []
+    page.on("pageerror", (error) => errors.push(error.message))
+    // The browser reports the 404 of the page itself as a resource that failed to load.
+    page.on("console", (message) => {
+      if (message.type() === "error" && !message.text().startsWith("Failed to load resource")) errors.push(message.text())
+    })
+    await page.goto(MISSING_PATH)
+    await expect(page.getByRole("main").getByRole("heading", { level: 1 })).toContainText("404")
+    expect(errors).toEqual([])
+  })
+
   test("the top page has a schema.org Dataset whose name, version, and counts come from the dataset api", async ({ page, request }) => {
     const data = await get<{ datasetVersion: { name: string; createdAt: string }; totals: { biosample: number }; fields: { name: string }[] }>(request, "/api/dataset")
     await page.goto("/")

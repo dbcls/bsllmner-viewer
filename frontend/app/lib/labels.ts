@@ -50,16 +50,16 @@ export type StatusInfo = {
 
 export const STATUS_INFO: Record<StatusCode, StatusInfo> = {
   mapped_exact: {
-    label: "Exact match",
+    label: "Unique match",
     group: "mapped",
-    meaning: "The value matched an ontology label or synonym exactly.",
+    meaning: "The value matched the label or a synonym of only one term, so no LLM was needed.",
     mark: "filled",
     tone: "brand",
   },
   mapped_selected: {
     label: "LLM selected",
     group: "mapped",
-    meaning: "The LLM selected the term from the candidate terms.",
+    meaning: "The value matched the labels or synonyms of several terms or of none, so the LLM selected the term from the candidates.",
     mark: "half",
     tone: "brand-mid",
   },

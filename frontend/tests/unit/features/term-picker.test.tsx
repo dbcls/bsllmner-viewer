@@ -77,6 +77,19 @@ describe("TermPicker", () => {
     expect(screen.getByRole("textbox", { name: "Search terms by label, synonym, or ID" })).toHaveFocus()
   })
 
+  it("searches every field again when the dialog opens again after a field was chosen", async () => {
+    const user = userEvent.setup()
+    const picker = (open: boolean) => <TermPicker open={open} onClose={vi.fn()} fields={["tissue", "disease"]} q={null} isSelected={() => false} onPick={vi.fn()} />
+    const { rerender } = renderWithQuery(picker(true))
+    await user.click(screen.getByRole("combobox", { name: "Field" }))
+    await user.click(screen.getByRole("option", { name: "Tissue" }))
+    await screen.findByText("tissue 0")
+    rerender(picker(false))
+    rerender(picker(true))
+    expect(await screen.findByText("all 0")).toBeInTheDocument()
+    expect(screen.queryByText("tissue 0")).toBeNull()
+  })
+
   it("shows the results of another field from the top", async () => {
     const user = userEvent.setup()
     const list = renderPicker()

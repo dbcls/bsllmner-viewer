@@ -22,10 +22,26 @@ const renderMenu = ({ onSelect = vi.fn(), ariaLabel }: { onSelect?: (label: stri
     </>,
   )
 
+const ITEMS = [{ label: "TSV", onSelect: () => undefined }]
+
 const trigger = () => screen.getByRole("button", { name: "Export" })
 const item = (name: string) => screen.getByRole("menuitem", { name: new RegExp(`^${name}`) })
 
 describe("MenuButton", () => {
+  it("closes when the button becomes disabled, and stays closed when the button is enabled again", async () => {
+    const user = userEvent.setup()
+    const { rerender } = render(<MenuButton label="Export" icon="download" items={ITEMS} />)
+    await user.click(trigger())
+    expect(screen.getByRole("menu")).toBeInTheDocument()
+    rerender(<MenuButton label="Export" icon="download" items={ITEMS} disabled />)
+    expect(screen.queryByRole("menu")).toBeNull()
+    expect(trigger()).toHaveAttribute("aria-expanded", "false")
+    rerender(<MenuButton label="Export" icon="download" items={ITEMS} />)
+    expect(screen.queryByRole("menu")).toBeNull()
+    await user.click(trigger())
+    expect(screen.getByRole("menu")).toBeInTheDocument()
+  })
+
   it("is a button that announces a menu and keeps the menu closed", () => {
     renderMenu()
     expect(trigger()).toHaveAttribute("aria-haspopup", "menu")

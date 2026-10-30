@@ -148,7 +148,12 @@ def _years(client: TestClient, q: str | None) -> list[str]:
 def test_date_default_elements_are_every_year_with_a_match_in_ascending_order(
     client: TestClient, ast: Node | None, unit: str, excl: bool, limit: int, as_row: bool
 ) -> None:
-    params = {"unit": unit, "q": condition_q(ast) or "", "limit": limit, "facetSelfExclude": str(excl).lower()}
+    params: dict[str, str | int] = {
+        "unit": unit,
+        "q": condition_q(ast) or "",
+        "limit": limit,
+        "facetSelfExclude": str(excl).lower(),
+    }
     if as_row:
         body = client.get("/api/crosstab", params={**params, "row": "date_published", "col": "library_strategy"}).json()
         values = [e["value"] for e in body["rows"]]
@@ -180,7 +185,7 @@ def test_default_terms_of_an_aggregation_are_the_terms_assigned_directly_to_the_
 ) -> None:
     q = condition_q(ast) or ""
     assume(field not in q)  # a condition that names terms of the field adds them to the default ones
-    params = {"unit": unit, "q": q, "limit": limit, "facetSelfExclude": str(excl).lower()}
+    params: dict[str, str | int] = {"unit": unit, "q": q, "limit": limit, "facetSelfExclude": str(excl).lower()}
     if kind == "distribution":
         body = client.get("/api/distribution", params={**params, "field": field}).json()
         chosen = {e["value"] for e in body["elements"]}

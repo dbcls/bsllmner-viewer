@@ -54,7 +54,7 @@ export const SamplesTab = ({ state, onPage, onPastEnd, onPerPage, search }: Samp
   const total = entries.data?.pagination.total
   const failed = queryFailed(entries)
   usePastEnd(entries, state.page, state.perPage, state.q, onPastEnd)
-  const table = useTableTop(onPage)
+  const { ref: tableTopRef, onFootPage } = useTableTop(onPage)
   // A click on a row opens the BioSample in the same way as the link in the row. With Cmd, Ctrl, or the middle button, the
   // BioSample opens in a new tab. The new tab has no history state, so its back link goes to the whole dataset. A plain
   // click opens the BioSample in the same tab with the state for the back link.
@@ -66,7 +66,7 @@ export const SamplesTab = ({ state, onPage, onPastEnd, onPerPage, search }: Samp
   }
 
   return (
-    <Card ref={table.ref} padding="none" flush busy={entries.isPlaceholderData}>
+    <Card ref={tableTopRef} padding="none" flush busy={entries.isPlaceholderData}>
       <CardHeader>
         <div className="flex min-w-0 grow basis-80 items-center">
           <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
@@ -161,7 +161,7 @@ export const SamplesTab = ({ state, onPage, onPastEnd, onPerPage, search }: Samp
       </TableScroller>
       <CardFooter>
         <div className="ml-auto">
-          <Pager page={state.page} perPage={state.perPage} total={total} onChange={table.onFootPage} failed={failed} label="Pages (bottom)" />
+          <Pager page={state.page} perPage={state.perPage} total={total} onChange={onFootPage} failed={failed} label="Pages (bottom)" />
         </div>
       </CardFooter>
     </Card>

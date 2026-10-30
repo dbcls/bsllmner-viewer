@@ -93,8 +93,8 @@ Annotations come from an LLM, so an annotation can be wrong. Every annotation ha
 | | `extraction_failed` | BioSample | The LLM output for the BioSample could not be interpreted, so no field has a value. |
 | `unmapped` | `unmapped_no_candidate` | Extracted value | No ontology term was a candidate for the value. |
 | | `unmapped_rejected` | Extracted value | Candidate terms existed, but none was adopted. |
-| `mapped` | `mapped_exact` | Extracted value | The term was determined automatically by an exact match against an ontology label or synonym, without an LLM call. |
-| | `mapped_selected` | Extracted value | The term was selected by the LLM from the candidate terms. |
+| `mapped` | `mapped_exact` | Extracted value | The whole value, ignoring case, matched the label or a synonym of exactly one term, so the term was determined without an LLM call. |
+| | `mapped_selected` | Extracted value | The value matched the label or a synonym of several terms or of no term, so the LLM selected the term from the candidate terms. |
 
 - A condition specifies a group, not a single status, and the condition matches every status in the group. In the same way, a condition on a term matches the descendants of the term. The entries and the exports of the api show the status of each annotation.
 - `no_value` means that nothing was extracted, not that the BioSample lacks the property. For example, if no drug was extracted for a BioSample, then the BioSample is not necessarily untreated.

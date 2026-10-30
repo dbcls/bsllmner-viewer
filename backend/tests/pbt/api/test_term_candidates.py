@@ -26,7 +26,13 @@ QUERIES = ["cancer", "carcinoma", "breast", "c", "e", "MONDO", "liver", "dex", "
 
 
 def _terms(client: TestClient, ast: Node | None, field: str, query: str, limit: int) -> dict[str, Any]:
-    params = {"field": field, "query": query, "q": condition_q(ast) or "", "limit": limit, "facetSelfExclude": "true"}
+    params: dict[str, str | int] = {
+        "field": field,
+        "query": query,
+        "q": condition_q(ast) or "",
+        "limit": limit,
+        "facetSelfExclude": "true",
+    }
     body: dict[str, Any] = client.get("/api/terms", params=params).json()
     return body
 

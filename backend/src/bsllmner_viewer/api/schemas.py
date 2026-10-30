@@ -168,7 +168,7 @@ _SELECTED_DESCRIPTION = (
     "selecting the element removes the clauses"
 )
 _STATUS_DESCRIPTION = (
-    'Annotation status. The UI shows `mapped_exact` as "Exact match", `mapped_selected` as "LLM selected" (LLM: '
+    'Annotation status. The UI shows `mapped_exact` as "Unique match", `mapped_selected` as "LLM selected" (LLM: '
     'large language model), `unmapped_no_candidate` as "No candidate", `unmapped_rejected` as "Rejected", '
     '`not_stated` as "Not stated", and `extraction_failed` as "Extraction failed". See "Annotation status" in '
     "/llms-full.txt for the meanings"

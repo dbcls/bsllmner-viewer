@@ -1,5 +1,6 @@
 import { QueryClientProvider } from "@tanstack/react-query"
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
+import { useEffect } from "react"
 import { createMemoryRouter, RouterProvider } from "react-router"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 
@@ -51,10 +52,13 @@ globalThis.Request = class extends NativeRequest {
 }
 
 const hook = { clear: () => undefined as unknown }
+/** Gives the test the clear of the last render, after React commits the render. */
 const Page = () => {
   const [state, update, latest] = useWorkspaceState()
   const condition = useCondition(state.q, update, latest)
-  hook.clear = condition.clear
+  useEffect(() => {
+    hook.clear = condition.clear
+  })
   return <ConditionPanel q={state.q} condition={condition} onAddTerm={() => undefined} />
 }
 
