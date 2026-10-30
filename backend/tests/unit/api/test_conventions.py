@@ -339,7 +339,7 @@ class TestProblems:
             assert response.status_code == 422, (path, params)
             body = response.json()
             assert body["type"] == "about:blank"
-            assert body["title"] == "Unprocessable Entity"
+            assert body["title"] == "Unprocessable Content"
             assert body["detail"]
 
     @pytest.mark.parametrize("unit", ["biosample", "sra-experiment", "bioproject"])

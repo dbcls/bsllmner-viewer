@@ -1,13 +1,13 @@
 # compose.yml builds the dev stage: the development tools, and the source that compose.yml mounts over /app.
 # deploy/compose.yml builds the runtime stage: only the packages that the api needs, run by an unprivileged user.
-FROM docker.io/library/python:3.12-slim-bookworm AS uv
+FROM docker.io/library/python:3.14-slim-trixie AS uv
 
 ENV UV_LINK_MODE=copy \
     UV_PROJECT_ENVIRONMENT=/app/.venv \
     UV_PYTHON_DOWNLOADS=never \
     PYTHONUNBUFFERED=1
 
-COPY --from=ghcr.io/astral-sh/uv:0.8 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.13 /uv /uvx /bin/
 
 WORKDIR /app
 
@@ -35,10 +35,13 @@ COPY README.md ./
 COPY src src
 RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev --no-editable
 
-FROM docker.io/library/python:3.12-slim-bookworm AS runtime
+FROM docker.io/library/python:3.14-slim-trixie AS runtime
 
 ENV PATH=/app/.venv/bin:$PATH \
     PYTHONUNBUFFERED=1
+
+# The api installs no package. pip of the base image carries its own copies of other packages, such as urllib3.
+RUN python -m pip uninstall --yes --root-user-action=ignore pip
 
 # The uid is fixed, so that it stays the same for the volumes that a container of an earlier image created. A new
 # volume takes the owner of its directory in the image, so the temporary directory of DuckDB belongs to the api user.

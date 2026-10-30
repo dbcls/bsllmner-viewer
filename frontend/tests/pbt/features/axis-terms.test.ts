@@ -59,7 +59,7 @@ describe("resolvePasted", () => {
   })
 
   it("uses the other entries when the api rejects a label, and counts the rejected ones", async () => {
-    const rejected = new ApiError({ type: "about:blank", title: "Unprocessable Entity", status: 422 })
+    const rejected = new ApiError({ type: "about:blank", title: "Unprocessable Content", status: 422 })
     const findTerm = (label: string) => (label === "too long" ? Promise.reject(rejected) : Promise.resolve(`TERM:${label}`))
     expect(await resolvePasted(["a", "too long", "b:1", "c"], true, findTerm)).toEqual({ terms: ["TERM:a", "b:1", "TERM:c"], missed: 0, rejected: 1 })
   })

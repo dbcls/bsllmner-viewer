@@ -78,7 +78,7 @@ describe("resolvePasted", () => {
   })
 
   it("counts a label that the api refuses as rejected while the other lookups go on", async () => {
-    const refused = new ApiError({ type: "about:blank", title: "Unprocessable Entity", status: 422 })
+    const refused = new ApiError({ type: "about:blank", title: "Unprocessable Content", status: 422 })
     const findTerm = (label: string) => (label === "label3" ? Promise.reject(refused) : Promise.resolve(`TERM:${label}`))
     const entries = labels(9)
     const expected = entries.filter((label) => label !== "label3").map((label) => `TERM:${label}`)

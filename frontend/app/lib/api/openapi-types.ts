@@ -1421,7 +1421,7 @@ export interface operations {
                     "application/json": components["schemas"]["DatasetResponse"];
                 };
             };
-            /** @description Unprocessable Entity (the request does not match the operation) */
+            /** @description Unprocessable Content (the request does not match the operation) */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -1481,7 +1481,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Unprocessable Entity (the request does not match the operation) */
+            /** @description Unprocessable Content (the request does not match the operation) */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -1543,7 +1543,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Unprocessable Entity (the request does not match the operation) */
+            /** @description Unprocessable Content (the request does not match the operation) */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -1604,7 +1604,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Unprocessable Entity (the request does not match the operation) */
+            /** @description Unprocessable Content (the request does not match the operation) */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -1680,7 +1680,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Unprocessable Entity (the request does not match the operation) */
+            /** @description Unprocessable Content (the request does not match the operation) */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -1745,7 +1745,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Unprocessable Entity (the request does not match the operation) */
+            /** @description Unprocessable Content (the request does not match the operation) */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -1818,7 +1818,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Unprocessable Entity (the request does not match the operation) */
+            /** @description Unprocessable Content (the request does not match the operation) */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -1910,7 +1910,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Unprocessable Entity (the request does not match the operation) */
+            /** @description Unprocessable Content (the request does not match the operation) */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -2002,7 +2002,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Unprocessable Entity (the request does not match the operation) */
+            /** @description Unprocessable Content (the request does not match the operation) */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -2085,7 +2085,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Unprocessable Entity (the request does not match the operation) */
+            /** @description Unprocessable Content (the request does not match the operation) */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -2171,7 +2171,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Unprocessable Entity (the request does not match the operation) */
+            /** @description Unprocessable Content (the request does not match the operation) */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -2264,7 +2264,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Unprocessable Entity (the request does not match the operation) */
+            /** @description Unprocessable Content (the request does not match the operation) */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -2329,7 +2329,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Unprocessable Entity (the request does not match the operation) */
+            /** @description Unprocessable Content (the request does not match the operation) */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -2403,7 +2403,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Unprocessable Entity (the request does not match the operation) */
+            /** @description Unprocessable Content (the request does not match the operation) */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -2495,7 +2495,7 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Unprocessable Entity (the request does not match the operation) */
+            /** @description Unprocessable Content (the request does not match the operation) */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -2548,7 +2548,7 @@ export interface operations {
                     "application/json": components["schemas"]["ServiceInfoResponse"];
                 };
             };
-            /** @description Unprocessable Entity (the request does not match the operation) */
+            /** @description Unprocessable Content (the request does not match the operation) */
             422: {
                 headers: {
                     [name: string]: unknown;

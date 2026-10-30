@@ -19,6 +19,7 @@ docker compose up
   - `docs/` read-only at `/docs` in the `api` container and the `frontend` container, to make `/llms-full.txt` and for the tests that check the docs
   - `frontend/public/` at `/frontend/public` in the `api` container, for the tests that compare `llms.txt` with the OpenAPI document
   - `backend/` read-only at `/backend` in the `frontend` container, so that the frontend can generate its API types from `backend/openapi.json`
+- The packages of the api (`/app/.venv`) and of the frontend (`/app/node_modules`) are in named volumes. Docker copies the files of the image into a named volume only when the volume is empty. Therefore, after a lockfile or a base image changes, run `docker compose down -v` to remove the volumes, and run `docker compose build --pull`. Otherwise, the containers keep the packages of the earlier image.
 - To serve a store that you built from real runs ([operations.md](operations.md#building-a-store)), set `BSLLMNER_VIEWER_STORE` to the path of the store file, and recreate the api container with `docker compose up -d --force-recreate api`.
 - After a file changes on the bind mount, the dev server sometimes serves an empty module, and the browser reports a missing export. To fix this, run `docker compose restart frontend`.
 

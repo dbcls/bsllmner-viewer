@@ -194,7 +194,7 @@ def parse_datetime(value: Any) -> datetime.datetime | None:
         parsed = datetime.datetime.fromisoformat(value.replace("Z", "+00:00"))
         if parsed.tzinfo is not None:
             parsed = parsed.astimezone(datetime.UTC).replace(tzinfo=None)
-    except (ValueError, OverflowError):
+    except ValueError, OverflowError:
         return None
     return parsed
 

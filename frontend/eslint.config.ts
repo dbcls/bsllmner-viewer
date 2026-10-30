@@ -71,7 +71,10 @@ export default tseslint.config(
       import: importPlugin,
     },
     rules: {
-      ...reactHooks.configs.recommended.rules,
+      // Only the rules of hooks. The recommended config of the plugin also has the rules of the React Compiler, and the
+      // code is not written for the React Compiler.
+      "react-hooks/rules-of-hooks": "error",
+      "react-hooks/exhaustive-deps": "warn",
       "react/react-in-jsx-scope": "off",
       "react/prop-types": "off",
       "react/function-component-definition": ["error", {

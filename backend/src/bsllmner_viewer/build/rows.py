@@ -15,6 +15,9 @@ def insert_rows(con: duckdb.DuckDBPyConnection, table: str, schema: pa.Schema, r
         return
     columns = list(zip(*rows, strict=True))
     batch = pa.table({name: list(col) for name, col in zip(schema.names, columns, strict=True)}, schema=schema)
+    # register() fails while the result of an earlier execute() is unfinished, for example a SELECT that the caller read
+    # with fetchone(). complete() runs that result to its end, and does nothing when no result is unfinished.
+    con.complete()
     con.register("batch_rows", batch)
     try:
         con.execute(f"INSERT INTO {table} BY NAME SELECT * FROM batch_rows")

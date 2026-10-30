@@ -303,7 +303,7 @@ def _derive_evidence(con: duckdb.DuckDBPyConnection) -> None:
     con.execute(
         """
         SELECT a.biosample, a.field, a.value_index,
-               list_filter([t.label, a.term_label], x -> x IS NOT NULL)
+               list_filter([t.label, a.term_label], lambda x: x IS NOT NULL)
                    || coalesce((SELECT list(s.synonym ORDER BY s.synonym) FROM term_synonym s
                                 WHERE s.term_id = a.term_id), []) AS names,
                b.title, b.description, b.attributes
@@ -370,7 +370,7 @@ def _omit_attributes(con: duckdb.DuckDBPyConnection) -> None:
         CREATE OR REPLACE TABLE evidence AS
         SELECT v.biosample, v.field, v.value_index, v.kind,
                CASE WHEN v.kind = ? THEN v.item - len(list_filter(
-                   list_slice(from_json(b.attributes, '{_ATTRIBUTES}'), 1, v.item), x -> list_contains(?, x.name)
+                   list_slice(from_json(b.attributes, '{_ATTRIBUTES}'), 1, v.item), lambda x: list_contains(?, x.name)
                )) ELSE v.item END AS item,
                v.in_name, v.span_start, v.span_end, v.strategy
         FROM evidence v JOIN biosample b ON b.accession = v.biosample
@@ -381,8 +381,10 @@ def _omit_attributes(con: duckdb.DuckDBPyConnection) -> None:
     con.execute(
         f"""
         UPDATE biosample
-        SET attributes = to_json(list_filter(from_json(attributes, '{_ATTRIBUTES}'), x -> NOT list_contains(?, x.name)))
-        WHERE len(list_filter(from_json(attributes, '{_ATTRIBUTES}'), x -> list_contains(?, x.name))) > 0
+        SET attributes = to_json(
+            list_filter(from_json(attributes, '{_ATTRIBUTES}'), lambda x: NOT list_contains(?, x.name))
+        )
+        WHERE len(list_filter(from_json(attributes, '{_ATTRIBUTES}'), lambda x: list_contains(?, x.name))) > 0
         """,
         [omitted, omitted],
     )
@@ -417,13 +419,13 @@ def _derive_searchable_text(con: duckdb.DuckDBPyConnection) -> None:
                        replace(b.organism_name, '|', '/'),
                        nullif(array_to_string(
                            list_transform(
-                               from_json(b.description, '[{"value": "VARCHAR"}]'), x -> replace(x.value, '|', '/')
+                               from_json(b.description, '[{"value": "VARCHAR"}]'), lambda x: replace(x.value, '|', '/')
                            ),
                            '|'
                        ), ''),
                        array_to_string(
                            list_transform(
-                               from_json(b.attributes, '[{"value": "VARCHAR"}]'), x -> replace(x.value, '|', '/')
+                               from_json(b.attributes, '[{"value": "VARCHAR"}]'), lambda x: replace(x.value, '|', '/')
                            ),
                            '|'
                        ),

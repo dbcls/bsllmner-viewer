@@ -92,7 +92,7 @@ def read_run_metadata(path: Path) -> RunMetadata:
                 if opening:
                     value, _ = json.JSONDecoder().raw_decode(text, opening.end() - 1)
                     return _run_metadata(path, value)
-    except (ValueError, OSError, BuildError):
+    except ValueError, OSError, BuildError:
         pass
     return load_select_result(path)[0]
 

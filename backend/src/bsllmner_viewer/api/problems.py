@@ -162,7 +162,7 @@ def error_responses(
     responses: dict[int | str, dict[str, Any]] = {
         422: {
             "model": ProblemDetails,
-            "description": "Unprocessable Entity (the request does not match the operation)",
+            "description": "Unprocessable Content (the request does not match the operation)",
         },
         500: {"model": ProblemDetails, "description": "Internal Server Error"},
     }

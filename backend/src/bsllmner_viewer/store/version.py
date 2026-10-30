@@ -104,7 +104,7 @@ def require_current_schema(con: duckdb.DuckDBPyConnection, path: Path, *, catalo
     try:
         row = con.execute(f"SELECT value FROM {table} WHERE key = 'schema_version'").fetchone()
         found = None if row is None else int(orjson.loads(row[0]))
-    except (duckdb.CatalogException, ValueError):
+    except duckdb.CatalogException, ValueError:
         found = None
     if found != SCHEMA_VERSION:
         raise SchemaVersionError(
