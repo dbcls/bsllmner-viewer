@@ -76,12 +76,13 @@ To deploy the application, copy `deploy/.env.example` to `deploy/.env`, and set 
 ```
 cd deploy
 mkdir -p ../log
-BSLLMNER_VIEWER_COMMIT=$(git rev-parse --short HEAD) podman-compose -p bsllmner-viewer build
+BSLLMNER_VIEWER_COMMIT=$(git rev-parse --short HEAD) podman-compose -p bsllmner-viewer build --pull
 podman-compose -p bsllmner-viewer down
 podman-compose -p bsllmner-viewer up -d
 ```
 
 - Give the project name with `-p` to every podman-compose command, including `ps`, `logs`, `restart`, and `down`. Without `-p`, podman-compose uses the name of the directory, `deploy`, as the project name. You can run the same commands with `docker compose`.
+- The Dockerfiles name each base image by a tag without the patch version, and the publisher rebuilds the image of the tag when the image gets security fixes. If you build without `--pull`, then the build uses the base images that are already on the host, and the new images do not get these fixes.
 - `up -d` does not rebuild an image that exists, so run `build` after you update the code. podman-compose `up -d` creates the containers again only when the compose configuration has changed, not when an image has changed, so run `down` before `up -d`.
 - Create the directory `log` at the root of the checkout before the containers start, because the containers do not start without the directory ([deployment.md](deployment.md#logs)).
 - Make every store file readable by all users (for example mode 644), and make the store directory readable and searchable by all users, because the user of the api does not own the store files or the store directory ([deployment.md](deployment.md#containers)). With rootless podman, a user other than root in the container is a different user on the host.

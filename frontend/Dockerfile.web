@@ -13,7 +13,9 @@ RUN npm run build && node nginx/csp-hashes.mjs build/client/index.html /app/csp-
 COPY docs/api.md docs/data-model.md /docs/
 RUN node scripts/llms-full.ts /docs build/client/llms-full.txt
 
-FROM docker.io/library/nginx:1.29-alpine
+# The slim variant has none of the dynamic modules of nginx (such as njs and image_filter) and none of their libraries.
+# The configuration loads no dynamic module.
+FROM docker.io/library/nginx:1.30-alpine-slim
 # The image's entrypoint writes the nameservers into NGINX_LOCAL_RESOLVERS and fills the template with the filtered variables.
 ENV NGINX_ENTRYPOINT_LOCAL_RESOLVERS=1 \
     NGINX_ENVSUBST_FILTER="^(BSLLMNER_VIEWER_|NGINX_LOCAL_RESOLVERS$)" \
