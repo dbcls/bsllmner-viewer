@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import duckdb
 
-SCHEMA_VERSION = 9
+SCHEMA_VERSION = 10
 
 RAW_TABLES: tuple[str, ...] = (
     "store_meta",
@@ -71,7 +71,11 @@ CREATE TABLE run (
     mk2_version VARCHAR NOT NULL,
     model VARCHAR NOT NULL,
     entry_count INTEGER NOT NULL,
-    ingested_at TIMESTAMP NOT NULL
+    ingested_at TIMESTAMP NOT NULL,
+    reselect_name VARCHAR UNIQUE,
+    reselect_result_file VARCHAR,
+    reselect_mk2_version VARCHAR,
+    reselect_entry_count INTEGER
 );
 
 CREATE TABLE field (

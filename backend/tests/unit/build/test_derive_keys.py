@@ -53,7 +53,8 @@ def _raw(
     now = datetime.datetime(2026, 1, 1)
     for run_id in (1, 2):
         con.execute(
-            "INSERT INTO run VALUES (?, ?, ?, 'r.json', 'i.jsonl', 'c.json', 'sha', 'v', 'model', 0, ?)",
+            "INSERT INTO run VALUES "
+            "(?, ?, ?, 'r.json', 'i.jsonl', 'c.json', 'sha', 'v', 'model', 0, ?, NULL, NULL, NULL, NULL)",
             [run_id, run_id - 1, f"run{run_id}", now],
         )
     con.execute("INSERT INTO field VALUES ('disease', 0, TRUE, ['mondo.obo'])")

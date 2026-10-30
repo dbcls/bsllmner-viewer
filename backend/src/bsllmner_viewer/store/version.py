@@ -12,12 +12,20 @@ from pydantic import BaseModel, ConfigDict
 from bsllmner_viewer.store.schema import SCHEMA_VERSION
 
 
+class ReselectVersion(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    name: str
+    mk2_version: str
+
+
 class RunVersion(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     name: str
     mk2_version: str
     select_config_sha256: str
+    reselect: ReselectVersion | None = None
 
 
 class OntologyVersion(BaseModel):
@@ -62,9 +70,15 @@ def write_meta(con: duckdb.DuckDBPyConnection, key: str, value: Any) -> None:
 
 def read_version(con: duckdb.DuckDBPyConnection) -> DatasetVersion:
     runs = [
-        RunVersion(name=name, mk2_version=mk2, select_config_sha256=sha)
-        for name, mk2, sha in con.execute(
-            "SELECT name, mk2_version, select_config_sha256 FROM run ORDER BY manifest_index"
+        RunVersion(
+            name=name,
+            mk2_version=mk2,
+            select_config_sha256=sha,
+            reselect=None if reselect is None else ReselectVersion(name=reselect, mk2_version=reselect_mk2),
+        )
+        for name, mk2, sha, reselect, reselect_mk2 in con.execute(
+            "SELECT name, mk2_version, select_config_sha256, reselect_name, reselect_mk2_version FROM run "
+            "ORDER BY manifest_index"
         ).fetchall()
     ]
     ontologies = [

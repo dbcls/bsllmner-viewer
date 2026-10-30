@@ -135,7 +135,7 @@ class TestDatasetVersion:
             "ontologies",
             "referenceSnapshots",
         }
-        assert set(version["runs"][0]) == {"name", "mk2Version", "selectConfigSha256"}
+        assert set(version["runs"][0]) == {"name", "mk2Version", "selectConfigSha256", "reselect"}
         assert set(version["referenceSnapshots"]) == {"sraExperiments", "dblink", "bioprojects", "chipAtlas"}
 
 

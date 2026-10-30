@@ -6,7 +6,6 @@ Every operation writes a new store file. The input store of append and refresh i
 from __future__ import annotations
 
 import fcntl
-import hashlib
 import logging
 import os
 import tempfile
@@ -21,7 +20,7 @@ import duckdb
 import pyarrow as pa
 from lxml import etree
 
-from bsllmner_viewer.build.convert import ConvertResult, ConvertTask, convert_run, utc_now
+from bsllmner_viewer.build.convert import ConvertResult, ConvertTask, convert_run, sha256_of, utc_now
 from bsllmner_viewer.build.derive import derive
 from bsllmner_viewer.build.errors import BuildError
 from bsllmner_viewer.build.manifest import Manifest, RunSpec
@@ -74,8 +73,11 @@ def build_refresh(manifest: Manifest, store: Path, out: Path, *, threads: int | 
     _check_reference_paths(manifest)
     with _new_store(out, threads) as con:
         existing = _copy_run_tables(con, store)
-        if [r.name for r in manifest.runs] != existing:
-            raise BuildError("a reference refresh requires the manifest to list exactly the runs in the store")
+        if [_run_key(r) for r in manifest.runs] != existing:
+            raise BuildError(
+                "a reference refresh requires the manifest to list exactly the runs in the store, with the same "
+                "reselect runs"
+            )
         _load_reference(con, manifest)
         return _finish(con, manifest)
 
@@ -132,8 +134,13 @@ def _remove_store_files(path: Path) -> None:
     path.with_name(path.name + ".wal").unlink(missing_ok=True)
 
 
-def _copy_run_tables(con: duckdb.DuckDBPyConnection, store: Path) -> list[str]:
-    """Copy run-derived raw tables from an existing store; returns its run names in manifest order.
+def _run_key(run: RunSpec) -> tuple[str, str | None]:
+    """The name of the run and the name of its reselect run, which identify the run among the runs of a store."""
+    return run.name, run.reselect.name if run.reselect is not None else None
+
+
+def _copy_run_tables(con: duckdb.DuckDBPyConnection, store: Path) -> list[tuple[str, str | None]]:
+    """Copy run-derived raw tables from an existing store; returns the keys of its runs (`_run_key`) in manifest order.
 
     The store must have the current schema version, so the raw tables of both stores have the same columns.
     """
@@ -147,16 +154,24 @@ def _copy_run_tables(con: duckdb.DuckDBPyConnection, store: Path) -> list[str]:
             raise BuildError(str(e)) from e
         for table in _RUN_TABLES:
             con.execute(f"INSERT INTO {table} SELECT * FROM src.{table}")
-        names = [str(r[0]) for r in con.execute("SELECT name FROM src.run ORDER BY manifest_index").fetchall()]
+        keys = [
+            (str(name), None if reselect is None else str(reselect))
+            for name, reselect in con.execute(
+                "SELECT name, reselect_name FROM src.run ORDER BY manifest_index"
+            ).fetchall()
+        ]
     finally:
         con.execute("DETACH src")
-    return names
+    return keys
 
 
-def _new_runs(manifest: Manifest, existing: list[str]) -> list[RunSpec]:
-    names = [r.name for r in manifest.runs]
-    if names[: len(existing)] != existing:
-        raise BuildError("the manifest must list the runs already in the store first, in the same order")
+def _new_runs(manifest: Manifest, existing: list[tuple[str, str | None]]) -> list[RunSpec]:
+    keys = [_run_key(r) for r in manifest.runs]
+    if keys[: len(existing)] != existing:
+        raise BuildError(
+            "the manifest must list the runs already in the store first, in the same order and with the same "
+            "reselect runs"
+        )
     return list(manifest.runs[len(existing) :])
 
 
@@ -204,17 +219,24 @@ def _ingest_runs(
                 input_file=manifest.resolve(run.input),
                 fields=fields,
                 out_dir=Path(tmp),
+                reselect_name=run.reselect.name if run.reselect is not None else None,
+                reselect_file=manifest.resolve(run.reselect.result) if run.reselect is not None else None,
             )
             for i, run in enumerate(runs)
         ]
-        _validate_runs(
-            [(run.name, read_run_metadata(t.result_file)) for run, t in zip(runs, tasks, strict=True)], existing_model
-        )
+        metadata = [(run.name, read_run_metadata(t.result_file)) for run, t in zip(runs, tasks, strict=True)]
+        metadata += [
+            (t.reselect_name, read_run_metadata(t.reselect_file))
+            for t in tasks
+            if t.reselect_name is not None and t.reselect_file is not None
+        ]
+        _validate_runs(metadata, existing_model)
         results = _convert_all(tasks, workers)
         for i, (run, result) in enumerate(zip(runs, results, strict=True)):
             config_path = manifest.resolve(run.select_config)
+            reselect = run.reselect
             con.execute(
-                "INSERT INTO run VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO run VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 [
                     result.run_id,
                     first_index + i,
@@ -227,6 +249,10 @@ def _ingest_runs(
                     result.metadata.model,
                     result.entry_count,
                     utc_now(),
+                    reselect.name if reselect is not None else None,
+                    str(reselect.result) if reselect is not None else None,
+                    reselect.mk2_version if reselect is not None else None,
+                    result.reselect_entry_count,
                 ],
             )
             con.execute("INSERT INTO entry SELECT * FROM read_parquet(?)", [str(result.entries_parquet)])
@@ -392,11 +418,3 @@ def _finish(con: duckdb.DuckDBPyConnection, manifest: Manifest) -> Verification:
     result = verify(con)
     write_meta(con, "verification", {"ok": result.ok, "problems": list(result.problems), "counts": result.counts})
     return result
-
-
-def sha256_of(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as f:
-        for block in iter(lambda: f.read(1 << 20), b""):
-            digest.update(block)
-    return digest.hexdigest()

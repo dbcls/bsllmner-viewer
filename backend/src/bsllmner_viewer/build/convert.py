@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import hashlib
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -75,6 +76,8 @@ class ConvertTask:
     input_file: Path
     fields: tuple[str, ...]
     out_dir: Path
+    reselect_name: str | None = None
+    reselect_file: Path | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,6 +86,7 @@ class ConvertResult:
     name: str
     metadata: RunMetadata
     entry_count: int
+    reselect_entry_count: int | None
     annotation_count: int
     evidence_count: int
     entries_parquet: Path
@@ -154,8 +158,54 @@ def _result_entries(task: ConvertTask, raw_entries: list[dict[str, Any]]) -> Ite
         raise BuildError(f"run {task.name}: {task.result_file.name}: {e}") from e
 
 
+def _accession_of(raw: Any) -> str | None:
+    extract = raw.get("extract") if isinstance(raw, dict) else None
+    accession = extract.get("accession") if isinstance(extract, dict) else None
+    return accession if isinstance(accession, str) and accession else None
+
+
+def _with_reselect(
+    task: ConvertTask, reselect_file: Path, metadata: RunMetadata, raw_entries: list[Any]
+) -> tuple[list[Any], int]:
+    """The entries of the run, where each entry that the reselect run has is the entry of the reselect run.
+
+    Also returns the number of entries of the reselect run. Raises BuildError when the reselect run did not read this
+    result of the run, or when an entry of the reselect run does not match an entry of the run.
+    """
+    where = f"run {task.reselect_name}: {reselect_file.name}"
+    reselect_metadata, reselect_entries = load_select_result(reselect_file)
+    info = reselect_metadata.reselect
+    if info is None:
+        raise BuildError(f"{where}: run_metadata.reselect is missing")
+    if info.source_run_name != metadata.run_name:
+        raise BuildError(f"{where}: reselects run {info.source_run_name!r}, not run {metadata.run_name!r}")
+    if info.source_sha256 != sha256_of(task.result_file):
+        raise BuildError(f"{where}: read another version of the result file {task.result_file.name}")
+    position: dict[str, int] = {}
+    for at, raw in enumerate(raw_entries):
+        accession = _accession_of(raw)
+        if accession is not None:
+            position.setdefault(accession, at)
+    merged = list(raw_entries)
+    seen: set[str] = set()
+    for raw in reselect_entries:
+        accession = _accession_of(raw)
+        if accession is None:
+            raise BuildError(f"{where}: SelectResult entry without accession")
+        if accession in seen:
+            raise BuildError(f"{where}: entry {accession} occurs more than once in the result file")
+        seen.add(accession)
+        index = position.get(accession)
+        if index is None:
+            raise BuildError(f"{where}: entry {accession} is not in the result of run {task.name}")
+        if raw.get("extract") != raw_entries[index].get("extract"):
+            raise BuildError(f"{where}: entry {accession} has another extract than the entry of run {task.name}")
+        merged[index] = raw
+    return merged, len(seen)
+
+
 def convert_run(task: ConvertTask) -> ConvertResult:
-    """Read one run and write its entries, annotations, and evidence as Parquet files.
+    """Read one run, with its reselect run if it has one, and write its entries, annotations, and evidence as Parquet.
 
     Raises BuildError when a result entry's accession is not in the input file or occurs twice in the result.
     """
@@ -164,6 +214,9 @@ def convert_run(task: ConvertTask) -> ConvertResult:
     except BuildError as error:
         raise BuildError(f"run {task.name}: {error}") from error
     metadata, raw_entries = load_select_result(task.result_file)
+    reselect_entry_count = None
+    if task.reselect_file is not None:
+        raw_entries, reselect_entry_count = _with_reselect(task, task.reselect_file, metadata, raw_entries)
     entries: dict[str, list[object]] = {name: [] for name in ENTRY_SCHEMA.names}
     annotations: dict[str, list[object]] = {name: [] for name in ANNOTATION_SCHEMA.names}
     evidence: dict[str, list[object]] = {name: [] for name in EVIDENCE_SCHEMA.names}
@@ -227,12 +280,21 @@ def convert_run(task: ConvertTask) -> ConvertResult:
         name=task.name,
         metadata=metadata,
         entry_count=len(seen),
+        reselect_entry_count=reselect_entry_count,
         annotation_count=len(annotations["accession"]),
         evidence_count=len(evidence["accession"]),
         entries_parquet=entries_path,
         annotations_parquet=annotations_path,
         evidence_parquet=evidence_path,
     )
+
+
+def sha256_of(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as f:
+        for block in iter(lambda: f.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()
 
 
 def utc_now() -> datetime.datetime:

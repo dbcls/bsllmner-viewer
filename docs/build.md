@@ -12,20 +12,24 @@ A manifest is a YAML file that defines a dataset. Every build operation ([Operat
 
 - the name of the dataset
 - the target assays, as a list of SRA `library_strategy` values
-- the list of runs, in order. For each run, the manifest gives a result file, an input file, a select configuration, and the version of bsllmner-mk2 that the run used.
+- the list of runs, in order. For each run, the manifest gives a result file, an input file, a select configuration, and the version of bsllmner-mk2 that the run used. A run can also have a reselect run ([Runs](#runs)), for which the manifest gives a name, a result file, and the version of bsllmner-mk2.
 - the location and the snapshot date of each source of reference data. For the ontologies, the manifest lists the files of each ontology.
 
 A path in a manifest is relative to the directory of the manifest. The manifest model in the build package defines the format. A manifest looks like this:
 
 ```yaml
-name: bsllmner-mistral
+name: bsllmner-qwen38
 target_assays: [RNA-Seq, ChIP-Seq, ATAC-seq]
 runs:
-  - name: chipatlas_hg38_part1
-    result: ro-crate/results/select_chipatlas_hg38_part1.json
+  - name: chipatlas_hg38_qwen38_part1
+    result: ro-crate/run-results/select_chipatlas_hg38_qwen38_part1.json
     input: ro-crate/inputs/chipatlas_hg38/bs_entries_chipatlas_hg38_part1.jsonl
     select_config: ro-crate/config/select-config-hg38.json
-    mk2_version: 5a5744e
+    mk2_version: bed6d68
+    reselect:
+      name: chipatlas_hg38_qwen38_part1_gene_reselect
+      result: ro-crate/run-results/select_chipatlas_hg38_qwen38_part1_gene_reselect.json
+      mk2_version: 497cfc5
 reference:
   ontologies:
     - name: MONDO
@@ -54,6 +58,8 @@ A run is one execution of `bsllmner2_select` of bsllmner-mk2. A run has three fi
 | Result | SelectResult JSON, as specified in the bsllmner-mk2 data format documentation |
 | Input | The BioSample JSONL that the execution read. Each line is one NCBI BioSample entry, in the form of an export from BioSample XML (`Ids`, `Description`, `Attributes`, `submission_date`, `publication_date`, `last_update`). An entry is either wrapped as `{"BioSample": {...}, "accession": ...}`, or has the same members at the top level next to `accession` |
 | Select configuration | The select configuration JSON that the execution read, which maps each field to an ontology file |
+
+A run can have one reselect run. A reselect run is one execution of `bsllmner2_reselect` of bsllmner-mk2, which selects terms again for the values that a run left without a term. The result of a reselect run is a SelectResult that contains, in full, each entry that the reselect run processed. If the result of the reselect run has an entry for a BioSample, then build reads that entry instead of the entry of the run. The reselect run read the input file and the select configuration of the run, so a reselect run has no files of its own except the result.
 
 From an input entry, build takes these items:
 
@@ -84,6 +90,8 @@ When build computes the derived data ([Operations](#operations)), build removes 
 
 If the source of SRA Experiments or of BioProjects is a directory, then build reads every `*.jsonl` file under the directory. For SRA Experiments, build reads only the files whose names contain `experiment`. The ChIP-Atlas experiment list is the `experimentList.tab` file that ChIP-Atlas publishes.
 
+Give build a complete export of each source. ddbj-search-converter also writes exports that contain only the records that changed since an earlier export, in the same format. build cannot tell such an export from a complete export. With such an export, build stops with no error, but an experiment that the export does not contain has no library strategy, and its BioSamples are not part of the population.
+
 The runs use subsets of the ontologies, and the select configurations refer to these subsets. The subsets define the terms that an annotation can have, but the subsets do not contain the term hierarchy. Therefore, for each ontology, the manifest lists the subsets and also a complete release of the ontology, which contains the parent–child relations.
 
 From every file of an ontology, build reads the terms and the relations. If two files define the same term, then build takes the label from the earlier file. The order of the files is the order of the ontologies in the manifest, and then the order of the files of each ontology. [data-model.md](data-model.md#term-hierarchy) specifies which relations build reads as parent relations, and which terms build skips.
@@ -101,17 +109,19 @@ If the SRA Experiment data has the same row twice, then build treats the two row
 
 Before a build operation ingests anything, the operation validates its inputs, and stops at the first violation. The error names the file, the run, or the field that violates the rule, and also names the line if the file has lines. The later steps of build assume that the following rules are true:
 
-- Every run of the dataset has the same `run_metadata.model`.
-- Every run has `run_metadata.status` equal to `completed`.
+- Every run and every reselect run of the dataset has the same `run_metadata.model`.
+- Every run and every reselect run has `run_metadata.status` equal to `completed`.
 - The names of the ontologies are unique.
 - Every path of the reference data in the manifest exists.
-- No run is ingested twice. The names of the runs are unique, and no two runs have the same result file.
+- No run is ingested twice. The names of the runs and of the reselect runs are unique, and no two of them have the same result file.
 - A field is multi-valued (`"value_type": "array"` in the select configuration) either in every run that has the field, or in no run.
 - No `accession` occurs more than once in the result of a run.
 - Every non-empty line of an input file is a JSON object with an `accession`.
 - The `taxonomy_id` of an input entry is absent, null, empty, or an integer from 1 to 2147483647, written as a JSON number or as a string of ASCII digits.
 - The `run_metadata` of a result has `run_name`, `model`, and `status`.
 - The `accession` of every entry of a run result appears in the input file of the run.
+- The result of a reselect run has `run_metadata.reselect`. Its `source_run_name` is the `run_metadata.run_name` of the run, and its `source_sha256` is the SHA-256 checksum of the result file of the run.
+- No `accession` occurs more than once in the result of a reselect run. The `accession` of every entry of the result of a reselect run appears in the result of the run, and the entry has the same `extract` as the entry of the run.
 
 ## Reading annotations
 
@@ -136,7 +146,7 @@ The values `exact_match` and `reasoning` in `results[field]` do not show how a t
 
 A BioSample can appear in more than one run if the dataset combines sources of BioSamples that overlap. For example, assume that a BioSample has both ChIP-Seq experiments and RNA-Seq experiments. Then both a run of the ChIP-Atlas BioSamples and a run of the RNA-Seq BioSamples analyze the BioSample, so that the results of each source are complete without the other source.
 
-The store keeps the annotations of exactly one run for each BioSample. Of the runs that have the BioSample, build uses the run that is first in the list of runs of the manifest. From that run, build takes all annotations, all attributes, and the date of the BioSample, and build never combines values from different runs. The choice of the run depends only on the order of the list of runs, not on the contents of the runs or on the order of ingestion. An append adds runs after every existing run, so an append never changes a BioSample that is already in the store.
+The store keeps the annotations of exactly one run for each BioSample. Of the runs that have the BioSample, build uses the run that is first in the list of runs of the manifest. From that run, build takes all annotations, all attributes, and the date of the BioSample, and build never combines values from different runs. Here, a run and its reselect run count as one run. The choice of the run depends only on the order of the list of runs, not on the contents of the runs or on the order of ingestion. An append adds runs after every existing run, so an append never changes a BioSample that is already in the store.
 
 ## Operations
 
@@ -145,8 +155,8 @@ Every build operation writes a new store file, and does not change any store tha
 | Operation | Input | Effect |
 |---|---|---|
 | Full build | A manifest | Ingests all runs and all reference data, and computes the derived data |
-| Append | A store with the current schema version, and a manifest that lists the runs of the store first, in the same order, and then at least one more run | Ingests the runs that are not yet in the store, reads the reference data of the manifest, chooses the run of each BioSample again over all runs, and computes the derived data again |
-| Reference refresh | A store with the current schema version, and a manifest that lists exactly the runs of the store, in the same order, with updated reference data or updated target assays | Replaces the reference data, and computes the derived data again without ingesting the runs again |
+| Append | A store with the current schema version, and a manifest that lists the runs of the store first, in the same order and with the same reselect runs, and then at least one more run | Ingests the runs that are not yet in the store, reads the reference data of the manifest, chooses the run of each BioSample again over all runs, and computes the derived data again |
+| Reference refresh | A store with the current schema version, and a manifest that lists exactly the runs of the store, in the same order and with the same reselect runs, with updated reference data or updated target assays | Replaces the reference data, and computes the derived data again without ingesting the runs again |
 
 The derived data consists of everything that build can compute from the runs and the reference data:
 
@@ -183,7 +193,7 @@ A store holds the following version information:
 
 - the dataset name and the store creation time
 - the model
-- the bsllmner-mk2 version of each run
+- the bsllmner-mk2 version of each run and of each reselect run
 - the checksums of the select configuration of each run and of every ontology file
 - the snapshot date of each source of reference data
 - the target assays

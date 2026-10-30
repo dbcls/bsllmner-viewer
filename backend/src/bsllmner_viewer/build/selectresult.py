@@ -22,6 +22,15 @@ _METADATA_WINDOW = 1 << 16
 _AFTER_KEY = re.compile(r"\s*:\s*\{")
 
 
+class ReselectInfo(BaseModel):
+    """The run whose result a `bsllmner2_reselect` run read."""
+
+    model_config = ConfigDict(extra="ignore", frozen=True)
+
+    source_run_name: str
+    source_sha256: str
+
+
 class RunMetadata(BaseModel):
     model_config = ConfigDict(extra="ignore", frozen=True)
 
@@ -29,6 +38,7 @@ class RunMetadata(BaseModel):
     model: str
     status: Literal["running", "completed", "failed", "interrupted"]
     start_time: datetime.datetime | None = None
+    reselect: ReselectInfo | None = None
 
 
 @dataclass(slots=True)
