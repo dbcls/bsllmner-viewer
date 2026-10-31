@@ -1,5 +1,5 @@
 # compose.yml builds the dev stage: the development tools, and the source that compose.yml mounts over /app.
-# deploy/compose.yml builds the runtime stage: only the packages that the api needs, run by an unprivileged user.
+# deploy/compose.yml builds the runtime stage: only the packages that the api needs.
 FROM docker.io/library/python:3.14-slim-trixie AS uv
 
 ENV UV_LINK_MODE=copy \
@@ -43,15 +43,7 @@ ENV PATH=/app/.venv/bin:$PATH \
 # The api installs no package. pip of the base image carries its own copies of other packages, such as urllib3.
 RUN python -m pip uninstall --yes --root-user-action=ignore pip
 
-# The uid is fixed, so that it stays the same for the volumes that a container of an earlier image created. A new
-# volume takes the owner of its directory in the image, so the temporary directory of DuckDB belongs to the api user.
-RUN groupadd --system --gid 10001 api \
-    && useradd --system --uid 10001 --gid api --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin api \
-    && install -d -o api -g api /var/tmp/bsllmner-viewer
-
 COPY --from=packages /app/.venv /app/.venv
-
-USER api
 
 # The commit that /api/service-info reports. The RUN between ARG and ENV makes podman build the ENV layer again when the value changes.
 ARG BSLLMNER_VIEWER_COMMIT=
