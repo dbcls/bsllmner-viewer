@@ -1,4 +1,5 @@
-# Deployment: api serving one store file, and nginx serving the built frontend and proxying /api.
+# Deployment: api serving one store file, and nginx serving the built frontend and the files of the RO-Crates, and
+# proxying /api.
 # Works with podman-compose and docker compose. podman-compose also reads podman-compose.yml in this directory.
 services:
   api:
@@ -55,6 +56,8 @@ services:
     image: bsllmner-viewer-web
     ports:
       - "${BSLLMNER_VIEWER_PORT:-20081}:80"
+    volumes:
+      - ${BSLLMNER_VIEWER_DATASETS_DIR:?set to the directory holding the files of the RO-Crates}:/data/datasets:ro
     environment:
       BSLLMNER_VIEWER_NOINDEX: ${BSLLMNER_VIEWER_NOINDEX:-false}
     depends_on:

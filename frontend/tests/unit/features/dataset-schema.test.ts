@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest"
 
 import { datasetSchema } from "~/features/landing/dataset-schema"
 import type { DatasetResponse } from "~/lib/api/types"
-import { ANNOTATION_CRATE } from "~/lib/crate"
+import { ANNOTATION_LICENSE, CRATES, DBCLS } from "~/lib/crate"
 
 const DATASET = {
   datasetVersion: { name: "full", createdAt: "2026-10-03T21:29:30Z", model: "mistral-small3.1:24b", digest: "0f8b06f33b9f2567" },
@@ -28,12 +28,25 @@ describe("datasetSchema", () => {
     expect(schema.variableMeasured).toEqual(["Cell line", "ChIP antigen"])
   })
 
-  it("gives the creator and the license of the RO-Crate that it is based on, and says that the license is that of the annotations", () => {
-    expect(schema.isBasedOn).toBe(ANNOTATION_CRATE.url)
-    expect(schema.license).toBe(ANNOTATION_CRATE.license.url)
-    expect(schema.creator).toEqual({ "@type": "Organization", ...ANNOTATION_CRATE.creator })
-    expect(schema.description).toContain(`The annotations are published in the RO-Crate ${ANNOTATION_CRATE.name} under ${ANNOTATION_CRATE.license.name}.`)
+  it("gives the license of the RO-Crates and their publisher as its creator, and says that the license is that of the annotations", () => {
+    expect(schema.license).toBe(ANNOTATION_LICENSE.url)
+    expect(schema.creator).toEqual({ "@type": "Organization", ...DBCLS })
+    expect(schema.description).toContain(`The annotations are published as an RO-Crate under ${ANNOTATION_LICENSE.name}.`)
     expect(schema.description).toContain("come from the INSDC databases at NCBI and DDBJ")
+  })
+
+  it("is based on the RO-Crate of its model on the Datasets page", () => {
+    for (const crate of CRATES) {
+      const based = datasetSchema({ ...DATASET, datasetVersion: { ...DATASET.datasetVersion, model: crate.model } }, "https://viewer.example.org")
+      expect(based.isBasedOn).toBe(`https://viewer.example.org/datasets#${crate.id}`)
+    }
+  })
+
+  it("is based on the Datasets page when no RO-Crate has its model", () => {
+    for (const model of ["", "qwen3.8", "MISTRAL-SMALL3.1:24B", "llama3.1:70b"]) {
+      const based = datasetSchema({ ...DATASET, datasetVersion: { ...DATASET.datasetVersion, model } }, "https://viewer.example.org")
+      expect(based.isBasedOn, model).toBe("https://viewer.example.org/datasets")
+    }
   })
 
   it("has a description of the length that dataset search engines take", () => {

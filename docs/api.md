@@ -312,11 +312,12 @@ The api starts only with a store that the api can open and whose schema version 
 
 ## URLs
 
-The UI has three pages:
+The UI has four pages:
 
 - `/`: the top page
 - `/entries`: the page that shows the entries and the aggregations of a condition
 - `/entries/{accession}`: the page of one BioSample
+- `/datasets`: the page that lists the RO-Crates that publish the annotations, with their downloads
 
 Only `q` and the view parameters (the view tab, the counting unit, the axes of a cross-tabulation, and similar parameters) represent the state of `/entries`, and all of them are part of the URL. The `q` in a URL is the same string as the `q` of the API. With the same store version, the same URL gives the same result.
 

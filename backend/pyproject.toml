@@ -21,6 +21,7 @@ dependencies = [
 
 [project.scripts]
 bsllmner-viewer-build = "bsllmner_viewer.build.cli:main"
+bsllmner-viewer-package-crate = "bsllmner_viewer.package_crate:main"
 
 [dependency-groups]
 dev = [

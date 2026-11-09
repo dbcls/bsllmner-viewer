@@ -4,5 +4,6 @@ export default [
   index("routes/landing.tsx"),
   route("/entries", "routes/workspace.tsx"),
   route("/entries/:accession", "routes/sample.tsx"),
+  route("/datasets", "routes/datasets.tsx"),
   route("*", "routes/not-found.ts"),
 ] satisfies RouteConfig

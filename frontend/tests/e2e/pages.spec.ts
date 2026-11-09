@@ -1,5 +1,6 @@
 import { expect, type Page, test } from "@playwright/test"
 
+import { formatSize } from "../../app/lib/format"
 import { dataset, entries, get } from "./_api"
 import { workspaceUrl } from "./_helpers"
 
@@ -114,6 +115,71 @@ test.describe("pages", () => {
     expect(schema["description"]).toContain(data.totals.biosample.toLocaleString("en-US"))
     expect(schema["variableMeasured"]).toHaveLength(data.fields.length)
     expect(schema["url"]).toBe(new URL("/", page.url()).href)
+    expect(new URL(String(schema["isBasedOn"])).pathname).toBe("/datasets")
+  })
+
+  test("the header opens the Datasets page, which marks the RO-Crate of the model of the dataset and describes every RO-Crate in a schema.org Dataset", async ({ page, request }) => {
+    const { model } = (await get<{ datasetVersion: { model: string } }>(request, "/api/dataset")).datasetVersion
+    await page.goto("/")
+    await page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: "Datasets" }).click()
+    await expect(page).toHaveURL(/\/datasets$/)
+    await expect(page).toHaveTitle(title("Datasets"))
+    const main = page.getByRole("main")
+    const served = main.locator("div[id]").filter({ hasText: "Shown in this viewer" })
+    await expect(served).toHaveCount(1)
+    await expect(served.getByRole("heading", { level: 2 })).toHaveText(model)
+    const archives = main.getByRole("link", { name: /Download archive/ })
+    const script = page.locator('script[type="application/ld+json"]')
+    await expect(script).toHaveCount(1)
+    const schemas = JSON.parse((await script.textContent()) ?? "") as { "@type": string; url: string }[]
+    expect(schemas).toHaveLength(await archives.count())
+    for (const schema of schemas) {
+      expect(schema["@type"]).toBe("Dataset")
+      expect(new URL(schema.url).pathname).toBe("/datasets")
+    }
+  })
+
+  test("every file that the Datasets page links to exists, and an archive has the size that the page shows", async ({ page, request }) => {
+    await page.goto("/datasets")
+    const main = page.getByRole("main")
+    const links = main.locator('a[href^="/datasets/"]')
+    await expect(links.first()).toBeVisible()
+    const hrefs = await links.evaluateAll((anchors) => anchors.map((anchor) => anchor.getAttribute("href") ?? ""))
+    expect(hrefs.filter((href) => href.endsWith(".tar.gz")).length).toBeGreaterThan(0)
+    for (const href of hrefs) {
+      const response = await request.head(href)
+      expect(response.status(), href).toBe(200)
+      expect(response.headers()["x-robots-tag"], href).toBe("noindex")
+      expect(response.headers()["cache-control"], href).toContain("immutable")
+      if (!href.endsWith(".tar.gz")) continue
+      expect(response.headers()["content-type"], href).toBe("application/gzip")
+      expect(response.headers()["content-encoding"], href).toBeUndefined()
+      const bytes = Number(response.headers()["content-length"])
+      const label = await main.locator(`a[href="${href}"]`).evaluate((anchor) => (anchor.closest("li") ?? anchor).textContent ?? "")
+      expect(label, href).toContain(formatSize(bytes))
+    }
+  })
+
+  test("a client can continue the download of an archive with a range request", async ({ page, request }) => {
+    await page.goto("/datasets")
+    const href = await page.getByRole("main").locator('a[href$=".tar.gz"]').first().getAttribute("href")
+    if (!href) throw new Error("the Datasets page has no archive")
+    const response = await request.get(href, { headers: { Range: "bytes=0-1" } })
+    expect(response.status()).toBe(206)
+    // An archive is a gzip file, whatever else is in it.
+    expect([...(await response.body())]).toEqual([0x1f, 0x8b])
+  })
+
+  test("a path under /datasets/ that is not a file answers 404 and shows the not found page", async ({ page }) => {
+    const response = await page.goto("/datasets/no-such-release.tar.gz")
+    expect(response?.status()).toBe(404)
+    await expect(page.getByRole("main").getByRole("heading", { level: 1 })).toContainText("404")
+  })
+
+  test("the Datasets page answers 200 when it is opened by its address", async ({ page }) => {
+    const response = await page.goto("/datasets")
+    expect(response?.status()).toBe(200)
+    await expect(page.getByRole("main").getByRole("heading", { level: 1 })).toHaveText("Datasets")
   })
 
   test("opening another page moves the focus to the frame of the shell and announces the title, and a change of the parameters alone keeps the focus", async ({ page, request }) => {

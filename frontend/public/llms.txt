@@ -9,6 +9,7 @@ Use the JSON API rather than the web pages. Every result that the UI shows is al
 - [Swagger UI](/api): the operations, with requests that you can try
 - [OpenAPI document](/api/openapi.json): every operation, parameter, and response property, and the cause and the remedy of each error
 - [Full rules](/llms-full.txt): the API specification and the data model in one file, for the rules that the recipes below name
+- [Datasets](/datasets): the RO-Crates that publish the annotations, one for each model, with their downloads
 
 ## Conditions
 

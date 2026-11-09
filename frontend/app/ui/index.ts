@@ -1,5 +1,5 @@
-export { Alert } from "./alert"
-export { Button } from "./button"
+export { Alert, ALERT_MS, useAlert } from "./alert"
+export { Button, buttonClass } from "./button"
 export { Card, CardFooter, CardHeader } from "./card"
 export { CheckboxRow } from "./checkbox-row"
 export { Chip, FieldChip } from "./chip"

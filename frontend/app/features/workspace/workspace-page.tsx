@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react"
+import { useState } from "react"
 import { useLocation } from "react-router"
 
 import { isInvalidCondition } from "~/lib/api/client"
@@ -6,7 +6,7 @@ import { useDataset, useEntries } from "~/lib/api/queries"
 import type { TermHit } from "~/lib/api/types"
 import { copyText } from "~/lib/export"
 import { ENTRIES_SECTION, pageTitle, SITE_DESCRIPTION } from "~/lib/site"
-import { Alert, Card, PageMeta } from "~/ui"
+import { Alert, Card, PageMeta, useAlert } from "~/ui"
 
 import { ConditionBar } from "./condition-bar"
 import { ConditionPanel } from "./condition-panel"
@@ -22,23 +22,10 @@ import { TrendTab } from "./trend/trend-tab"
 import { useCondition } from "./use-condition"
 import { replaceIfCurrent } from "./use-past-end"
 
-/**
- * How long an alert stays. It is at the top of the viewport, away from the control that raised it, so it stays long
- * enough to be found there.
- */
-const ALERT_MS = 4000
-
 export const WorkspacePage = () => {
   const [state, update, latest] = useWorkspaceState()
   const location = useLocation()
-  const [alert, setAlert] = useState<string | null>(null)
-  const alertTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-
-  const showAlert = useCallback((message: string) => {
-    setAlert(message)
-    if (alertTimer.current) clearTimeout(alertTimer.current)
-    alertTimer.current = setTimeout(() => setAlert(null), ALERT_MS)
-  }, [])
+  const [alert, showAlert] = useAlert()
 
   const condition = useCondition(state.q, update, latest, showAlert)
   // The views are not asked for while the condition cannot be read: the api would refuse every request the same way.
@@ -51,10 +38,6 @@ export const WorkspacePage = () => {
   // stays when the user leaves the view and opens it again.
   const [replacing, setReplacing] = useState(false)
   const entries = useEntries({ q: state.q, page: 1, perPage: 1 }, !broken)
-
-  useEffect(() => () => {
-    if (alertTimer.current) clearTimeout(alertTimer.current)
-  }, [])
 
   const pastEnd = replaceIfCurrent(latest, update)
 

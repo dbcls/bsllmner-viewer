@@ -36,6 +36,7 @@ In the docs, the lowercase words build, store, api, and frontend refer to these 
 | `backend/src/bsllmner_viewer/build/` | The build operations, and the readers of every input format |
 | `backend/src/bsllmner_viewer/store/` | The store schema and the dataset version information, which build and the api share |
 | `backend/src/bsllmner_viewer/api/` | The FastAPI application: a router for each resource, and the query builders in `api/queries/` |
+| `backend/src/bsllmner_viewer/package_crate.py` | The command that packages an RO-Crate into the files that the deployment serves ([operations.md](operations.md#publishing-an-ro-crate)) |
 | `frontend/` | The TypeScript single-page application (SPA) |
 | `deploy/` | The compose files and the settings of a deployment ([deployment.md](deployment.md)) |
 | `docs/` | The specifications |

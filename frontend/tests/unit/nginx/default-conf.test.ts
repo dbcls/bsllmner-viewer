@@ -137,7 +137,7 @@ describe("limits of the requests in progress of a client", () => {
 
   it("keeps the count of each client in the zones that the limits name", () => {
     const zones = nodes.filter((node) => node.name === "limit_conn_zone").map((node) => node.args[1])
-    expect(zones).toEqual(["zone=per_client:10m", "zone=per_client_export:10m"])
+    expect(zones).toEqual(["zone=per_client:10m", "zone=per_client_export:10m", "zone=per_client_download:10m"])
   })
 
   it("tells a client with too many requests to retry after 1 second and a client with too many exports after 10", () => {
@@ -348,6 +348,72 @@ describe("map of nginx", () => {
   })
 })
 
+describe("the files of the RO-Crates", () => {
+  const downloads = location(nodes, "/datasets/")
+  const cache = (status: string, uri: string) => evaluateMap(nodes, "cache_control_v", vars({ status, uri }))
+  const retry = (status: string, uri: string) => evaluateMap(nodes, "retry_after", vars({ status, uri }))
+  const tag = (noindex: string, uri: string) => evaluateMap(withNoindex(noindex), "x_robots_tag", vars({ uri }))
+  const spa = locations(server(nodes)).find((candidate) => directives(candidate.node, "try_files").some((args) => args[0] === "/index.html"))
+
+  it("come from the read-only directory that compose mounts, with a slash at the end of both paths so that no path leaves it", () => {
+    expect(directives(downloads, "alias")).toEqual([["/data/datasets/"]])
+  })
+
+  it("have no listing, and a path that is not a file gets the 404 page of the application", () => {
+    expect(directives(downloads, "autoindex")).toEqual([])
+    expect(directives(downloads, "try_files")).toEqual([["$uri", "=404"]])
+    expect(directives(downloads, "error_page")).toContainEqual(["404", "/index.html"])
+  })
+
+  it("limit the downloads of each client, and answer the limit with the problem response", () => {
+    expect(directives(downloads, "limit_conn")).toEqual([["per_client_download", "4"]])
+    expect(directives(downloads, "limit_conn_status")).toEqual([["429"]])
+    expect(directives(downloads, "error_page")).toContainEqual(["429", "@too_many_requests"])
+    expect(evaluateMap(nodes, "too_many_detail", vars({ uri: "/datasets/a.tar.gz" }))).toContain("too many downloads")
+  })
+
+  it("make a client that has too many downloads wait as long as a client that has too many exports", () => {
+    expect(retry("429", "/datasets/a.tar.gz")).toBe(retry("429", "/api/export/entries/biosample"))
+    expect(retry("200", "/datasets/a.tar.gz")).toBe("")
+  })
+
+  it("are not compressed again as an archive, and are text in UTF-8 otherwise", () => {
+    const types = (downloads.children ?? []).find((child) => child.name === "types")?.children ?? []
+    const typeOf = (extension: string) => types.find((line) => line.args.includes(extension))?.name
+    expect(typeOf("gz")).toBe("application/gzip")
+    expect(typeOf("json")).toBe("application/json")
+    expect(typeOf("md")).toBe("text/plain")
+    expect(typeOf("sha256")).toBe("text/plain")
+    expect(directives(server(nodes), "gzip_types")[0]).not.toContain("application/gzip")
+  })
+
+  it("can be kept by a client for a year, in full or in part, because a release never changes", () => {
+    for (const status of ["200", "206", "304"]) expect(cache(status, "/datasets/a/results.tar.gz")).toBe("public, max-age=31536000, immutable")
+  })
+
+  it("are not kept by a client when they are missing, and the page keeps revalidating", () => {
+    for (const status of ["404", "429", "500"]) expect(cache(status, "/datasets/a.tar.gz")).toBe("no-cache")
+    for (const uri of ["/datasets", "/datasets/"]) expect(cache("200", uri)).toBe("no-cache")
+  })
+
+  it("are kept out of search results on every deployment, and the page is not", () => {
+    expect(tag("false", "/datasets/a.tar.gz")).toBe("noindex")
+    expect(tag("true", "/datasets/a.tar.gz")).toBe("noindex")
+    for (const uri of ["/datasets", "/datasets/"]) {
+      expect(tag("false", uri)).toBe("")
+      expect(tag("true", uri)).toBe("noindex")
+    }
+  })
+
+  it("are not taken for the page, and the page is not taken for a file", () => {
+    const [flag, pattern = ""] = (spa?.match ?? "").split(" ")
+    expect(flag).toBe("~")
+    const page = new RegExp(pattern)
+    for (const uri of ["/datasets", "/datasets/"]) expect(page.test(uri), uri).toBe(true)
+    for (const uri of ["/datasets/a.tar.gz", "/datasets/a/results.tar.gz", "/datasets/a/provenance/checksums.sha256"]) expect(page.test(uri), uri).toBe(false)
+  })
+})
+
 describe("routes of the single-page application", () => {
   // The splat route draws the not found page of the application for a path that nginx answers with 404.
   const SPLAT = "*"
@@ -372,6 +438,7 @@ describe("routes of the single-page application", () => {
     expect(routePaths).toContain("/")
     expect(routePaths).toContain("/entries")
     expect(routePaths).toContain("/entries/:accession")
+    expect(routePaths).toContain("/datasets")
   })
 
   it("serves index.html for every route of the application", () => {
@@ -382,7 +449,7 @@ describe("routes of the single-page application", () => {
   })
 
   it("answers a path that is neither a file nor a route with 404", () => {
-    for (const uri of ["/foo", "/entries/a/b", "/entriesx", "/entries/a/b/"]) {
+    for (const uri of ["/foo", "/entries/a/b", "/entriesx", "/entries/a/b/", "/datasetsx", "/datasets/a", "/entries/datasets/a"]) {
       expect(accepts(uri), uri).toBe(false)
     }
     expect(directives(page.node, "try_files")).toEqual([["/index.html", "=404"]])

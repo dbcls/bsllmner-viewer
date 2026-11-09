@@ -118,6 +118,8 @@
   /* === Grid templates ===================================================== */
   --grid-template-columns-landing:        minmax(0, 1.6fr) minmax(0, 1fr);  /* the left card and the right column of the top page */
   --grid-template-columns-metadata-row:   130px 1fr;          /* a row of the original metadata of a BioSample */
+  --grid-template-columns-crate-row:      170px 1fr;          /* a row of the contents of an RO-Crate on the Datasets page */
+  --grid-template-columns-ontology-row:   minmax(0, 1fr) auto; /* an ontology and the license of its files on the Datasets page */
   --grid-template-columns-annotation-row: 130px 1fr 112px;    /* a row of the annotations of a BioSample */
 
   /* === Border widths ===================================================== */

@@ -6,10 +6,11 @@ map "${BSLLMNER_VIEWER_NOINDEX}" $robots_file {
     default /robots.txt;
 }
 
-# An export is data for programs, so no deployment lets search engines index it.
+# An export and a file of an RO-Crate are data for programs, so no deployment lets search engines index them.
 map "${BSLLMNER_VIEWER_NOINDEX}:$uri" $x_robots_tag {
     ~^true:              noindex;
     ~^[^:]*:/api/export/ noindex;
+    ~^[^:]*:/datasets/.  noindex;
     default              "";
 }
 
@@ -21,23 +22,27 @@ map $uri $csp {
 }
 
 # Every add_header is set at the server level, because a location with its own add_header drops the inherited ones.
-# A 404 under /assets/ gets no-cache.
+# A 404 under /assets/ gets no-cache. The name of a file of an RO-Crate names its release, and a release never changes.
 map "$status:$uri" $cache_control_v {
     ~^(200|206|304):/assets/ "public, max-age=31536000, immutable";
+    ~^(200|206|304):/datasets/. "public, max-age=31536000, immutable";
     ~^[0-9]+:/api            "";
     default                  no-cache;
 }
 
 # The api sets these headers for its own responses. nginx sets them for the errors that it returns.
-# An export holds a slot of the api for minutes, so a client with too many exports waits longer before it tries again.
+# An export holds a slot of the api for minutes, and a download takes minutes, so a client with too many of them waits
+# longer before it tries again.
 map "$status:$uri" $retry_after {
     ~^429:/api/export/ 10;
+    ~^429:/datasets/   10;
     ~^429:             1;
     default            "";
 }
 
 map $uri $too_many_detail {
     ~^/api/export/ "This client has too many exports in progress.";
+    ~^/datasets/   "This client has too many downloads in progress.";
     default        "This client has too many requests in progress.";
 }
 
@@ -79,6 +84,7 @@ map $uri $problem_instance {
 
 limit_conn_zone $binary_remote_addr zone=per_client:10m;
 limit_conn_zone $binary_remote_addr zone=per_client_export:10m;
+limit_conn_zone $binary_remote_addr zone=per_client_download:10m;
 
 map $http_x_forwarded_proto $forwarded_proto {
     ""      $scheme;
@@ -190,8 +196,26 @@ server {
         try_files $uri =404;
     }
 
+    # The files of the RO-Crates. nginx answers range requests for them, so a client can continue a download. A location
+    # that sets limit_conn does not inherit the limit of the server. A directory has no listing, and is a 404.
+    location /datasets/ {
+        alias /data/datasets/;
+        try_files $uri =404;
+        limit_conn per_client_download 4;
+        limit_conn_status 429;
+        error_page 429 @too_many_requests;
+        error_page 404 /index.html;
+        types {
+            application/gzip gz;
+            application/json json;
+            text/plain md sha256;
+        }
+        charset utf-8;
+        charset_types text/plain application/json;
+    }
+
     # The routes of the single-page application. A path that is neither a file nor a route is a 404.
-    location ~ ^/(entries(/[^/]+)?/?)?$ {
+    location ~ ^/(entries(/[^/]+)?/?|datasets/?)?$ {
         try_files /index.html =404;
     }
 

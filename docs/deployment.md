@@ -7,7 +7,7 @@ This document describes what a deployment runs and how the deployment behaves: t
 `deploy/compose.yml` defines two containers:
 
 - `api`: the FastAPI server
-- `web`: nginx, which serves the built frontend and passes the requests for `/api` to the api
+- `web`: nginx, which serves the built frontend and the files of the RO-Crates, and passes the requests for `/api` to the api
 
 The frontend is built for the same origin as the api, so the frontend needs no configuration. The browser calls `/api` on the host that served the page.
 
@@ -27,6 +27,7 @@ A deployment reads the following variables. You set every variable except `BSLLM
 |---|---|
 | `BSLLMNER_VIEWER_STORE_DIR` | Directory holding the store files; mounted read-only at `/data/store` |
 | `BSLLMNER_VIEWER_STORE_FILE` | File in that directory to serve (default `current.duckdb`) |
+| `BSLLMNER_VIEWER_DATASETS_DIR` | Directory holding the files of the RO-Crates ([operations.md](operations.md#publishing-an-ro-crate)); mounted read-only at `/data/datasets` |
 | `BSLLMNER_VIEWER_PORT` | Host port of the web container (default 20081) |
 | `BSLLMNER_VIEWER_API_WORKERS` | Number of uvicorn worker processes (default 2); each worker opens the store |
 | `BSLLMNER_VIEWER_THREADS` | Number of DuckDB threads per worker (default 8) |
@@ -56,6 +57,10 @@ nginx in the web container adds limits and headers that the api does not set.
 
 - nginx accepts request bodies of up to 64 KiB for `/api`, and answers a request with a larger body with a 413 problem response.
 - nginx counts the requests in progress for each client address. If a client has more than 100 requests in progress, then the client gets a 429 problem response with `Retry-After: 1`. If a client has more than 2 exports (`/api/export/`) in progress, then the client gets a 429 problem response with `Retry-After: 10`, because an export holds a slot of the api for minutes. People who share an address share the limits.
+- nginx serves the files of the datasets directory under `/datasets/`, and answers range requests, so that a client can continue a download. If a client has more than 4 files under `/datasets/` in progress, then the client gets a 429 problem response with `Retry-After: 10`. A path under `/datasets/` that is not a file gets status 404 with the 404 page of the application. The directory has no listing.
+- A file under `/datasets/` has the response header `Cache-Control: public, max-age=31536000, immutable`, because its name includes the release of its RO-Crate, and a release never changes ([operations.md](operations.md#publishing-an-ro-crate)).
+- The worker processes of nginx run as the user `nginx` of the container. With rootless podman, this user is another user on the host. Therefore, other users on the host must be able to read the datasets directory: mode 755 for each directory, and mode 644 for each file. `bsllmner-viewer-package-crate` writes these modes.
+- If the reverse proxy in front of the web container is nginx, then set `proxy_max_temp_file_size 0` for this site. Otherwise, the reverse proxy writes up to 1 GiB of each download to its disk when the client is slower than the web container.
 - nginx takes the client address from the `X-Real-IP` request header only if the peer address (the address of the host that connects to nginx) is a private IPv4 address, an IPv6 unique local address, or a loopback address. For any other peer, nginx uses the peer address. The reverse proxy in front of the web container must set `X-Real-IP` to the address of the client. nginx ignores a value of `X-Real-IP` that is not an IP address.
 - In its 413 and 429 responses, nginx uses the `X-Request-ID` request header as the request ID if the header has at most 128 characters and contains only letters, digits, `.`, `_`, and `-`. Otherwise, nginx makes the request ID. As in the responses of the api, these responses allow every origin, and let browsers read `Retry-After` and `X-Request-ID`.
 - The web container sends the `Content-Security-Policy`, `Permissions-Policy`, and `X-Frame-Options` headers. The build of the web image computes the SHA-256 hash of every inline script in `index.html`, and writes the hashes into the nginx configuration. Therefore, the `Content-Security-Policy` does not allow `unsafe-inline` for scripts. The Swagger UI (`/api`) and ReDoc (`/api/redoc`) pages have a policy of their own that allows the CDNs that FastAPI uses by default. The other `/api` responses have `default-src 'none'`.
@@ -85,6 +90,6 @@ The web container serves `/robots.txt`, `/llms.txt`, and `/llms-full.txt`. Progr
 - `/llms.txt` is a short introduction in Markdown, for programs such as agents that use a large language model (LLM), and is written by hand in `frontend/public/llms.txt`.
 - `/llms-full.txt` is `docs/api.md` and `docs/data-model.md` in one file. In `/llms-full.txt`, the links between the two documents point to anchors of the file, and the links to other documents point to their GitHub addresses. The build of the web image generates the file with `frontend/scripts/llms-full.ts`, so nobody edits the file by hand, and the file always matches the api of the same commit. If `BSLLMNER_VIEWER_COMMIT` is set, then the GitHub addresses name that commit. Otherwise, the GitHub addresses name `main`.
 - If `BSLLMNER_VIEWER_NOINDEX` is `true`, then `/robots.txt` allows only the API, `/llms.txt`, and `/llms-full.txt`, and every response has the header `X-Robots-Tag: noindex`. Programs that follow robots.txt can still use the API.
-- Otherwise, `/robots.txt` disallows only `/entries` with query parameters, because the combinations of the parameters are endless, and each combination is a query. Programs that follow robots.txt can use the exports. Every export response has the header `X-Robots-Tag: noindex`, so that search engines do not show an export file in their results when another site links to the export.
+- Otherwise, `/robots.txt` disallows only `/entries` with query parameters, because the combinations of the parameters are endless, and each combination is a query. Programs that follow robots.txt can use the exports. Every export response and every file under `/datasets/` has the header `X-Robots-Tag: noindex`, so that search engines do not show the file in their results when another site links to the file.
 
 Every page of the frontend is the same HTML file ([architecture.md](architecture.md#technology-constraints)). The head of the HTML file gives the name and the description of the site, for programs that read the HTML without running JavaScript, such as the programs that make the previews of shared links. In the browser, each page sets its own title, and also sets its description and its canonical address if the page has them. A page sets `noindex` if the page is an error page, or the page of an accession that is not in the dataset or that could not be loaded. A link to an address that robots.txt disallows has `rel="nofollow"` (`crawlRel` in the frontend). If you change the addresses that robots.txt disallows, then change `crawlRel` in the same way.

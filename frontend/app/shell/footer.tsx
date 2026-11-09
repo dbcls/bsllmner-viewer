@@ -2,7 +2,7 @@ import type { ReactNode } from "react"
 
 import { queryFailed, useDataset } from "~/lib/api/queries"
 import { buildCommit } from "~/lib/build-info"
-import { ANNOTATION_CRATE, DBCLS } from "~/lib/crate"
+import { DBCLS } from "~/lib/crate"
 import { formatCount } from "~/lib/format"
 import { assayList } from "~/lib/labels"
 import { cn, ExternalLink, Skeleton } from "~/ui"
@@ -31,7 +31,7 @@ const DatasetLineSkeleton = () => (
 
 /**
  * The footer has two lines of text on the left and the organization logos on the right. The first line shows the
- * dataset. The second line shows where the annotations are published, with their license. Items in a line are
+ * dataset. The second line shows where the annotations were computed, and the commit of the viewer. Items in a line are
  * separated by space, not by a separator character.
  */
 const FooterFrame = ({ dataset }: { dataset: ReactNode }) => {
@@ -41,9 +41,6 @@ const FooterFrame = ({ dataset }: { dataset: ReactNode }) => {
       <div className="min-w-0">
         <p className="flex flex-wrap gap-x-4">{dataset}</p>
         <p className="flex flex-wrap gap-x-4">
-          <span>
-            RO-Crate: <ExternalLink href={ANNOTATION_CRATE.url}>{ANNOTATION_CRATE.name}</ExternalLink> ({ANNOTATION_CRATE.license.name})
-          </span>
           <span>
             Computed on the <ExternalLink href={SUPERCOMPUTER_URL}>NIG supercomputer</ExternalLink>
           </span>

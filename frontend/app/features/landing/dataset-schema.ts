@@ -1,6 +1,6 @@
 import { exportEntriesUrl } from "~/lib/api/client"
 import type { DatasetResponse } from "~/lib/api/types"
-import { ANNOTATION_CRATE } from "~/lib/crate"
+import { ANNOTATION_LICENSE, crateOfModel, datasetsPath, DBCLS } from "~/lib/crate"
 import { formatCount } from "~/lib/format"
 import { assayList, fieldLabel } from "~/lib/labels"
 
@@ -14,9 +14,10 @@ const DOWNLOADS = [
 ] as const
 
 /**
- * The schema.org Dataset of the top page. The Dataset is the annotations of the RO-Crate, so its creator and its license
- * are those of the RO-Crate. The description of the Dataset says that the license is that of the annotations, and where
- * the rest of the data comes from. The URLs in the Dataset use the host that serves the page.
+ * The schema.org Dataset of the top page. The Dataset is the annotations of an RO-Crate, so its license is that of the
+ * RO-Crate, and it is based on the RO-Crate of its model on the Datasets page, or on the Datasets page if no RO-Crate has
+ * its model. The description of the Dataset says that the license is that of the annotations, and where the rest of the
+ * data comes from. The URLs in the Dataset use the host that serves the page.
  */
 export const datasetSchema = (dataset: DatasetResponse, origin: string) => {
   const { name, createdAt, model } = dataset.datasetVersion
@@ -29,15 +30,15 @@ export const datasetSchema = (dataset: DatasetResponse, origin: string) => {
       `Annotations of ${formatCount(dataset.totals.biosample)} public BioSamples with ${assayList(dataset.targetAssays)} experiments.`,
       "bsllmner-mk2 extracted values such as the cell line, the tissue, and the disease from the attributes of each BioSample",
       "with a large language model, and mapped each value to an ontology term.",
-      `The annotations are published in the RO-Crate ${ANNOTATION_CRATE.name} under ${ANNOTATION_CRATE.license.name}.`,
+      `The annotations are published as an RO-Crate under ${ANNOTATION_LICENSE.name}.`,
       "The metadata of the BioSamples, and their links to SRA Experiments and BioProjects, come from the INSDC databases at NCBI and DDBJ.",
     ].join(" "),
     url: address("/"),
     version: name,
     dateModified: createdAt,
-    creator: { "@type": "Organization", name: ANNOTATION_CRATE.creator.name, url: ANNOTATION_CRATE.creator.url },
-    license: ANNOTATION_CRATE.license.url,
-    isBasedOn: ANNOTATION_CRATE.url,
+    creator: { "@type": "Organization", name: DBCLS.name, url: DBCLS.url },
+    license: ANNOTATION_LICENSE.url,
+    isBasedOn: address(datasetsPath(crateOfModel(model))),
     isAccessibleForFree: true,
     measurementTechnique: `Extraction of values from BioSample attributes with the large language model ${model} (bsllmner-mk2), and mapping of each value to an ontology term`,
     variableMeasured: dataset.fields.map((field) => fieldLabel(field.name)),

@@ -1,6 +1,6 @@
 import { Link } from "react-router"
 
-import { ACTION_ICON, ExternalLink } from "~/ui"
+import { ACTION_ICON, buttonClass, ExternalLink, Icon } from "~/ui"
 
 /** The repositories of the viewer and of the pipeline that produces its annotations, each named by its GitHub path. */
 const REPOSITORIES = ["dbcls/bsllmner-viewer", "dbcls/bsllmner-mk2"]
@@ -12,6 +12,10 @@ export const Header = () => (
       bsllmner-viewer
     </Link>
     <nav aria-label="Primary" className="flex gap-2">
+      <Link to="/datasets" className={buttonClass("secondary", "sm")}>
+        <Icon name={ACTION_ICON.download} />
+        <span className="text-trim-cap">Datasets</span>
+      </Link>
       {REPOSITORIES.map((repository) => (
         <ExternalLink key={repository} kind="button" href={`https://github.com/${repository}`} icon={ACTION_ICON.openRepository}>
           {repository}

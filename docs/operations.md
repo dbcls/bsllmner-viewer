@@ -1,6 +1,6 @@
 # Operations
 
-This document gives the procedures to build, update, and publish a store of a dataset, and to deploy the application. [build.md](build.md) specifies the inputs and the build operations, [deployment.md](deployment.md) describes the deployed containers and their settings, and [development.md](development.md) describes the development environment.
+This document gives the procedures to build, update, and publish a store of a dataset, to publish an RO-Crate, and to deploy the application. [build.md](build.md) specifies the inputs and the build operations, [deployment.md](deployment.md) describes the deployed containers and their settings, and [development.md](development.md) describes the development environment.
 
 ## Building a store
 
@@ -65,9 +65,40 @@ A store file that the api serves is never modified. You can delete an old file w
 Most of the UI takes the values that depend on the dataset, such as the fields, the target assays, and the organisms, from `GET /api/dataset`. Some values of the frontend are written for the current dataset. Before you publish a store of another dataset, for example the results of another model, update these values, and deploy the updated frontend together with the new store:
 
 - `frontend/app/lib/presets.ts`: the example questions and the example heatmaps of the top page, with the labels of the values of each condition. The end-to-end tests check that these labels are the labels that the api returns for each condition.
-- `frontend/app/lib/crate.ts`: the RO-Crate that publishes the annotations, the license of the annotations, and the organization that made the annotations. The footer and the schema.org `Dataset` of the top page use these values.
+- `frontend/app/lib/crate.ts`: the RO-Crates that publish the annotations, with their counts, their sizes, their license, and their authors. The Datasets page (`/datasets`) lists these RO-Crates. The Datasets page and the schema.org `Dataset` of the top page take the RO-Crate of the served dataset from this list: the RO-Crate whose model is the `model` of `datasetVersion`. Therefore, if you publish a store of another model, then publish the RO-Crate of that model ([Publishing an RO-Crate](#publishing-an-ro-crate)).
 - `frontend/app/shell/footer.tsx`: the place where the annotations were computed.
 - `ENTRY_BYTES` in `frontend/app/features/workspace/overlays.tsx`: the size of one entry in a TSV export and in an NDJSON export. The export menu uses these sizes to estimate the size of an export before the download. Measure the sizes on the new store.
+
+## Publishing an RO-Crate
+
+The Datasets page (`/datasets`) offers the RO-Crates that bsllmner-mk2 publishes. The web container serves their files from the datasets directory (`BSLLMNER_VIEWER_DATASETS_DIR`).
+
+To publish an RO-Crate, first choose its release name. The release name is the name of the RO-Crate followed by its `datePublished`, for example `example-ro-crate-2026-10-30`. Then package the RO-Crate:
+
+```
+docker compose run --rm --no-deps api uv run bsllmner-viewer-package-crate \
+  --crate /data/ro-crate --release example-ro-crate-2026-10-30 --out /data/datasets
+```
+
+The command writes these files in the directory of `--out`:
+
+| File | Contents |
+|---|---|
+| `<release>.tar.gz` | The whole RO-Crate. The archive unpacks into the directory `<release>`. |
+| `<release>/<directory>.tar.gz` | One directory at the root of the RO-Crate. The archive keeps the paths from the root of the RO-Crate, so several archives unpack into one tree. |
+| `<release>/README.md`, `<release>/ro-crate-metadata.json`, `<release>/provenance/checksums.sha256` | Copies of these files of the RO-Crate, which a reader can open before a download |
+
+- The command reads every archive again, and checks each file against `provenance/checksums.sha256`. If a check fails, then the command prints the error, writes nothing in the directory of `--out`, and exits with status 1. The command also fails if the RO-Crate has a symbolic link, if the list of checksums and the files of the RO-Crate differ, or if the release already exists in the directory of `--out`.
+- The command prints the sizes of the archives as JSON.
+- An archive does not record the owner of its files, and two runs on the same RO-Crate write the same bytes.
+
+After the command succeeds, follow these steps:
+
+1. Copy the files to the datasets directory of each deployment, and keep their modes ([deployment.md](deployment.md#web-server)).
+2. Add the RO-Crate to the list in `frontend/app/lib/crate.ts`, with its counts from the README of the RO-Crate and the sizes that the command printed. Then deploy the frontend.
+3. Run the end-to-end tests on the staging site. The tests check that each file that the Datasets page links to exists, and has the size that the page shows.
+
+A release never changes, because the web server lets clients keep its files without asking again. If you make an RO-Crate again, then package it with a new release name. Remove the files of the old release after no deployed frontend links to them.
 
 ## Deploying the application
 

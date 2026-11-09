@@ -20,15 +20,20 @@ describe("HydrateFallback", () => {
       </MemoryRouter>,
     )
     expect(html).toContain("bsllmner-viewer")
-    expect(html).toContain("RO-Crate")
+    expect(html).toContain('href="/datasets"')
   })
 
   it("shows the header with its links and the footer with its fixed lines", () => {
     renderFallback()
     expect(screen.getByRole("link", { name: "bsllmner-viewer" })).toHaveAttribute("href", "/")
-    expect(within(screen.getByRole("navigation", { name: "Primary" })).getAllByRole("link")).toHaveLength(3)
+    const primary = within(screen.getByRole("navigation", { name: "Primary" }))
+    expect(primary.getAllByRole("link")).toHaveLength(4)
+    const datasets = primary.getByRole("link", { name: "Datasets" })
+    expect(datasets).toHaveAttribute("href", "/datasets")
+    expect(datasets).not.toHaveAttribute("target")
     const footer = screen.getByRole("contentinfo")
-    expect(within(footer).getByText(/RO-Crate/)).toBeInTheDocument()
+    expect(within(footer).getByText(/NIG supercomputer/)).toBeInTheDocument()
+    expect(within(footer).queryByText(/RO-Crate/)).toBeNull()
     expect(within(footer).getAllByRole("img")).toHaveLength(4)
   })
 

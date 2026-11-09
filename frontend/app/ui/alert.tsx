@@ -1,4 +1,33 @@
+import { useCallback, useEffect, useRef, useState } from "react"
+
 import { ALERT_ICON, Icon } from "./icons"
+
+/**
+ * How long an alert stays. It is at the top of the viewport, away from the control that raised it, so it stays long
+ * enough to be found there.
+ */
+export const ALERT_MS = 4000
+
+/**
+ * The message of the alert of a page, and the function that shows a message for `ALERT_MS`. A new message replaces the
+ * shown one and stays for the whole time.
+ */
+export const useAlert = (): [string | null, (message: string) => void] => {
+  const [message, setMessage] = useState<string | null>(null)
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => () => {
+    if (timer.current) clearTimeout(timer.current)
+  }, [])
+
+  const show = useCallback((next: string) => {
+    setMessage(next)
+    if (timer.current) clearTimeout(timer.current)
+    timer.current = setTimeout(() => setMessage(null), ALERT_MS)
+  }, [])
+
+  return [message, show]
+}
 
 type AlertProps = {
   message: string | null
