@@ -14,6 +14,15 @@ map "${BSLLMNER_VIEWER_NOINDEX}:$uri" $x_robots_tag {
     default              "";
 }
 
+# A reverse proxy that buffers a response stops reading the response when its temporary file is full, and nginx closes a
+# connection that accepts no data for 60 seconds. An export and a file of an RO-Crate can be larger than that file, so
+# this header tells a reverse proxy that is nginx to pass them to the client without buffering.
+map $uri $accel_buffering {
+    ~^/api/export/ no;
+    ~^/datasets/.  no;
+    default        "";
+}
+
 # The Swagger UI and ReDoc pages of the api load their scripts, styles, and fonts from the CDNs that FastAPI uses by default.
 map $uri $csp {
     ~^/api(/redoc)?$ "default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; style-src 'self' https://cdn.jsdelivr.net https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://fastapi.tiangolo.com https://cdn.redoc.ly; worker-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'";
@@ -126,6 +135,7 @@ server {
     add_header X-Frame-Options DENY always;
     add_header Referrer-Policy strict-origin-when-cross-origin always;
     add_header X-Robots-Tag $x_robots_tag always;
+    add_header X-Accel-Buffering $accel_buffering always;
     add_header Strict-Transport-Security $hsts always;
     add_header Retry-After $retry_after always;
     add_header X-Request-ID $nginx_request_id always;

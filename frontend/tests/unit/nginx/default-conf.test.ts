@@ -492,3 +492,47 @@ describe("X-Robots-Tag", () => {
     expect(headerVariable("X-Robots-Tag")).toBe("$x_robots_tag")
   })
 })
+
+describe("X-Accel-Buffering", () => {
+  const buffering = (uri: string) => evaluateMap(nodes, "accel_buffering", vars({ uri }))
+  /** The rule of the docs: every export, and every file under `/datasets/`. */
+  const unbuffered = (uri: string) =>
+    uri.startsWith("/api/export/") || (uri.startsWith("/datasets/") && uri.length > "/datasets/".length)
+  const rest = fc.string({ unit: fc.constantFrom(..."abz019._-~%/ ".split("")), maxLength: 40 })
+  const uris = fc.oneof(
+    fc.tuple(
+      fc.constantFrom("/api/export/", "/api/export", "/api/exports/", "/api/", "/datasets/", "/datasets", "/datasetsx/", "/entries/datasets/", "/assets/", "/"),
+      rest,
+    ).map(([prefix, suffix]) => `${prefix}${suffix}`),
+    fc.string({ unit: "binary" }).map((s) => `/${s.replace(/\n/g, "")}`),
+  )
+
+  it("is no for every export path and every file of an RO-Crate, and empty for any other path", () => {
+    fc.assert(fc.property(uris, (uri) => {
+      expect(buffering(uri)).toBe(unbuffered(uri) ? "no" : "")
+    }), { numRuns: 500 })
+  })
+
+  it("is no for an archive, for a file in a directory of an RO-Crate, and for an export of any format", () => {
+    for (const uri of ["/datasets/a.tar.gz", "/datasets/a/results.tar.gz", "/datasets/a/provenance/checksums.sha256", "/api/export/entries/biosample", "/api/export/accessions"]) {
+      expect(buffering(uri), uri).toBe("no")
+    }
+  })
+
+  it("is empty for the Datasets page and for the api responses that are not exports", () => {
+    for (const uri of ["/datasets", "/datasets/", "/", "/entries", "/api/entries/biosample", "/api/exports", "/assets/a.js"]) {
+      expect(buffering(uri), uri).toBe("")
+    }
+  })
+
+  it("is the same on a deployment that search engines must not index", () => {
+    const noindex = withNoindex("true")
+    for (const uri of ["/datasets/a.tar.gz", "/api/export/accessions", "/datasets", "/api/entries/biosample"]) {
+      expect(evaluateMap(noindex, "accel_buffering", vars({ uri })), uri).toBe(buffering(uri))
+    }
+  })
+
+  it("is sent with every response", () => {
+    expect(headerVariable("X-Accel-Buffering")).toBe("$accel_buffering")
+  })
+})
