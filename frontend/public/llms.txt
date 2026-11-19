@@ -1,6 +1,6 @@
 # bsllmner-viewer
 
-> Ontology-mapped annotations of public BioSamples, linked to their SRA Experiments and BioProjects. bsllmner-mk2 extracted cell lines, cell types, tissues, diseases, drugs, genetic perturbations, and ChIP antigens from the free-text BioSample attributes with a large language model (LLM). bsllmner-mk2 then mapped each value to an ontology term. This site queries, counts, and exports those annotations. The annotations can be wrong. Each annotation has a status that tells how its term was chosen, or why it has none.
+> Ontology-mapped annotations of public BioSamples, linked to their SRA Experiments and BioProjects. bsllmner-mk2 extracted cell lines, cell types, tissues, diseases, drugs, and genetic perturbations from the free-text BioSample attributes with a large language model (LLM). bsllmner-mk2 then mapped each value to an ontology term. This site queries, counts, and exports those annotations. The annotations can be wrong. Each annotation has a status that tells how its term was chosen, or why it has none.
 
 Use the JSON API rather than the web pages. Every result that the UI shows is also an API result.
 

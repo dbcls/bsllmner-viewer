@@ -66,6 +66,7 @@ class ReferenceSpec(_Strict):
 class Manifest(_Strict):
     name: str
     target_assays: list[str] = Field(min_length=1)
+    excluded_fields: list[str] = Field(default_factory=list)
     runs: list[RunSpec] = Field(min_length=1)
     reference: ReferenceSpec
     base_dir: Path = Field(default=Path(), exclude=True)

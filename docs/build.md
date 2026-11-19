@@ -12,6 +12,7 @@ A manifest is a YAML file that defines a dataset. Every build operation ([Operat
 
 - the name of the dataset
 - the target assays, as a list of SRA `library_strategy` values
+- the excluded fields, as a list of names of fields of the select configurations. This item is optional. The store has no data of an excluded field ([Reading annotations](#reading-annotations)).
 - the list of runs, in order. For each run, the manifest gives a result file, an input file, a select configuration, and the version of bsllmner-mk2 that the run used. A run can also have a reselect run ([Runs](#runs)), for which the manifest gives a name, a result file, and the version of bsllmner-mk2.
 - the location and the snapshot date of each source of reference data. For the ontologies, the manifest lists the files of each ontology.
 
@@ -20,6 +21,7 @@ A path in a manifest is relative to the directory of the manifest. The manifest 
 ```yaml
 name: bsllmner-qwen38
 target_assays: [RNA-Seq, ChIP-Seq, ATAC-seq]
+excluded_fields: [chip_antigen]
 runs:
   - name: chipatlas_hg38_qwen38_part1
     result: ro-crate/run-results/select_chipatlas_hg38_qwen38_part1.json
@@ -115,6 +117,7 @@ Before a build operation ingests anything, the operation validates its inputs, a
 - Every path of the reference data in the manifest exists.
 - No run is ingested twice. The names of the runs and of the reselect runs are unique, and no two of them have the same result file.
 - A field is multi-valued (`"value_type": "array"` in the select configuration) either in every run that has the field, or in no run.
+- Every excluded field of the manifest is a field of the select configuration of at least one run.
 - No `accession` occurs more than once in the result of a run.
 - Every non-empty line of an input file is a JSON object with an `accession`.
 - The `taxonomy_id` of an input entry is absent, null, empty, or an integer from 1 to 2147483647, written as a JSON number or as a string of ASCII digits.
@@ -126,6 +129,8 @@ Before a build operation ingests anything, the operation validates its inputs, a
 ## Reading annotations
 
 For each annotation, build reads the status and the term from an entry of a SelectResult. [data-model.md](data-model.md#annotation-status) defines the statuses.
+
+In the result of a run, build reads the fields of the select configuration of the run, except the excluded fields of the manifest. A select configuration can have a field whose only purpose is to keep the LLM from extracting a kind of value into the other fields. If the manifest excludes such a field, then the store has no annotations and no evidence of the field, the searchable text has no values of the field, and the api does not list the field among the fields of the dataset.
 
 For each field, build reads the extracted values from `extract.extracted[field]`. If `extract.extracted[field]` is a string, then the string is the extracted value. If `extract.extracted[field]` is an array, then each string element of the array is an extracted value. An empty string is not a value. If an array holds the same string several times, then the string gives one value, at the position of its first occurrence. For example, an array with 400 copies of the string `GFP-TF or GFP only as control` and 3 other strings gives 4 values.
 
@@ -174,6 +179,8 @@ Compare two ways to build a store from the runs `R1..Rn`: a full build of `R1..R
 
 An append and a reference refresh accept only a store that has the current schema version. If the store has another schema version, then the operation stops, and the error asks you to run a full build.
 
+An append and a reference refresh also require that the excluded fields of the manifest are the excluded fields of the store, because neither operation ingests the runs of the store again. If the excluded fields differ, then the operation stops, and the error asks you to run a full build.
+
 If an operation stops with an error, then the operation removes the file that the operation was writing. If the build process is killed, then the file `<out>.partial` remains, where `<out>` is the output path. The next build with the same output path removes `<out>.partial`. If verification finds problems, then the operation still writes the store, and records the problems in the store.
 
 ## Verification
@@ -197,5 +204,6 @@ A store holds the following version information:
 - the checksums of the select configuration of each run and of every ontology file
 - the snapshot date of each source of reference data
 - the target assays
+- the excluded fields
 
 The api returns all of this information from its dataset endpoint. The JSON responses of the api have an identifier of the version, which consists of the dataset name, the creation time, the model, and a digest of the complete version information. [api.md](api.md#conventions) lists the responses that do not have the identifier, and describes how the exports name the version.

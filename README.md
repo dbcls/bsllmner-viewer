@@ -4,7 +4,7 @@ bsllmner-viewer is a web application and an HTTP API for querying, aggregating, 
 
 ## Overview
 
-bsllmner-mk2 uses a large language model (LLM) to extract the names of biological entities from the free-text attributes of BioSamples: cell lines, cell types, tissues, diseases, drugs, genetic perturbations, and ChIP antigens. Then bsllmner-mk2 maps each extracted value to an ontology term.
+bsllmner-mk2 uses a large language model (LLM) to extract the names of biological entities from the free-text attributes of BioSamples: cell lines, cell types, tissues, diseases, drugs, and genetic perturbations. Then bsllmner-mk2 maps each extracted value to an ontology term.
 
 bsllmner-viewer reads the results of bsllmner-mk2, and links each BioSample to its Sequence Read Archive (SRA) Experiments and BioProjects. bsllmner-viewer serves the results and the linked data together through a query API and a browser user interface (UI). bsllmner-viewer has these features:
 

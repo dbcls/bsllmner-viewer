@@ -29,6 +29,41 @@ def test_load_manifest_rejects_unknown_keys(synthetic: Synthetic, tmp_path: Path
         load_manifest(path)
 
 
+def _with_excluded_fields(synthetic: Synthetic, value: str, out: Path) -> Path:
+    head, _, tail = synthetic.manifest.read_text().partition("runs:\n")
+    out.write_text(f"{head}excluded_fields: {value}\nruns:\n{tail}")
+    return out
+
+
+def test_load_manifest_without_excluded_fields_excludes_no_field(synthetic: Synthetic) -> None:
+    assert load_manifest(synthetic.manifest).excluded_fields == []
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [
+        ("[]", []),
+        ("[chip_antigen]", ["chip_antigen"]),
+        ("[drug, chip_antigen, drug]", ["drug", "chip_antigen", "drug"]),
+        ("\n  - chip_antigen\n  - drug", ["chip_antigen", "drug"]),
+    ],
+)
+def test_load_manifest_reads_the_excluded_fields_as_written(
+    synthetic: Synthetic, tmp_path: Path, value: str, expected: list[str]
+) -> None:
+    path = _with_excluded_fields(synthetic, value, tmp_path / "excluding.yaml")
+    assert load_manifest(path).excluded_fields == expected
+
+
+@pytest.mark.parametrize("value", ["chip_antigen", "[1]", "[[chip_antigen]]", "{chip_antigen: true}", "[null]", "~"])
+def test_load_manifest_rejects_excluded_fields_that_are_not_a_list_of_names(
+    synthetic: Synthetic, tmp_path: Path, value: str
+) -> None:
+    path = _with_excluded_fields(synthetic, value, tmp_path / "excluding.yaml")
+    with pytest.raises(ValueError, match="excluded_fields"):
+        load_manifest(path)
+
+
 def test_load_manifest_rejects_missing_runs(tmp_path: Path) -> None:
     path = tmp_path / "empty.yaml"
     path.write_text("name: x\ntarget_assays: [RNA-Seq]\nruns: []\nreference:\n  ontologies: []\n")

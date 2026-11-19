@@ -36,7 +36,7 @@ from bsllmner_viewer.build.rows import insert_rows
 from bsllmner_viewer.build.selectresult import RunMetadata, load_select_config, read_run_metadata
 from bsllmner_viewer.build.verify import Verification, verify
 from bsllmner_viewer.store.schema import RAW_TABLES, create_raw_tables
-from bsllmner_viewer.store.version import SchemaVersionError, require_current_schema, write_meta
+from bsllmner_viewer.store.version import SchemaVersionError, read_meta, require_current_schema, write_meta
 
 log = logging.getLogger(__name__)
 
@@ -46,6 +46,7 @@ _RUN_TABLES = ("run", "field", "entry", "entry_annotation", "entry_evidence")
 
 def build_full(manifest: Manifest, out: Path, *, workers: int = 4, threads: int | None = None) -> Verification:
     _check_reference_paths(manifest)
+    _check_excluded_fields(manifest)
     with _new_store(out, threads) as con:
         _load_fields(con, manifest, manifest.runs)
         _ingest_runs(con, manifest, manifest.runs, first_index=0, workers=workers, existing_model=None)
@@ -58,7 +59,7 @@ def build_append(
 ) -> Verification:
     _check_reference_paths(manifest)
     with _new_store(out, threads) as con:
-        existing = _copy_run_tables(con, store)
+        existing = _copy_run_tables(con, store, _excluded_fields(manifest))
         new_runs = _new_runs(manifest, existing)
         if not new_runs:
             raise BuildError("the manifest has no runs that are not already in the store")
@@ -72,7 +73,7 @@ def build_append(
 def build_refresh(manifest: Manifest, store: Path, out: Path, *, threads: int | None = None) -> Verification:
     _check_reference_paths(manifest)
     with _new_store(out, threads) as con:
-        existing = _copy_run_tables(con, store)
+        existing = _copy_run_tables(con, store, _excluded_fields(manifest))
         if [_run_key(r) for r in manifest.runs] != existing:
             raise BuildError(
                 "a reference refresh requires the manifest to list exactly the runs in the store, with the same "
@@ -139,10 +140,11 @@ def _run_key(run: RunSpec) -> tuple[str, str | None]:
     return run.name, run.reselect.name if run.reselect is not None else None
 
 
-def _copy_run_tables(con: duckdb.DuckDBPyConnection, store: Path) -> list[tuple[str, str | None]]:
+def _copy_run_tables(con: duckdb.DuckDBPyConnection, store: Path, excluded: list[str]) -> list[tuple[str, str | None]]:
     """Copy run-derived raw tables from an existing store; returns the keys of its runs (`_run_key`) in manifest order.
 
-    The store must have the current schema version, so the raw tables of both stores have the same columns.
+    The store must have the current schema version, so the raw tables of both stores have the same columns. The store
+    must also exclude the fields `excluded`, because the copied tables hold the fields that the store read.
     """
     if not store.exists():
         raise BuildError(f"store {store} does not exist")
@@ -152,6 +154,12 @@ def _copy_run_tables(con: duckdb.DuckDBPyConnection, store: Path) -> list[tuple[
             require_current_schema(con, store, catalog="src")
         except SchemaVersionError as e:
             raise BuildError(str(e)) from e
+        stored = sorted(read_meta(con, "excluded_fields", catalog="src") or [])
+        if stored != excluded:
+            raise BuildError(
+                f"{store} has the excluded fields {_names(stored)}, and the manifest has the excluded fields "
+                f"{_names(excluded)}; write a new store with a full build"
+            )
         for table in _RUN_TABLES:
             con.execute(f"INSERT INTO {table} SELECT * FROM src.{table}")
         keys = [
@@ -175,8 +183,30 @@ def _new_runs(manifest: Manifest, existing: list[tuple[str, str | None]]) -> lis
     return list(manifest.runs[len(existing) :])
 
 
+def _excluded_fields(manifest: Manifest) -> list[str]:
+    """The excluded fields of the manifest, each once and in sorted order.
+
+    Two manifests that exclude the same fields then give the same store.
+    """
+    return sorted(set(manifest.excluded_fields))
+
+
+def _names(fields: list[str]) -> str:
+    return ", ".join(repr(name) for name in fields) if fields else "(none)"
+
+
+def _check_excluded_fields(manifest: Manifest) -> None:
+    """Stop if the manifest excludes a field that no select configuration of its runs has, such as a misspelled name."""
+    configs = {manifest.resolve(run.select_config) for run in manifest.runs}
+    known = {name for path in configs for name in load_select_config(path).fields}
+    unknown = [name for name in _excluded_fields(manifest) if name not in known]
+    if unknown:
+        raise BuildError(f"excluded fields that are not in the select configuration of any run: {_names(unknown)}")
+
+
 def _load_fields(con: duckdb.DuckDBPyConnection, manifest: Manifest, runs: Iterable[RunSpec]) -> None:
-    """Merge the select configurations of the runs into the field table."""
+    """Merge the select configurations of the runs into the field table, without the excluded fields."""
+    excluded = set(manifest.excluded_fields)
     existing: dict[str, tuple[bool, list[str]]] = {
         name: (multi, list(files))
         for name, multi, files in con.execute("SELECT name, multi_valued, ontology_files FROM field").fetchall()
@@ -185,6 +215,8 @@ def _load_fields(con: duckdb.DuckDBPyConnection, manifest: Manifest, runs: Itera
     for run in runs:
         config = load_select_config(manifest.resolve(run.select_config))
         for name, spec in config.fields.items():
+            if name in excluded:
+                continue
             multi = spec.value_type == "array"
             if name in existing:
                 if existing[name][0] != multi:
@@ -413,6 +445,7 @@ def _finish(con: duckdb.DuckDBPyConnection, manifest: Manifest) -> Verification:
     write_meta(con, "created_at", utc_now().isoformat(timespec="seconds") + "Z")
     write_meta(con, "model", model)
     write_meta(con, "target_assays", manifest.target_assays)
+    write_meta(con, "excluded_fields", _excluded_fields(manifest))
     derive(con, manifest.target_assays)
     log.info("derived query-ready tables")
     result = verify(con)

@@ -43,7 +43,7 @@ A run can analyze a BioSample that is linked to no experiment of a target assay.
 | Evidence | Item of the original metadata, whether the match is in the name or in the value of the item, character range, matching strategy | N:1 with Annotation |
 | Ontology term | ID, label, synonyms, parent terms | Parent–child relations form a hierarchy |
 
-The annotation fields are the fields of the bsllmner-mk2 select configuration that the runs used. A field holds either a single value or multiple values.
+The annotation fields are the fields of the bsllmner-mk2 select configuration that the runs used, except the fields that the manifest of the dataset excludes ([build.md](build.md#manifest)). A field holds either a single value or multiple values.
 
 Evidence shows where an extracted value occurs in the original metadata of its BioSample. With the evidence, users can check what an annotation was derived from. [provenance.md](provenance.md) specifies how build finds evidence.
 
@@ -57,7 +57,7 @@ The original metadata of a BioSample is the content that the input entry of the 
 
 bsllmner-mk2 lists in its `filter_keys.json` the names of some attributes that record how a BioSample was submitted and archived, such as `INSDC status`, `gap_accession`, and `GEO Accession`. An attribute with one of these names is part of the original metadata of a BioSample only if evidence of the BioSample points to the attribute, that is, only when an annotation of the BioSample was derived from the attribute.
 
-For example, `INSDC center name` and `Submitter Id` are two of these names. An `INSDC center name` attribute is not part of the original metadata. A `Submitter Id` attribute with the value `E-MTAB-13151:ChIP_ETO2_DMSO_rep1` is part of the original metadata if build found the evidence of the ChIP antigen ETO2 in the value.
+For example, `INSDC center name` and `Submitter Id` are two of these names. An `INSDC center name` attribute is not part of the original metadata. A `Submitter Id` attribute with the value `E-MTAB-11012:H9_2_D7` is part of the original metadata if build found the evidence of the cell line H9 in the value.
 
 [build.md](build.md#runs) specifies which of these attributes the store keeps. The attributes that the store keeps include attributes that are not part of the original metadata ([Condition evaluation](#condition-evaluation)).
 

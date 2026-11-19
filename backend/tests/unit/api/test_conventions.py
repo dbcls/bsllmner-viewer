@@ -131,6 +131,7 @@ class TestDatasetVersion:
             "createdAt",
             "model",
             "targetAssays",
+            "excludedFields",
             "runs",
             "ontologies",
             "referenceSnapshots",

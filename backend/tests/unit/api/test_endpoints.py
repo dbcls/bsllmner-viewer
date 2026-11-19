@@ -29,6 +29,7 @@ def test_dataset_reports_version_fields_and_totals(client: TestClient) -> None:
     assert {o["identifier"] for o in body["organisms"]} <= {"9606", "10090"}
     assert all(set(o) == {"identifier", "name", "biosampleCount"} for o in body["organisms"])
     assert "createdAt" in body["version"]
+    assert body["version"]["excludedFields"] == []
     assert "reference_snapshots" not in body["version"]
     assert "referenceSnapshots" in body["version"]
 

@@ -7,7 +7,7 @@ import { ANNOTATION_LICENSE, CRATES, DBCLS } from "~/lib/crate"
 const DATASET = {
   datasetVersion: { name: "full", createdAt: "2026-10-03T21:29:30Z", model: "mistral-small3.1:24b", digest: "0f8b06f33b9f2567" },
   targetAssays: ["RNA-Seq", "ChIP-Seq"],
-  fields: [{ name: "cell_line" }, { name: "chip_antigen" }],
+  fields: [{ name: "cell_line" }, { name: "knockout_gene" }],
   totals: { biosample: 4100500, experiment: 1, bioproject: 1 },
 } as unknown as DatasetResponse
 
@@ -25,7 +25,7 @@ describe("datasetSchema", () => {
     expect(schema.dateModified).toBe("2026-10-03T21:29:30Z")
     expect(schema.measurementTechnique).toContain("mistral-small3.1:24b")
     expect(schema.description).toContain("4,100,500 public BioSamples with RNA-Seq or ChIP-Seq experiments")
-    expect(schema.variableMeasured).toEqual(["Cell line", "ChIP antigen"])
+    expect(schema.variableMeasured).toEqual(["Cell line", "Knockout gene"])
   })
 
   it("gives the license of the RO-Crates and their publisher as its creator, and says that the license is that of the annotations", () => {

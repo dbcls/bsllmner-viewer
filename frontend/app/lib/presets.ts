@@ -21,16 +21,10 @@ export const MATRIX_PRESETS: Preset[] = [
     state: { tab: "heatmap", row: "disease", col: "tissue", unit: "bioproject" },
   },
   {
-    id: "cell-line-antigen",
-    title: "Cell line × ChIP antigen",
-    description: "Which factors have been profiled by ChIP-Seq in each human cell line.",
-    state: {
-      tab: "heatmap",
-      row: "cell_line",
-      col: "chip_antigen",
-      q: "library_strategy:ChIP-Seq AND organism_id:9606",
-      unit: "sra-experiment",
-    },
+    id: "cell-type-tissue",
+    title: "Cell type × Tissue",
+    description: "Which cell types are sampled from each tissue, and how many independent BioProjects cover each pair.",
+    state: { tab: "heatmap", row: "cell_type", col: "tissue", unit: "bioproject" },
   },
   {
     id: "cell-line-assay",

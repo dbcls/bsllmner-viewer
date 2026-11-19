@@ -110,7 +110,6 @@ const FIELD_LABELS: Record<string, string> = {
   library_strategy: "Assay",
   organism_id: "Organism",
   date_published: "Year",
-  chip_antigen: "ChIP antigen",
 }
 
 /** The label that the UI shows for a field of the api. */

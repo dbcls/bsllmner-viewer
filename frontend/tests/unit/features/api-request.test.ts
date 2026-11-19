@@ -115,7 +115,7 @@ describe("apiRequestsFor", () => {
 
 const text = fc.string({ maxLength: 12 })
 const terms = fc.option(fc.array(fc.stringMatching(/^[A-Z]{1,3}:\d{1,4}$/), { minLength: 1, maxLength: 6 }), { nil: null })
-const fieldNames = fc.array(fc.constantFrom("disease", "cell_line", "tissue", "drug", "foo", "chip_antigen"), { maxLength: 6 }).map((names) => [...new Set(names)])
+const fieldNames = fc.array(fc.constantFrom("disease", "cell_line", "tissue", "drug", "foo", "knockout_gene"), { maxLength: 6 }).map((names) => [...new Set(names)])
 
 const stateArb: fc.Arbitrary<WorkspaceState> = fc
   .record({

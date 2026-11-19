@@ -54,13 +54,20 @@ class DatasetVersion(BaseModel):
     created_at: str
     model: str
     target_assays: list[str]
+    excluded_fields: list[str]
     runs: list[RunVersion]
     ontologies: list[OntologyVersion]
     reference_snapshots: ReferenceVersion
 
 
-def read_meta(con: duckdb.DuckDBPyConnection, key: str) -> Any:
-    row = con.execute("SELECT value FROM store_meta WHERE key = ?", [key]).fetchone()
+def read_meta(con: duckdb.DuckDBPyConnection, key: str, *, catalog: str | None = None) -> Any:
+    """The value of a key of `store_meta`, or None if the store does not have the key.
+
+    `catalog` is the name under which the store is attached to the connection, or None when it is the connection's
+    own database.
+    """
+    table = "store_meta" if catalog is None else f"{catalog}.store_meta"
+    row = con.execute(f"SELECT value FROM {table} WHERE key = ?", [key]).fetchone()
     return orjson.loads(row[0]) if row else None
 
 
@@ -93,6 +100,7 @@ def read_version(con: duckdb.DuckDBPyConnection) -> DatasetVersion:
         created_at=str(read_meta(con, "created_at")),
         model=str(read_meta(con, "model")),
         target_assays=list(read_meta(con, "target_assays") or []),
+        excluded_fields=list(read_meta(con, "excluded_fields") or []),
         runs=runs,
         ontologies=ontologies,
         reference_snapshots=ReferenceVersion(

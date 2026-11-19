@@ -4,7 +4,7 @@ import re
 import unicodedata
 from itertools import pairwise
 
-from hypothesis import example, given
+from hypothesis import assume, example, given
 from hypothesis import strategies as st
 
 from bsllmner_viewer.build.evidence import (
@@ -210,12 +210,15 @@ def test_normalized_matches_a_value_around_a_bracket_pair_of_any_kinds(
 
 _names = st.sampled_from(["KRAS", "ABC", "TPXY"])
 _upper = st.sampled_from(list("ABCDEFGHIJKLMNOPQRSTUVWXYZ"))
+# The pairs of uppercase letters that the strategy accepts right after a name as a suffix of a genotype.
+_UPPERCASE_SUFFIXES = {"KO", "OE", "KD"}
 
 
 @given(_names, _upper, st.integers(0, 6), _upper)
 def test_normalized_point_mutation_suffix_requires_one_to_four_digits_between_uppercase_letters(
     name: str, before: str, digits: int, after: str
 ) -> None:
+    assume(digits > 0 or before + after not in _UPPERCASE_SUFFIXES)
     text = f"{name}{before}{'7' * digits}{after}"
     spans = find(NORMALIZED, Text(name), Text(text))
     assert spans == ([Span(0, len(name))] if 1 <= digits <= 4 else [])

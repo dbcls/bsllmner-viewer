@@ -4,7 +4,6 @@ import type { AnnotationValue, Unit } from "./api/types"
 
 /** The names that differ from the field's identifier with underscores as spaces and a capital first letter. */
 const FIELD_LABELS: Record<string, string> = {
-  chip_antigen: "ChIP antigen",
   library_strategy: "Assay",
   organism_id: "Organism",
   date_published: "Year",
