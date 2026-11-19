@@ -1,6 +1,6 @@
 import { type APIRequestContext,expect, test } from "@playwright/test"
 
-import { countOf, crosstab, dataset, distribution, entries, entry, select, terms, type Unit } from "./_api"
+import { countOf, dataset, distribution, entries, entry, select, terms } from "./_api"
 import { conditionPanel, conditionRegion, expectChosen, expectParam, expectQ, fieldLabel, formatCount, pageRangeText, qOf, TABLE_PER_PAGE, viewTabs, workspaceUrl } from "./_helpers"
 
 /** The condition of the most frequent disease, with the term it names. */
@@ -256,19 +256,15 @@ test.describe("workspace navigation", () => {
     await expectChosen(page.getByRole("combobox", { name: "Column dimension" }), fieldLabel(col))
   })
 
-  test("each example heatmap on the landing page has axes and a condition of the dataset, and both axes have elements", async ({ page, request }) => {
+  test("each example heatmap on the landing page draws cells", async ({ page }) => {
     await page.goto("/")
     const heatmaps = page.getByRole("heading", { name: "Example heatmaps" }).locator("xpath=../following-sibling::div[1]").getByRole("link")
     await expect(heatmaps.first()).toBeVisible()
-    for (const heatmap of await heatmaps.all()) {
-      const href = (await heatmap.getAttribute("href")) ?? ""
-      const params = new URL(href, page.url()).searchParams
-      const [row, col] = [params.get("row"), params.get("col")]
-      if (!row || !col) throw new Error(`the example heatmap ${href} has no axes`)
-      // The api rejects an axis or a condition that names a field that the dataset does not have.
-      const table = await crosstab(request, row, col, { q: params.get("q"), unit: (params.get("unit") ?? "biosample") as Unit })
-      expect(table.rows.length, `the rows of ${href}`).toBeGreaterThan(0)
-      expect(table.cols.length, `the columns of ${href}`).toBeGreaterThan(0)
+    const hrefs = await heatmaps.evaluateAll((links) => links.map((link) => link.getAttribute("href") ?? ""))
+    for (const href of hrefs) {
+      await page.goto(href)
+      // The page draws a cell only if the api accepts the axes and the condition, and both axes have elements.
+      await expect(page.getByRole("cell", { name: / × .+:/ }).first(), `a cell of ${href}`).toBeVisible({ timeout: 30_000 })
     }
   })
 })
