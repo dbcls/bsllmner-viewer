@@ -27,7 +27,7 @@ import {
 
 import { queryClient } from "~/lib/query-client"
 import { pageTitle, SITE_DESCRIPTION, SITE_NAME } from "~/lib/site"
-import { PageChange, ShellFallback, ShellLayout } from "~/shell"
+import { PageChange, ShellLayout } from "~/shell"
 import { Button, Card, PageHeading, PageMeta } from "~/ui"
 
 /**
@@ -38,6 +38,11 @@ import { Button, Card, PageHeading, PageMeta } from "~/ui"
 export const links: LinksFunction = () =>
   [publicSans400, publicSans600, plexMono400, plexMono500].map((href) => ({ rel: "preload", href, as: "font", type: "font/woff2", crossOrigin: "anonymous" }))
 
+/**
+ * The document of every page. The shell is here and not in the page or in the placeholder of the built HTML, so that the
+ * router keeps the elements of the shell when the page replaces the placeholder. The router draws the document again
+ * when the error page replaces either of them.
+ */
 export const Layout = ({ children }: { children: ReactNode }) => (
   <html lang="en">
     <head>
@@ -51,7 +56,9 @@ export const Layout = ({ children }: { children: ReactNode }) => (
       <Links />
     </head>
     <body>
-      {children}
+      <QueryClientProvider client={queryClient}>
+        <ShellLayout>{children}</ShellLayout>
+      </QueryClientProvider>
       <PageChange />
       <ScrollRestoration />
       <Scripts />
@@ -59,20 +66,14 @@ export const Layout = ({ children }: { children: ReactNode }) => (
   </html>
 )
 
-const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <ShellLayout>
-      <Outlet />
-    </ShellLayout>
-  </QueryClientProvider>
-)
+const App = () => <Outlet />
 
 export default App
 
 /**
- * The page that the built HTML shows until the JavaScript runs: the header and the footer around an empty page. Its head
- * is the same for every URL and names the site, for the crawlers that read the HTML without running the JavaScript, such
- * as those that make the previews of shared links.
+ * The page that the built HTML shows until the JavaScript runs: an empty page in the shell. Its head is the same for
+ * every URL and names the site, for the crawlers that read the HTML without running the JavaScript, such as those that
+ * make the previews of shared links.
  */
 export const HydrateFallback = () => (
   <>
@@ -82,11 +83,10 @@ export const HydrateFallback = () => (
     <meta property="og:title" content={SITE_NAME} />
     <meta property="og:description" content={SITE_DESCRIPTION} />
     <meta name="twitter:card" content="summary" />
-    <ShellFallback />
   </>
 )
 
-const ErrorBoundaryContent = () => {
+export const ErrorBoundary = () => {
   const error = useRouteError()
   const notFound = isRouteErrorResponse(error) && error.status === 404
   const message = isRouteErrorResponse(error) ? `${error.status} ${error.statusText}` : "Something went wrong."
@@ -112,11 +112,3 @@ const ErrorBoundaryContent = () => {
     </main>
   )
 }
-
-export const ErrorBoundary = () => (
-  <QueryClientProvider client={queryClient}>
-    <ShellLayout>
-      <ErrorBoundaryContent />
-    </ShellLayout>
-  </QueryClientProvider>
-)

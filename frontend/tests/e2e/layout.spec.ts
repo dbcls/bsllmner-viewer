@@ -38,6 +38,29 @@ test.describe("layout", () => {
     await expect(page.locator("main#main")).toHaveCount(1)
   })
 
+  for (const path of ["/", "/entries", "/datasets"]) {
+    test(`the skip link of ${path} keeps the focus that it gets before the app draws the page`, async ({ page }) => {
+      // The HTML shows the shell at once. The scripts are held back, so that the Tab key comes before the page.
+      await page.route("**/*", async (route) => {
+        if (route.request().resourceType() === "script") await new Promise((resolve) => setTimeout(resolve, 1500))
+        await route.continue()
+      })
+      await page.goto(path, { waitUntil: "commit" })
+      const skip = page.getByRole("link", { name: "Skip to main content" })
+      await expect(skip).toBeAttached()
+      await expect(page.locator("main#main")).toHaveCount(0)
+      const first = await skip.elementHandle()
+      await page.keyboard.press("Tab")
+      await expect(skip).toBeFocused()
+      await expect(page.locator("main#main")).toHaveCount(1)
+      await expect(skip).toBeFocused()
+      expect(await first?.evaluate((link) => link.isConnected && link === document.activeElement)).toBe(true)
+      const box = await skip.boundingBox()
+      expect(box?.width).toBeGreaterThan(40)
+      expect(box?.height).toBeGreaterThan(10)
+    })
+  }
+
   test("the values of an annotation do not extend beyond the right edge of their cell", async ({ page, request }) => {
     const [cellLine] = (await distribution(request, "cell_line")).elements
     if (!cellLine) throw new Error("the dataset has no cell line")

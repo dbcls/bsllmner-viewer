@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react"
+import { screen } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { createMemoryRouter, MemoryRouter, Outlet, RouterProvider } from "react-router"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -40,6 +40,7 @@ import { ApiModal } from "~/features/workspace/overlays"
 import { TermPicker } from "~/features/workspace/term-picker/term-picker"
 import { ErrorBoundary } from "~/root"
 import { clientLoader as notFoundLoader } from "~/routes/not-found"
+import { ShellLayout } from "~/shell"
 import { Footer } from "~/shell/footer"
 
 // The data router builds each Request with the AbortSignal of jsdom. The Request of Node (undici) accepts only its own
@@ -197,8 +198,16 @@ describe("the error boundary of the route", () => {
       [
         {
           path: "/",
-          element: <Outlet />,
-          errorElement: <ErrorBoundary />,
+          element: (
+            <ShellLayout>
+              <Outlet />
+            </ShellLayout>
+          ),
+          errorElement: (
+            <ShellLayout>
+              <ErrorBoundary />
+            </ShellLayout>
+          ),
           HydrateFallback: () => null,
           children: [
             { index: true, element: <p>top</p> },
@@ -216,7 +225,7 @@ describe("the error boundary of the route", () => {
       ],
       { initialEntries: [url] },
     )
-    render(<RouterProvider router={router} />)
+    renderWithQuery(<RouterProvider router={router} />)
   }
 
   it("links to the top page when the page does not exist", async () => {

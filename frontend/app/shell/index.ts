@@ -1,2 +1,2 @@
-export { ShellFallback, ShellLayout } from "./layout"
+export { ShellLayout } from "./layout"
 export { PageChange } from "./page-change"

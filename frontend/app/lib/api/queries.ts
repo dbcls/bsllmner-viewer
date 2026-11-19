@@ -59,8 +59,12 @@ const isDataset = (value: unknown): value is DatasetResponse =>
   ) &&
   isList(value["ontologies"], (o) => typeof o["prefix"] === "string" && typeof o["name"] === "string")
 
-/** The description of the dataset from the last visit, or undefined when there is none or it cannot be read. */
+/**
+ * The description of the dataset from the last visit, or undefined when there is none or it cannot be read. The build
+ * draws the HTML without a browser and has no last visit, so the storage is not read there.
+ */
 export const storedDataset = (): DatasetResponse | undefined => {
+  if (typeof window === "undefined") return undefined
   try {
     const raw = globalThis.localStorage?.getItem(DATASET_STORAGE_KEY)
     if (!raw) return undefined

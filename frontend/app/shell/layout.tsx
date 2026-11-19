@@ -1,11 +1,17 @@
 import type { ReactNode } from "react"
 
-import { Footer, FooterFallback } from "./footer"
+import { Footer } from "./footer"
 import { Header } from "./header"
 import { SHELL_FRAME_ID } from "./page-change"
 
-/** The frame of every page. It takes the focus when another page opens (`PageChange`), without a ring around the page. */
-const ShellFrame = ({ footer, children }: { footer: ReactNode; children?: ReactNode }) => (
+/**
+ * The frame of every page: the skip link, the header, and the footer around the page. The build writes the frame into
+ * the HTML around an empty page. The root layout draws the frame around the placeholder of the HTML and around the
+ * page, so the app keeps the elements of the HTML when it draws the page, and a link of the frame that has the focus
+ * before the JavaScript runs keeps the focus. The frame takes the focus when another page opens (`PageChange`), without
+ * a ring around the page.
+ */
+export const ShellLayout = ({ children }: { children?: ReactNode }) => (
   <div
     id={SHELL_FRAME_ID}
     tabIndex={-1}
@@ -19,18 +25,6 @@ const ShellFrame = ({ footer, children }: { footer: ReactNode; children?: ReactN
     </a>
     <Header />
     <div className="flex flex-1 flex-col">{children}</div>
-    {footer}
+    <Footer />
   </div>
 )
-
-type ShellLayoutProps = {
-  children: ReactNode
-}
-
-export const ShellLayout = ({ children }: ShellLayoutProps) => <ShellFrame footer={<Footer />}>{children}</ShellFrame>
-
-/**
- * The shell with an empty page. The build writes the shell into the HTML, and the browser shows the shell until the
- * JavaScript runs. The shell does not call the api, so the footer shows a placeholder where the dataset line goes.
- */
-export const ShellFallback = () => <ShellFrame footer={<FooterFallback />} />

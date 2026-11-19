@@ -7,6 +7,8 @@ import { formatCount } from "~/lib/format"
 import { assayList } from "~/lib/labels"
 import { cn, ExternalLink, Skeleton } from "~/ui"
 
+import { useHydrated } from "./use-hydrated"
+
 const SUPERCOMPUTER_URL = "https://sc.ddbj.nig.ac.jp/en/"
 const REPOSITORY_URL = "https://github.com/dbcls/bsllmner-viewer"
 
@@ -66,9 +68,15 @@ const FooterFrame = ({ dataset }: { dataset: ReactNode }) => {
   )
 }
 
+/**
+ * The build draws the footer into the HTML, where the description of the dataset cannot be asked for, so the dataset
+ * line is a placeholder there. The first render in the browser draws the same placeholder, even if the browser keeps
+ * the description of the last visit.
+ */
 export const Footer = () => {
+  const hydrated = useHydrated()
   const dataset = useDataset()
-  const data = dataset.data
+  const data = hydrated ? dataset.data : undefined
   return (
     <FooterFrame
       dataset={
@@ -80,7 +88,7 @@ export const Footer = () => {
               Annotations by <span className="font-mono">{data.datasetVersion.model}</span>
             </span>
           </>
-        ) : queryFailed(dataset) ? (
+        ) : hydrated && queryFailed(dataset) ? (
           <span>Dataset information is unavailable</span>
         ) : (
           <DatasetLineSkeleton />
@@ -89,6 +97,3 @@ export const Footer = () => {
     />
   )
 }
-
-/** The footer drawn before the JavaScript runs, when the description of the dataset cannot be asked for yet. */
-export const FooterFallback = () => <FooterFrame dataset={<DatasetLineSkeleton />} />
