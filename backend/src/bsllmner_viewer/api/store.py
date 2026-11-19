@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ctypes
 import hashlib
 import importlib.util
 import os
@@ -41,6 +42,28 @@ def record_missing_pandas(
 
 record_missing_pandas()
 
+_PR_SET_THP_DISABLE = 41
+
+
+def _prctl(option: int, value: int) -> int:
+    return int(ctypes.CDLL(None, use_errno=True).prctl(option, value, 0, 0, 0))
+
+
+def disable_transparent_huge_pages(prctl: Callable[[int, int], int] = _prctl) -> bool:
+    """Stop the kernel from giving this process transparent huge pages. Returns whether the kernel accepted the request.
+
+    DuckDB asks the kernel for huge pages for its large allocations. When the free memory of the host is fragmented,
+    the kernel compacts memory for each of these requests before it falls back to small pages, and the first queries
+    of a process spend minutes of CPU time in the kernel. A process that the kernel refuses, or a system without
+    `prctl`, keeps its huge pages.
+    """
+    if sys.platform != "linux":
+        return False
+    try:
+        return prctl(_PR_SET_THP_DISABLE, 1) == 0
+    except AttributeError, OSError:
+        return False
+
 
 @dataclass(frozen=True, slots=True)
 class FieldInfo:
@@ -61,6 +84,7 @@ class Store:
     def __init__(self, path: Path, limits: Limits | None = None) -> None:
         self.path = path
         self.limits = limits or Limits.from_env()
+        disable_transparent_huge_pages()
         self._con = duckdb.connect(str(path), read_only=True)
         self._queries = Gate(self.limits.max_queries, self.limits.queue_timeout)
         self._exports = Gate(self.limits.max_exports, self.limits.queue_timeout)
