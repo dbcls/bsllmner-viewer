@@ -4,7 +4,7 @@ import { queryFailed, useDataset } from "~/lib/api/queries"
 import { buildCommit } from "~/lib/build-info"
 import { DBCLS } from "~/lib/crate"
 import { formatCount } from "~/lib/format"
-import { assayList } from "~/lib/labels"
+import { assayCount, unitLabel } from "~/lib/labels"
 import { cn, ExternalLink, Skeleton } from "~/ui"
 
 import { useHydrated } from "./use-hydrated"
@@ -82,7 +82,7 @@ export const Footer = () => {
       dataset={
         data ? (
           <>
-            <span>Dataset: BioSamples with {assayList(data.targetAssays)} experiments</span>
+            <span>Dataset: BioSamples with {unitLabel("sra-experiment")} of {assayCount(data.targetAssays.length)}</span>
             <span>{formatCount(data.totals.biosample)} BioSamples</span>
             <span>
               Annotations by <span className="font-mono">{data.datasetVersion.model}</span>

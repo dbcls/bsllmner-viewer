@@ -59,13 +59,18 @@
   --color-series-4:     #D81B60;
   --color-series-5:     #256D1B;
 
-  /* The dot of an assay, one per target assay in their order. Light and quiet beside the brand purple, and away from
-     the purple, the goldenrod, and the red that mark statuses. Every pair stays apart under protanopia and
-     deuteranopia (OKLab delta E 8.7 or more). An assay after the last color gets a gray dot; a new color has to pass the
-     same check against every other color, because the condition panel shows all the assays together. */
+  /* The dot of an assay, one per target assay in their order. Every pair of the five colors stays apart under
+     protanopia and deuteranopia (OKLab delta E 8.7 or more) and in normal vision (15 or more). Each color also stays
+     apart from the purple, the goldenrod, and the red that mark statuses (15 or more). The first three colors are
+     light and quiet beside the brand purple. The last two colors are darker, because no other light color stays apart
+     from the first three colors. An assay after the last color gets a dot of --color-ink-mid, because a light gray
+     looks the same as the pink under deuteranopia. A new color has to pass the same check against every other color
+     and against that gray, because the condition panel shows all the assays together. */
   --color-assay-1:      #62ACE8;
   --color-assay-2:      #85B56A;
   --color-assay-3:      #DB86AF;
+  --color-assay-4:      #B47B06;
+  --color-assay-5:      #088D71;
 
 
   --color-overlay: rgba(26, 23, 38, 0.35);
@@ -97,7 +102,7 @@
   --spacing-page-gutter:   40px;
   --spacing-content-max: 1280px;
   --spacing-chart-max:    1100px;
-  --spacing-sidebar:      256px;
+  --spacing-sidebar:      272px;
   --spacing-workspace-gutter: 24px;
   --spacing-header:        52px;
   --spacing-box-md:        35px;  /* a box that a search is typed into, and the Select that chooses what it searches */

@@ -131,3 +131,6 @@ const ASSAY_LIST = new Intl.ListFormat("en", { type: "disjunction" })
 
 /** The assays joined as a sentence: "A", "A or B", or "A, B, or C". */
 export const assayList = (assays: readonly string[]): string => ASSAY_LIST.format(assays)
+
+/** A number of assays as words: "1 assay" or "6 assays". */
+export const assayCount = (count: number): string => `${count} ${count === 1 ? "assay" : "assays"}`

@@ -3,6 +3,7 @@ import { Link } from "react-router"
 import { loadFailureProps } from "~/lib/api/client"
 import { queryFailed, useDataset } from "~/lib/api/queries"
 import type { Clause, DatasetResponse, Unit } from "~/lib/api/types"
+import { ASSAY_ROWS, orderAssays } from "~/lib/assays"
 import { formatCount } from "~/lib/format"
 import { fieldLabel, organismLabel, unitLabel } from "~/lib/labels"
 import { MATRIX_PRESETS, type Preset, QUESTION_PRESETS } from "~/lib/presets"
@@ -129,26 +130,37 @@ const Total = ({ unit, value }: { unit: Unit; value: number | undefined }) => (
 /** A bar of the statistics: a value of a field of the whole dataset, its BioSamples, and the clause that selects it. */
 type StatisticsBar = { value: string; label: string; count: number; clauses: Clause[] }
 
-/** The bars of a field of the statistics, from the counts of the whole dataset that build made, in descending order. */
-const statisticsBars = (field: (typeof STATISTICS_FIELDS)[number], dataset: DatasetResponse): StatisticsBar[] =>
-  field === "library_strategy"
-    ? dataset.assays.map(({ name, biosampleCount }) => ({ value: name, label: name, count: biosampleCount, clauses: [{ field, value: name }] }))
-    : dataset.organisms.map(({ identifier, name, biosampleCount }) => ({
-      value: identifier,
-      label: organismLabel(identifier, name),
-      count: biosampleCount,
-      clauses: [{ field, value: identifier }],
-    }))
+/** How many organisms the statistics show: the organisms with the most BioSamples. */
+const ORGANISM_BARS = 2
+
+/** How many bars a field of the statistics shows before the description of the dataset arrives. */
+const SKELETON_BARS: Record<(typeof STATISTICS_FIELDS)[number], number> = { library_strategy: ASSAY_ROWS, organism_id: ORGANISM_BARS }
+
+/**
+ * The bars of a field of the statistics, from the counts of the whole dataset that build made: every target assay in
+ * the order of the target assays, and the organisms with the most BioSamples in descending order.
+ */
+const statisticsBars = (field: (typeof STATISTICS_FIELDS)[number], dataset: DatasetResponse): StatisticsBar[] => {
+  if (field === "library_strategy") {
+    const counts = new Map(dataset.assays.map(({ name, biosampleCount }) => [name, biosampleCount]))
+    return orderAssays([...counts.keys()], dataset.targetAssays).map((name) => ({ value: name, label: name, count: counts.get(name) ?? 0, clauses: [{ field, value: name }] }))
+  }
+  return dataset.organisms.slice(0, ORGANISM_BARS).map(({ identifier, name, biosampleCount }) => ({
+    value: identifier,
+    label: organismLabel(identifier, name),
+    count: biosampleCount,
+    clauses: [{ field, value: identifier }],
+  }))
+}
 
 const FieldStatistics = ({ field }: { field: (typeof STATISTICS_FIELDS)[number] }) => {
-  const limit = field === "organism_id" ? 2 : 3
   const dataset = useDataset()
-  const elements = dataset.data ? statisticsBars(field, dataset.data).slice(0, limit) : []
+  const elements = dataset.data ? statisticsBars(field, dataset.data) : []
   const max = Math.max(1, ...elements.map((e) => e.count))
   return (
     <div className="mt-4 border-t border-border-soft pt-3.5">
       <div className="mb-1.5 font-semibold">{fieldLabel(field)}</div>
-      {dataset.data === undefined && Array.from({ length: limit }, (_, index) => <CountBarSkeleton key={index} padding="sm" />)}
+      {dataset.data === undefined && Array.from({ length: SKELETON_BARS[field] }, (_, index) => <CountBarSkeleton key={index} padding="sm" />)}
       {elements.map((element) => (
         <ConditionLink key={element.value} clauses={element.clauses} className={countBarRowClass("sm")}>
           <CountBar label={element.label} count={formatCount(element.count)} ratio={element.count / max} />

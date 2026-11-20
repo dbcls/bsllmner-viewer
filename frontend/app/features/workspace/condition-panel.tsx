@@ -3,6 +3,7 @@ import { type ReactNode, useEffect, useRef, useState } from "react"
 import { failureMessage, loadFailureProps } from "~/lib/api/client"
 import { queryFailed, useDataset, useDistribution } from "~/lib/api/queries"
 import type { Clause } from "~/lib/api/types"
+import { ASSAY_ROWS } from "~/lib/assays"
 import { type DateRange, enteredRange, isoDate, RECENT_YEARS, recentRange, recentYearsOf } from "~/lib/date-range"
 import { formatCount } from "~/lib/format"
 import { fieldLabel, fieldOfStatusField, GROUP_LABELS, organismLabel, statusFieldOf,type StatusGroup } from "~/lib/labels"
@@ -166,10 +167,9 @@ const CountsNotice = ({ query, name }: { query: { error: unknown; refetch: () =>
 )
 
 /**
- * How many skeleton rows a section shows before the description of the dataset arrives. Only the first visit needs a
+ * How many skeleton rows the organisms show before the description of the dataset arrives. Only the first visit needs a
  * guess; later visits draw the rows from the stored description.
  */
-const ASSAY_ROWS = 3
 const ORGANISM_ROWS = 2
 
 /** Skeleton rows as tall as the rows that replace them: one line of text inside the rows' own padding. */

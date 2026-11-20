@@ -12,10 +12,16 @@ export const orderAssays = (assays: readonly string[], targetAssays: readonly st
   return [...new Set(assays)].sort((a, b) => rank(a) - rank(b) || compareText(a, b))
 }
 
-const DOT_CLASSES = ["bg-assay-1", "bg-assay-2", "bg-assay-3"] as const
+/**
+ * How many rows a list of the target assays shows before the description of the dataset arrives. Only the first visit
+ * needs a guess; later visits draw the rows from the stored description.
+ */
+export const ASSAY_ROWS = 6
+
+const DOT_CLASSES = ["bg-assay-1", "bg-assay-2", "bg-assay-3", "bg-assay-4", "bg-assay-5"] as const
 
 /**
- * The class of the dot that marks an assay: one color for each of the first three target assays, in their order, and
- * gray for the others.
+ * The class of the dot that marks an assay: one color for each of the first five target assays, in their order, and
+ * dark gray for the others.
  */
-export const assayDotClass = (assay: string, targetAssays: readonly string[]): string => DOT_CLASSES[targetAssays.indexOf(assay)] ?? "bg-ink-softer"
+export const assayDotClass = (assay: string, targetAssays: readonly string[]): string => DOT_CLASSES[targetAssays.indexOf(assay)] ?? "bg-ink-mid"

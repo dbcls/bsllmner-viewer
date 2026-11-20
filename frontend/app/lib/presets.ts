@@ -29,14 +29,8 @@ export const MATRIX_PRESETS: Preset[] = [
   {
     id: "cell-line-assay",
     title: "Cell line × Assay",
-    description: "Independent BioProjects per cell line and assay. Find cell lines with RNA-Seq but no ATAC-seq.",
+    description: "Independent BioProjects per cell line and assay. Find cell lines with ChIP-Seq but no Bisulfite-Seq.",
     state: { tab: "heatmap", row: "cell_line", col: "library_strategy", q: "organism_id:9606", unit: "bioproject" },
-  },
-  {
-    id: "disease-assay",
-    title: "Disease × Assay",
-    description: "Independent BioProjects per disease and assay. Find diseases that an assay does not cover.",
-    state: { tab: "heatmap", row: "disease", col: "library_strategy", unit: "bioproject" },
   },
 ]
 
@@ -60,9 +54,9 @@ export const QUESTION_PRESETS: Preset[] = [
     values: ["TP53"],
   },
   {
-    id: "t2d-tissues",
-    title: "Which tissues have been sampled for type 2 diabetes?",
-    state: { tab: "distribution", q: 'disease:"MONDO:0005148"', unit: "bioproject" },
-    values: ["type 2 diabetes mellitus"],
+    id: "esc-bisulfite-knockouts",
+    title: "Which genes have been knocked out in embryonic stem cells with Bisulfite-Seq data?",
+    state: { tab: "distribution", q: 'cell_type:"CL:0002322" AND library_strategy:Bisulfite-Seq', unit: "bioproject" },
+    values: ["embryonic stem cell", "Bisulfite-Seq"],
   },
 ]

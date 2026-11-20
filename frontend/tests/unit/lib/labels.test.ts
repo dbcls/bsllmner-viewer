@@ -1,12 +1,20 @@
 import { describe, expect, it } from "vitest"
 
-import { assayList, fieldLabel, ontologyName, STATUS_INFO, STATUS_ORDER, statusInfo, statusLabel } from "~/lib/labels"
+import { assayCount, assayList, fieldLabel, ontologyName, STATUS_INFO, STATUS_ORDER, statusInfo, statusLabel } from "~/lib/labels"
 
 describe("assayList", () => {
   it("joins one, two, and three assays as a sentence", () => {
     expect(assayList(["RNA-Seq"])).toBe("RNA-Seq")
     expect(assayList(["RNA-Seq", "ChIP-Seq"])).toBe("RNA-Seq or ChIP-Seq")
     expect(assayList(["RNA-Seq", "ChIP-Seq", "ATAC-seq"])).toBe("RNA-Seq, ChIP-Seq, or ATAC-seq")
+  })
+})
+
+describe("assayCount", () => {
+  it("writes the number of assays, with the singular only for one assay", () => {
+    expect(assayCount(1)).toBe("1 assay")
+    expect(assayCount(6)).toBe("6 assays")
+    expect(assayCount(0)).toBe("0 assays")
   })
 })
 

@@ -123,7 +123,7 @@ describe("the app that takes over the built HTML", () => {
     localStorage.setItem(DATASET_STORAGE_KEY, JSON.stringify(DATASET))
     const { errors } = await takeOver(container)
     expect(errors).toEqual([])
-    expect(datasetLine(container)).toHaveTextContent("Dataset: BioSamples with RNA-Seq experiments")
+    expect(datasetLine(container)).toHaveTextContent("Dataset: BioSamples with SRA Experiments of 1 assay")
     expect(datasetLine(container)).toHaveTextContent("1,234 BioSamples")
   })
 

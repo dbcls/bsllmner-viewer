@@ -121,7 +121,7 @@ describe("the footer", () => {
     renderWithQuery(<Footer />)
     const footer = screen.getByRole("contentinfo")
     expect(footer.querySelector('[aria-busy="true"]')).not.toBeNull()
-    expect(await screen.findByText("Dataset: BioSamples with RNA-Seq experiments")).toBeInTheDocument()
+    expect(await screen.findByText("Dataset: BioSamples with SRA Experiments of 1 assay")).toBeInTheDocument()
     expect(footer.querySelector('[aria-busy="true"]')).toBeNull()
   })
 
